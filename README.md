@@ -45,10 +45,10 @@ node phomymo.js --file ./path/to/image.png --label M260 --vendor 0x483 --product
 	•	-i, --initial-feed <dots> and -n, --final-feed <dots>: Feed adjustments before and after printing
 
 ## How It Works
-	1.	Label Size Configuration: Depending on the provided options, the tool sets a predefined or custom label size. It calculates pixel dimensions and bytes per line using the printer’s DPI (203).
-	2.	USB Device Setup: The tool searches for the USB device using the specified vendor and product IDs. If not found, it lists available devices for manual selection.
-	3.	Image Processing & Raster Conversion: The image is resized (with margins and alignment adjustments) and converted to a 1-bit raster format suitable for the printer.
-	4.	Printing: Commands are sent to the printer (e.g., initialize, set line spacing, print density, feed commands) followed by the raster data, with progress logged in chunks.
+1.	Label Size Configuration: Depending on the provided options, the tool sets a predefined or custom label size. It calculates pixel dimensions and bytes per line using the printer’s DPI (203).
+2.	USB Device Setup: The tool searches for the USB device using the specified vendor and product IDs. If not found, it lists available devices for manual selection.
+3.	Image Processing & Raster Conversion: The image is resized (with margins and alignment adjustments) and converted to a 1-bit raster format suitable for the printer.
+4.	Printing: Commands are sent to the printer (e.g., initialize, set line spacing, print density, feed commands) followed by the raster data, with progress logged in chunks.
 
 ## Acknowledgments
 

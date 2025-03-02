@@ -17,12 +17,12 @@ Phomymo is a command-line tool for interfacing with Phomemo USB printers. It pro
 
    ```bash
    git clone https://github.com/transcriptionstream/phomymo.git
-   cd phomymo
+   cd phomymo```
 
 	2.	Install dependencies:
-Ensure you have Node.js installed, then run:
+        Ensure you have Node.js installed, then run:
 
-npm install
+   ```npm install
 
 
 

@@ -56,6 +56,7 @@ Only tested on MacOS.
 
 A special thank you goes to the creators of the following projects for their inspiring work and contributions:
 • [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools)
+
 • [vrk/cli-phonemo-printer](https://github.com/vrk/cli-phomemo-printer)
 
 Their open-source projects helped shape the design and functionality of Phomymo.

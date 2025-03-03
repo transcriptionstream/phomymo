@@ -50,17 +50,15 @@ node phomymo.js --file ./path/to/image.png --label M260 --vendor 0x483 --product
 3.	Image Processing & Raster Conversion: The image is resized (with margins and alignment adjustments) and converted to a 1-bit raster format suitable for the printer.
 4.	Printing: Commands are sent to the printer (e.g., initialize, set line spacing, print density, feed commands) followed by the raster data, with progress logged in chunks.
 
+I've only tested this on MacOS.
+
 ## Acknowledgments
 
 A special thank you goes to the creators of the following projects for their inspiring work and contributions:
-	•	[vivier/phomemo-tools](https://github.com/vivier/phomemo-tools)
-	•	[vrk/cli-phonemo-printer](https://github.com/vrk/cli-phomemo-printer)
+•	[vivier/phomemo-tools](https://github.com/vivier/phomemo-tools)
+•	[vrk/cli-phonemo-printer](https://github.com/vrk/cli-phomemo-printer)
 
 Their open-source projects helped shape the design and functionality of Phomymo.
-
-Contributing
-
-Contributions are welcome! Please see our CONTRIBUTING.md for more details on how to help improve the project.
 
 License
 

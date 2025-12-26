@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phomymo Label Designer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Lato:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Oswald:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Roboto+Mono:wght@400;500;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .canvas-bg {
+      background-image: linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+                        linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+                        linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+                        linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+      background-size: 12px 12px;
+      background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
+    }
+    .toolbar-btn {
+      @apply px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center gap-1.5;
+    }
+    .toolbar-btn:disabled {
+      @apply opacity-50 cursor-not-allowed;
+    }
+    .toolbar-divider {
+      @apply w-px h-6 bg-gray-200 mx-2;
+    }
+    .prop-label {
+      font-size: 0.75rem;
+      line-height: 1rem;
+      color: #6b7280;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .prop-input {
+      @apply w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent;
+    }
+    .prop-row {
+      @apply flex gap-2;
+    }
+    .prop-group {
+      @apply mb-4;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
+
+  <!-- Top Bar -->
+  <header class="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <h1 class="text-lg font-semibold text-gray-900">Phomymo</h1>
+          <button id="info-btn" class="text-gray-400 hover:text-gray-600 transition-colors" title="About this project">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </button>
+        </div>
+
+        <!-- Label Size -->
+        <div class="flex items-center gap-2">
+          <select id="label-size" class="text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-400">
+            <option value="12x40">12x40mm</option>
+            <option value="15x30">15x30mm</option>
+            <option value="20x30">20x30mm</option>
+            <option value="25x50">25x50mm</option>
+            <option value="30x20">30x20mm</option>
+            <option value="30x40">30x40mm</option>
+            <option value="40x30" selected>40x30mm</option>
+            <option value="40x60">40x60mm</option>
+            <option value="50x25">50x25mm</option>
+            <option value="50x30">50x30mm</option>
+            <option value="50x80">50x80mm</option>
+            <option value="60x40">60x40mm</option>
+            <option value="custom">Custom...</option>
+          </select>
+          <!-- Custom size inputs (hidden by default) -->
+          <div id="custom-size" class="hidden flex items-center gap-1">
+            <input type="number" id="custom-width" class="w-14 px-2 py-1.5 text-sm border border-gray-300 rounded-lg" placeholder="W" min="10" max="100">
+            <span class="text-gray-400">x</span>
+            <input type="number" id="custom-height" class="w-14 px-2 py-1.5 text-sm border border-gray-300 rounded-lg" placeholder="H" min="10" max="200">
+            <span class="text-xs text-gray-400">mm</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Connection -->
+        <div class="flex items-center gap-2 text-sm">
+          <select id="conn-type" class="px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none">
+            <option value="ble">Bluetooth</option>
+            <option value="usb">USB</option>
+          </select>
+          <button id="connect-btn" class="px-3 py-1.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-sm font-medium transition-colors">
+            Connect
+          </button>
+          <div id="status-dot" class="w-2 h-2 rounded-full bg-gray-400"></div>
+        </div>
+
+        <!-- Print Settings & Button -->
+        <div class="flex items-center gap-1">
+          <button id="print-settings-btn" class="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-l-lg transition-colors" title="Print Settings">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </button>
+          <button id="print-btn" class="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-r-lg transition-colors">
+            Print
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toolbar -->
+  <div class="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <!-- Add Elements -->
+      <button id="add-text" class="toolbar-btn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16"/></svg>
+        Text
+      </button>
+      <button id="add-image" class="toolbar-btn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Image
+      </button>
+      <button id="add-barcode" class="toolbar-btn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2M4 8h2m10 0h2m2-4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
+        Barcode
+      </button>
+      <button id="add-qr" class="toolbar-btn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2M4 8h2m10 0h2m2-4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
+        QR
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Element Actions -->
+      <button id="duplicate-btn" class="toolbar-btn" disabled>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        Duplicate
+      </button>
+      <button id="delete-btn" class="toolbar-btn" disabled>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Delete
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Z-Order / Layers -->
+      <button id="bring-front" class="toolbar-btn" disabled title="Raise - Move selected element(s) above others">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="4" y="8" width="10" height="10" rx="1" stroke-width="2"/>
+          <rect x="10" y="4" width="10" height="10" rx="1" stroke-width="2" fill="white"/>
+        </svg>
+        Raise
+      </button>
+      <button id="send-back" class="toolbar-btn" disabled title="Lower - Move selected element(s) behind others">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="10" y="10" width="10" height="10" rx="1" stroke-width="2"/>
+          <rect x="4" y="4" width="10" height="10" rx="1" stroke-width="2" fill="white"/>
+        </svg>
+        Lower
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Grouping -->
+      <button id="group-btn" class="toolbar-btn" disabled title="Group (Ctrl+G)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+        Group
+      </button>
+      <button id="ungroup-btn" class="toolbar-btn" disabled title="Ungroup (Ctrl+Shift+G)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zm0 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+        Ungroup
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Save/Load -->
+      <button id="save-btn" class="toolbar-btn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+        Save
+      </button>
+      <button id="load-btn" class="toolbar-btn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        Load
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex overflow-hidden">
+    <!-- Canvas Area -->
+    <div class="flex-1 flex items-center justify-center p-6 overflow-auto relative">
+      <div id="canvas-container" class="canvas-bg rounded-lg p-6 shadow-inner transition-transform origin-center">
+        <canvas id="preview-canvas" class="bg-white shadow-md rounded cursor-crosshair"></canvas>
+      </div>
+
+      <!-- Zoom Controls - Fixed bottom right -->
+      <div class="absolute bottom-6 right-6 flex items-center gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 z-50">
+        <button id="zoom-out" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom Out">
+          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"/></svg>
+        </button>
+        <span id="zoom-level" class="text-base text-gray-700 w-14 text-center font-semibold">100%</span>
+        <button id="zoom-in" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom In">
+          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
+        </button>
+        <div class="w-px h-6 bg-gray-200"></div>
+        <button id="zoom-reset" class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors font-medium" title="Reset Zoom">
+          Reset
+        </button>
+      </div>
+    </div>
+
+    <!-- Properties Panel -->
+    <aside id="props-panel" class="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto flex-shrink-0">
+      <h2 class="text-sm font-semibold text-gray-900 mb-4">Properties</h2>
+
+      <!-- No Selection State -->
+      <div id="props-empty" class="text-sm text-gray-400 text-center py-8">
+        Click an element to select it,<br>or add a new element.
+      </div>
+
+      <!-- Element Properties -->
+      <div id="props-content" class="hidden">
+        <!-- Position -->
+        <div class="prop-group">
+          <div class="prop-label">Position</div>
+          <div class="prop-row">
+            <div class="flex-1">
+              <input type="number" id="prop-x" class="prop-input" placeholder="X">
+            </div>
+            <div class="flex-1">
+              <input type="number" id="prop-y" class="prop-input" placeholder="Y">
+            </div>
+          </div>
+        </div>
+
+        <!-- Size -->
+        <div class="prop-group">
+          <div class="prop-label">Size</div>
+          <div class="prop-row">
+            <div class="flex-1">
+              <input type="number" id="prop-width" class="prop-input" placeholder="W" min="10">
+            </div>
+            <div class="flex-1">
+              <input type="number" id="prop-height" class="prop-input" placeholder="H" min="10">
+            </div>
+          </div>
+        </div>
+
+        <!-- Rotation -->
+        <div class="prop-group">
+          <div class="prop-label">Rotation</div>
+          <div class="flex items-center gap-2">
+            <input type="number" id="prop-rotation" class="prop-input flex-1" min="0" max="360" step="15">
+            <span class="text-sm text-gray-400">deg</span>
+          </div>
+        </div>
+
+        <!-- Layer -->
+        <div class="prop-group">
+          <div class="prop-label">Layer</div>
+          <div class="flex items-center gap-2">
+            <span id="prop-layer" class="text-sm text-gray-700 font-medium">1</span>
+            <span class="text-sm text-gray-400">of <span id="prop-layer-total">1</span></span>
+          </div>
+        </div>
+
+        <hr class="my-4 border-gray-200">
+
+        <!-- Text Properties -->
+        <div id="props-text" class="hidden">
+          <div class="prop-group">
+            <div class="prop-label">Text</div>
+            <textarea id="prop-text-content" class="prop-input h-20 resize-none" placeholder="Enter text..."></textarea>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">Font</div>
+            <select id="prop-font-family" class="prop-input">
+              <optgroup label="Sans-Serif">
+                <option value="Inter, sans-serif">Inter</option>
+                <option value="Roboto, sans-serif">Roboto</option>
+                <option value="Open Sans, sans-serif">Open Sans</option>
+                <option value="Lato, sans-serif">Lato</option>
+                <option value="Montserrat, sans-serif">Montserrat</option>
+                <option value="Oswald, sans-serif">Oswald</option>
+              </optgroup>
+              <optgroup label="Serif">
+                <option value="Playfair Display, serif">Playfair Display</option>
+                <option value="Merriweather, serif">Merriweather</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="Times New Roman, serif">Times New Roman</option>
+              </optgroup>
+              <optgroup label="Monospace">
+                <option value="Roboto Mono, monospace">Roboto Mono</option>
+                <option value="Source Code Pro, monospace">Source Code Pro</option>
+                <option value="Courier New, monospace">Courier New</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">Size & Style</div>
+            <div class="flex gap-2">
+              <select id="prop-font-size" class="prop-input flex-1">
+                <option value="12">12px</option>
+                <option value="16">16px</option>
+                <option value="20">20px</option>
+                <option value="24">24px</option>
+                <option value="32">32px</option>
+                <option value="48">48px</option>
+                <option value="64">64px</option>
+              </select>
+              <div class="flex border border-gray-200 rounded-lg overflow-hidden">
+                <button id="style-bold" class="style-btn px-2.5 py-1.5 hover:bg-gray-100 transition-colors font-bold text-sm" title="Bold">B</button>
+                <button id="style-italic" class="style-btn px-2.5 py-1.5 hover:bg-gray-100 transition-colors italic text-sm border-l border-gray-200" title="Italic">I</button>
+                <button id="style-underline" class="style-btn px-2.5 py-1.5 hover:bg-gray-100 transition-colors underline text-sm border-l border-gray-200" title="Underline">U</button>
+              </div>
+            </div>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">Alignment</div>
+            <div class="flex gap-1">
+              <button data-align="left" class="align-btn flex-1 py-1.5 border border-gray-200 rounded-l-lg hover:bg-gray-50">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h14"/></svg>
+              </button>
+              <button data-align="center" class="align-btn flex-1 py-1.5 border-t border-b border-gray-200 hover:bg-gray-50">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M7 12h10M5 18h14"/></svg>
+              </button>
+              <button data-align="right" class="align-btn flex-1 py-1.5 border border-gray-200 rounded-r-lg hover:bg-gray-50">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M10 12h10M6 18h14"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Image Properties -->
+        <div id="props-image" class="hidden">
+          <div class="prop-group">
+            <div class="prop-label">Scale</div>
+            <div class="flex items-center gap-2">
+              <input type="range" id="prop-image-scale" min="10" max="200" value="100" class="flex-1">
+              <input type="number" id="prop-image-scale-input" min="10" max="200" value="100" class="w-16 px-2 py-1 text-sm border border-gray-200 rounded text-center">
+              <span class="text-sm text-gray-500">%</span>
+            </div>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">Proportions</div>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="prop-image-lock-ratio" checked class="w-4 h-4 rounded border-gray-300">
+              <span class="text-sm text-gray-700">Lock aspect ratio</span>
+            </label>
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">Actions</div>
+            <div class="flex gap-2">
+              <button id="prop-image-reset" class="toolbar-btn flex-1 justify-center text-xs">
+                Reset Size
+              </button>
+              <button id="prop-replace-image" class="toolbar-btn flex-1 justify-center text-xs">
+                Replace
+              </button>
+            </div>
+            <input type="file" id="prop-image-input" accept="image/*" class="hidden">
+          </div>
+        </div>
+
+        <!-- Barcode Properties -->
+        <div id="props-barcode" class="hidden">
+          <div class="prop-group">
+            <div class="prop-label">Data</div>
+            <input type="text" id="prop-barcode-data" class="prop-input" placeholder="Enter barcode data">
+          </div>
+          <div class="prop-group">
+            <div class="prop-label">Format</div>
+            <select id="prop-barcode-format" class="prop-input">
+              <option value="CODE128">CODE128</option>
+              <option value="EAN13">EAN-13</option>
+              <option value="CODE39">CODE39</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- QR Properties -->
+        <div id="props-qr" class="hidden">
+          <div class="prop-group">
+            <div class="prop-label">Data</div>
+            <input type="text" id="prop-qr-data" class="prop-input" placeholder="Enter URL or text">
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Status Bar -->
+  <footer class="bg-white border-t border-gray-200 px-4 py-2 flex-shrink-0">
+    <div class="flex items-center justify-between text-xs text-gray-400">
+      <span id="status-message">Ready</span>
+      <div class="flex items-center gap-4">
+        <span id="print-size">40 x 30 mm</span>
+        <span class="text-gray-300">|</span>
+        <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="hover:text-gray-600 transition-colors flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <span class="text-gray-300">|</span>
+        <a href="https://affordablemagic.com" target="_blank" rel="noopener" class="inline-flex items-center gap-1 hover:text-gray-600 transition-colors">
+          <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-3">
+          An Affordable Magic product
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Save Dialog -->
+  <div id="save-dialog" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-80 shadow-xl">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Save Design</h3>
+      <input type="text" id="save-name" class="prop-input mb-4" placeholder="Design name">
+      <div class="flex gap-2">
+        <button id="save-cancel" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+        <button id="save-confirm" class="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Dialog -->
+  <div id="load-dialog" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96 shadow-xl max-h-[80vh] flex flex-col">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Load Design</h3>
+      <div id="design-list" class="flex-1 overflow-y-auto mb-4 min-h-[100px]">
+        <div class="text-sm text-gray-400 text-center py-8">No saved designs</div>
+      </div>
+      <div class="flex gap-2">
+        <button id="load-cancel" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print Settings Dialog -->
+  <div id="print-settings-dialog" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-80 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">Print Settings</h3>
+        <button id="print-settings-close" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <!-- Density -->
+        <div>
+          <div class="prop-label">Print Density (Darkness)</div>
+          <div class="flex items-center gap-3">
+            <input type="range" id="print-density" min="1" max="8" value="6" class="flex-1">
+            <span id="print-density-value" class="text-sm font-medium w-6 text-center">6</span>
+          </div>
+          <div class="flex justify-between text-xs text-gray-400 mt-1">
+            <span>Light</span>
+            <span>Dark</span>
+          </div>
+        </div>
+
+        <!-- Copies -->
+        <div>
+          <div class="prop-label">Copies</div>
+          <input type="number" id="print-copies" min="1" max="99" value="1" class="prop-input w-20">
+        </div>
+
+        <!-- Feed After Print -->
+        <div>
+          <div class="prop-label">Feed After Print</div>
+          <select id="print-feed" class="prop-input">
+            <option value="16">Small (2mm)</option>
+            <option value="32" selected>Medium (4mm)</option>
+            <option value="48">Large (6mm)</option>
+            <option value="80">Extra Large (10mm)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-6 space-y-2">
+        <button id="print-density-test" class="w-full px-4 py-2 border border-blue-300 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm">
+          🧪 Print Density Test
+        </button>
+        <div class="flex gap-2">
+          <button id="print-settings-reset" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">Reset</button>
+          <button id="print-settings-save" class="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 text-sm">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input for adding images -->
+  <input type="file" id="image-file-input" accept="image/*" class="hidden">
+
+  <!-- Info Dialog -->
+  <div id="info-dialog" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-[500px] max-w-[90vw] shadow-xl max-h-[80vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">About Phomymo</h3>
+        <button id="info-close" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-sm text-gray-600">
+        <div>
+          <h4 class="font-medium text-gray-900 mb-1">What is this?</h4>
+          <p>Phomymo is an open-source web-based label designer for Phomemo thermal printers. It runs entirely in your browser using Web Bluetooth technology.</p>
+          <p class="mt-2 text-gray-500"><strong>Note:</strong> Currently only tested with the <strong>Phomemo M260</strong> printer. Other models may or may not work.</p>
+        </div>
+
+        <div>
+          <h4 class="font-medium text-gray-900 mb-1">No Software Installation Required</h4>
+          <p>Unlike the official Phomemo apps, this tool requires <strong>no downloads or installations</strong>. Everything runs directly in your browser over a secure HTTPS connection.</p>
+        </div>
+
+        <div>
+          <h4 class="font-medium text-gray-900 mb-1">Why Avoid the Official Software?</h4>
+          <p>The official Phomemo desktop and mobile apps have been flagged for concerning behaviors including:</p>
+          <ul class="list-disc list-inside mt-2 space-y-1 text-gray-500">
+            <li>Excessive data collection and telemetry</li>
+            <li>Requests for unnecessary permissions</li>
+            <li>Unclear privacy policies regarding user data</li>
+            <li>Potential security vulnerabilities in closed-source code</li>
+          </ul>
+          <p class="mt-2">This web app processes everything locally in your browser. No data is sent to any server.</p>
+        </div>
+
+        <div>
+          <h4 class="font-medium text-gray-900 mb-1">Browser Requirements</h4>
+          <p>Requires a Chromium-based browser (Chrome, Edge, Opera) with Web Bluetooth support. Must be accessed over HTTPS.</p>
+        </div>
+
+        <div>
+          <h4 class="font-medium text-gray-900 mb-1">Sources & References</h4>
+          <ul class="space-y-1 text-gray-500">
+            <li><a href="https://github.com/vivier/phomern" target="_blank" rel="noopener" class="text-blue-600 hover:underline">phomemo-tools</a> - Protocol research and documentation</li>
+            <li><a href="https://github.com/vrk/label-sticker-js" target="_blank" rel="noopener" class="text-blue-600 hover:underline">label-sticker-js</a> - Web Bluetooth implementation reference</li>
+            <li><a href="https://developer.chrome.com/docs/capabilities/bluetooth" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Web Bluetooth API</a> - Chrome documentation</li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="font-medium text-gray-900 mb-1">Open Source</h4>
+          <p>This project is open source. View the code, report issues, or contribute on GitHub:</p>
+          <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="inline-flex items-center gap-2 mt-2 text-blue-600 hover:underline">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            github.com/transcriptionstream/phomymo
+          </a>
+        </div>
+
+        <div class="pt-2 border-t border-gray-200">
+          <p class="text-xs text-gray-400">This is an independent open-source project and is not affiliated with Phomemo.</p>
+          <a href="https://affordablemagic.com" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 mt-2 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+            <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
+            An Affordable Magic product
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
+  <script type="module" src="app.js?v=14"></script>
+</body>
+</html>

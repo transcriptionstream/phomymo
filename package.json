@@ -1,17 +1,27 @@
 {
-  "name": "phomemo-printer",
-  "version": "1.0.0",
-  "description": "A command-line utility for printing images using a Phomemo USB printer with custom label sizes and vertical alignment.",
-  "main": "index.js",
+  "name": "phomymo",
+  "version": "2.0.0",
+  "description": "Print to Phomemo printers via USB or Bluetooth",
+  "main": "src/cli/index.js",
+  "bin": {
+    "phomymo": "./phomymo-cli.js"
+  },
   "scripts": {
-    "start": "node index.js"
+    "start": "node phomymo-cli.js",
+    "web": "npx serve src/web",
+    "discover": "node src/tools/ble-discover.js",
+    "ble-debug": "node src/tools/ble-debug.js"
   },
   "dependencies": {
-    "commander": "^10.0.0",
-    "usb": "^2.0.0",
+    "@abandonware/noble": "^1.9.2-26",
     "@inquirer/prompts": "^1.0.1",
-    "sharp": "^0.32.1"
+    "commander": "^10.0.0",
+    "sharp": "^0.32.1",
+    "usb": "^2.0.0"
   },
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
 }

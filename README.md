@@ -11,6 +11,8 @@ Supports Phomemo M110, M200, M220, M260, D30, D110, and similar thermal printers
 
 A full-featured label designer that runs in your browser using Web Bluetooth (no drivers needed).
 
+**Try it now: https://phomymo.affordablemagic.net**
+
 ### Features
 
 - **Multi-element canvas** - Add text, images, barcodes (Code128, EAN-13, UPC-A, Code39), and QR codes
@@ -24,18 +26,19 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 
 ### Quick Start
 
-1. Serve the web app locally (Web Bluetooth requires HTTPS or localhost):
+**Option 1: Use the live version**
+1. Open https://phomymo.affordablemagic.net in Chrome
+2. Click **Connect** to pair with your Phomemo printer via Bluetooth
+3. Design your label and click **Print**
 
+**Option 2: Run locally**
+1. Serve the web app (Web Bluetooth requires HTTPS or localhost):
    ```bash
    cd src/web
    python3 -m http.server 8080
    ```
-
 2. Open http://localhost:8080 in Chrome (or another Chromium-based browser)
-
-3. Click **Connect** to pair with your Phomemo printer via Bluetooth
-
-4. Design your label and click **Print**
+3. Connect, design, and print
 
 ### Browser Requirements
 

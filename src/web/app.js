@@ -3,7 +3,7 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=8';
+import { CanvasRenderer } from './canvas.js?v=15';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
 import { print, printDensityTest } from './printer.js?v=6';
@@ -12,6 +12,7 @@ import {
   createImageElement,
   createBarcodeElement,
   createQRElement,
+  createShapeElement,
   updateElement,
   deleteElement,
   duplicateElement,
@@ -27,7 +28,7 @@ import {
   moveElements,
   scaleElements,
   rotateElements,
-} from './elements.js?v=6';
+} from './elements.js?v=8';
 import {
   HandleType,
   getHandleAtPoint,
@@ -39,13 +40,20 @@ import {
   drawGroupHandles,
   calculateGroupResize,
   calculateGroupRotation,
-} from './handles.js?v=4';
+} from './handles.js?v=5';
 import {
   saveDesign,
   loadDesign,
   listDesigns,
   deleteDesign,
-} from './storage.js?v=3';
+} from './storage.js?v=4';
+import {
+  extractFields,
+  hasTemplateFields,
+  substituteFields,
+  parseCSV,
+  createEmptyRecord,
+} from './templates.js?v=1';
 
 // DOM helpers
 const $ = (sel) => document.querySelector(sel);
@@ -92,13 +100,207 @@ const state = {
     copies: 1,      // Number of copies
     feed: 32,       // Feed after print in dots (8 dots = 1mm)
   },
+  // Template state
+  templateFields: [],     // Detected field names from elements
+  templateData: [],       // Array of data records for batch printing
+  selectedRecords: [],    // Indices of selected records for printing
+  currentPreviewIndex: 0, // Current label index in full preview
+  // Undo/Redo history
+  history: [],            // Array of previous element states
+  historyIndex: -1,       // Current position in history (-1 = no history)
 };
+
+// Maximum history size
+const MAX_HISTORY = 50;
 
 /**
  * Update status message
  */
 function setStatus(message) {
   $('#status-message').textContent = message;
+}
+
+/**
+ * Save current state to history (call before modifications)
+ */
+function saveHistory() {
+  // Deep clone current elements
+  const snapshot = JSON.parse(JSON.stringify(state.elements));
+
+  // If we're not at the end of history, truncate future states
+  if (state.historyIndex < state.history.length - 1) {
+    state.history = state.history.slice(0, state.historyIndex + 1);
+  }
+
+  // Add new state
+  state.history.push(snapshot);
+
+  // Limit history size
+  if (state.history.length > MAX_HISTORY) {
+    state.history.shift();
+  } else {
+    state.historyIndex++;
+  }
+
+  updateUndoRedoButtons();
+}
+
+/**
+ * Undo last action
+ */
+function undo() {
+  if (state.historyIndex < 0) return;
+
+  // Save current state if we're at the end (so we can redo back to it)
+  if (state.historyIndex === state.history.length - 1) {
+    const current = JSON.parse(JSON.stringify(state.elements));
+    state.history.push(current);
+  }
+
+  // Restore previous state
+  state.elements = JSON.parse(JSON.stringify(state.history[state.historyIndex]));
+  state.historyIndex--;
+
+  // Clear selection if selected elements no longer exist
+  state.selectedIds = state.selectedIds.filter(id =>
+    state.elements.some(el => el.id === id)
+  );
+
+  state.renderer.clearCache();
+  render();
+  updatePropertiesPanel();
+  updateToolbarState();
+  detectTemplateFields();
+  setStatus('Undo');
+}
+
+/**
+ * Redo last undone action
+ */
+function redo() {
+  if (state.historyIndex >= state.history.length - 2) return;
+
+  state.historyIndex++;
+  state.elements = JSON.parse(JSON.stringify(state.history[state.historyIndex + 1]));
+
+  // Clear selection if selected elements no longer exist
+  state.selectedIds = state.selectedIds.filter(id =>
+    state.elements.some(el => el.id === id)
+  );
+
+  state.renderer.clearCache();
+  render();
+  updatePropertiesPanel();
+  updateToolbarState();
+  detectTemplateFields();
+  setStatus('Redo');
+}
+
+/**
+ * Update undo/redo button states
+ */
+function updateUndoRedoButtons() {
+  const undoBtn = $('#undo-btn');
+  const redoBtn = $('#redo-btn');
+  if (undoBtn) undoBtn.disabled = state.historyIndex < 0;
+  if (redoBtn) redoBtn.disabled = state.historyIndex >= state.history.length - 2;
+}
+
+/**
+ * Reset history (call when loading a new design)
+ */
+function resetHistory() {
+  state.history = [];
+  state.historyIndex = -1;
+  updateUndoRedoButtons();
+}
+
+/**
+ * Show a toast notification
+ * @param {string} message - Message to display
+ * @param {string} type - 'success', 'error', 'info', or 'warning'
+ * @param {number} duration - Duration in ms (default 2000)
+ */
+function showToast(message, type = 'info', duration = 2000) {
+  const container = $('#toast-container');
+
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = 'px-4 py-2 rounded-lg shadow-lg text-sm font-medium transform transition-all duration-300 translate-y-2 opacity-0';
+
+  // Set colors based on type
+  switch (type) {
+    case 'success':
+      toast.classList.add('bg-green-600', 'text-white');
+      break;
+    case 'error':
+      toast.classList.add('bg-red-600', 'text-white');
+      break;
+    case 'warning':
+      toast.classList.add('bg-yellow-500', 'text-white');
+      break;
+    default:
+      toast.classList.add('bg-gray-800', 'text-white');
+  }
+
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  // Animate in
+  requestAnimationFrame(() => {
+    toast.classList.remove('translate-y-2', 'opacity-0');
+  });
+
+  // Remove after duration
+  setTimeout(() => {
+    toast.classList.add('translate-y-2', 'opacity-0');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+/**
+ * Print progress state
+ */
+let printProgressCancelled = false;
+
+/**
+ * Show print progress modal
+ */
+function showPrintProgress(title, total) {
+  printProgressCancelled = false;
+  const modal = $('#print-progress-modal');
+  $('#progress-title').textContent = title;
+  $('#progress-subtitle').textContent = 'Preparing...';
+  $('#progress-bar').style.width = '0%';
+  $('#progress-detail').textContent = `0 of ${total}`;
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+/**
+ * Update print progress
+ */
+function updatePrintProgress(current, total, sublabel = '') {
+  const percent = Math.round((current / total) * 100);
+  $('#progress-bar').style.width = `${percent}%`;
+  $('#progress-detail').textContent = `${current} of ${total}`;
+  $('#progress-subtitle').textContent = sublabel || `Printing label ${current}...`;
+}
+
+/**
+ * Hide print progress modal
+ */
+function hidePrintProgress() {
+  const modal = $('#print-progress-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+/**
+ * Check if print was cancelled
+ */
+function isPrintCancelled() {
+  return printProgressCancelled;
 }
 
 /**
@@ -155,6 +357,709 @@ function zoomReset() {
  */
 function render() {
   state.renderer.renderAll(state.elements, state.selectedIds);
+}
+
+/**
+ * Detect template fields from current elements
+ */
+function detectTemplateFields() {
+  const previousFields = [...state.templateFields];
+  state.templateFields = extractFields(state.elements);
+
+  // If fields changed significantly, clear template data
+  const fieldsChanged = previousFields.length !== state.templateFields.length ||
+    !previousFields.every(f => state.templateFields.includes(f));
+
+  if (fieldsChanged && state.templateData.length > 0) {
+    // Fields changed - keep data but user may need to re-map
+    console.log('Template fields changed:', state.templateFields);
+  }
+
+  updateTemplateIndicator();
+}
+
+/**
+ * Update template mode indicator in UI
+ */
+function updateTemplateIndicator() {
+  const fieldCount = $('#template-field-count');
+  const fieldTags = $('#template-field-tags');
+  const dataCount = $('#template-data-count');
+  const printCount = $('#template-print-count');
+  const toolbarBtn = $('#template-toolbar-btn');
+  const toolbarDivider = $('#template-toolbar-divider');
+  const toolbarLabel = $('#template-toolbar-label');
+  const templatePanel = $('#template-panel');
+
+  const hasFields = state.templateFields.length > 0;
+
+  if (hasFields) {
+    fieldCount.textContent = state.templateFields.length;
+
+    // Show field tags
+    fieldTags.innerHTML = state.templateFields.map(f =>
+      `<span class="px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">{{${f}}}</span>`
+    ).join('');
+
+    // Show toolbar button
+    toolbarBtn.classList.remove('hidden');
+    toolbarDivider.classList.remove('hidden');
+
+    // Update toolbar label with record count
+    if (state.templateData.length > 0) {
+      toolbarLabel.textContent = `Template (${state.templateData.length})`;
+    } else {
+      toolbarLabel.textContent = 'Template';
+    }
+  } else {
+    fieldTags.innerHTML = '<span class="text-purple-400 italic">None</span>';
+
+    // Hide toolbar button and template panel
+    toolbarBtn.classList.add('hidden');
+    toolbarDivider.classList.add('hidden');
+    templatePanel.classList.add('hidden');
+  }
+
+  // Update data count
+  dataCount.textContent = state.templateData.length;
+  printCount.textContent = state.templateData.length;
+
+  // Update field dropdowns for insert field buttons
+  updateFieldDropdowns();
+}
+
+/**
+ * Toggle template panel visibility
+ */
+function toggleTemplatePanel() {
+  const templatePanel = $('#template-panel');
+  templatePanel.classList.toggle('hidden');
+}
+
+/**
+ * Escape HTML for safe insertion
+ */
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/**
+ * Update field dropdowns for insert field buttons
+ */
+function updateFieldDropdowns() {
+  const types = ['text', 'barcode', 'qr'];
+
+  for (const type of types) {
+    const fieldList = $(`#field-list-${type}`);
+    if (!fieldList) continue;
+
+    if (state.templateFields.length > 0) {
+      fieldList.innerHTML = state.templateFields.map(f =>
+        `<button class="field-option w-full text-left px-3 py-1.5 text-sm hover:bg-purple-50 text-gray-700" data-field="${f}" data-type="${type}">{{${f}}}</button>`
+      ).join('');
+    } else {
+      fieldList.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400 italic">No fields yet</div>';
+    }
+  }
+}
+
+/**
+ * Insert a field placeholder into an input
+ */
+function insertFieldIntoInput(type, fieldName) {
+  let inputEl;
+  let propKey;
+
+  switch (type) {
+    case 'text':
+      inputEl = $('#prop-text-content');
+      propKey = 'text';
+      break;
+    case 'barcode':
+      inputEl = $('#prop-barcode-data');
+      propKey = 'barcodeData';
+      break;
+    case 'qr':
+      inputEl = $('#prop-qr-data');
+      propKey = 'qrData';
+      break;
+  }
+
+  if (!inputEl) return;
+
+  const fieldPlaceholder = `{{${fieldName}}}`;
+  const start = inputEl.selectionStart || 0;
+  const end = inputEl.selectionEnd || 0;
+  const value = inputEl.value;
+
+  // Insert at cursor position
+  const newValue = value.substring(0, start) + fieldPlaceholder + value.substring(end);
+  inputEl.value = newValue;
+
+  // Update the element
+  const element = getSelected();
+  if (element) {
+    modifyElement(element.id, { [propKey]: newValue });
+  }
+
+  // Move cursor after inserted field
+  const newCursorPos = start + fieldPlaceholder.length;
+  inputEl.setSelectionRange(newCursorPos, newCursorPos);
+  inputEl.focus();
+
+  // Close dropdown
+  $(`#field-dropdown-${type}`).classList.add('hidden');
+}
+
+/**
+ * Create a new field and insert it
+ */
+function createAndInsertField(type, fieldName) {
+  if (!fieldName.trim()) return;
+
+  // Clean field name (remove invalid characters)
+  const cleanName = fieldName.trim().replace(/[{}]/g, '');
+  if (!cleanName) return;
+
+  insertFieldIntoInput(type, cleanName);
+}
+
+/**
+ * Toggle field dropdown visibility
+ */
+function toggleFieldDropdown(type) {
+  const dropdown = $(`#field-dropdown-${type}`);
+  const isHidden = dropdown.classList.contains('hidden');
+
+  // Close all dropdowns first
+  $$('[id^="field-dropdown-"]').forEach(d => d.classList.add('hidden'));
+
+  if (isHidden) {
+    dropdown.classList.remove('hidden');
+    // Focus the new field input
+    $(`#new-field-${type}`).value = '';
+    $(`#new-field-${type}`).focus();
+  }
+}
+
+/**
+ * Add a template data record
+ */
+function addTemplateRecord(record = null) {
+  if (!record) {
+    record = createEmptyRecord(state.templateFields);
+  }
+  state.templateData.push(record);
+  state.selectedRecords.push(state.templateData.length - 1);
+  updateTemplateDataTable();
+}
+
+/**
+ * Update a template data record
+ */
+function updateTemplateRecord(index, field, value) {
+  if (index >= 0 && index < state.templateData.length) {
+    state.templateData[index][field] = value;
+  }
+}
+
+/**
+ * Delete a template data record
+ */
+function deleteTemplateRecord(index) {
+  if (index >= 0 && index < state.templateData.length) {
+    state.templateData.splice(index, 1);
+    // Update selected records indices
+    state.selectedRecords = state.selectedRecords
+      .filter(i => i !== index)
+      .map(i => i > index ? i - 1 : i);
+    updateTemplateDataTable();
+  }
+}
+
+/**
+ * Clear all template data
+ */
+function clearTemplateData() {
+  state.templateData = [];
+  state.selectedRecords = [];
+  updateTemplateDataTable();
+}
+
+/**
+ * Toggle record selection for printing
+ */
+function toggleRecordSelection(index) {
+  const idx = state.selectedRecords.indexOf(index);
+  if (idx >= 0) {
+    state.selectedRecords.splice(idx, 1);
+  } else {
+    state.selectedRecords.push(index);
+    state.selectedRecords.sort((a, b) => a - b);
+  }
+  updateTemplateDataTable();
+}
+
+/**
+ * Select all records for printing
+ */
+function selectAllRecords() {
+  state.selectedRecords = state.templateData.map((_, i) => i);
+  updateTemplateDataTable();
+}
+
+/**
+ * Deselect all records
+ */
+function deselectAllRecords() {
+  state.selectedRecords = [];
+  updateTemplateDataTable();
+}
+
+/**
+ * Update the template data table in the dialog
+ */
+function updateTemplateDataTable() {
+  const tableBody = $('#template-data-body');
+  const emptyState = $('#template-data-empty');
+  const tableHeader = $('#template-data-header');
+  const recordCount = $('#template-record-count');
+
+  if (state.templateData.length === 0) {
+    emptyState.classList.remove('hidden');
+    tableHeader.classList.add('hidden');
+    tableBody.innerHTML = '';
+    recordCount.textContent = '0 records';
+    updateTemplateIndicator();
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  tableHeader.classList.remove('hidden');
+
+  // Build header
+  tableHeader.innerHTML = `
+    <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 w-8">
+      <input type="checkbox" id="template-select-all" class="rounded"
+        ${state.selectedRecords.length === state.templateData.length ? 'checked' : ''}>
+    </th>
+    <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 w-8">#</th>
+    ${state.templateFields.map(f => `
+      <th class="px-2 py-1 text-left text-xs font-medium text-gray-500">${f}</th>
+    `).join('')}
+    <th class="px-2 py-1 text-right text-xs font-medium text-gray-500 w-16">Actions</th>
+  `;
+
+  // Build rows
+  tableBody.innerHTML = state.templateData.map((record, idx) => `
+    <tr class="border-t border-gray-100 hover:bg-gray-50" data-index="${idx}">
+      <td class="px-2 py-1">
+        <input type="checkbox" class="template-row-select rounded"
+          data-index="${idx}" ${state.selectedRecords.includes(idx) ? 'checked' : ''}>
+      </td>
+      <td class="px-2 py-1 text-xs text-gray-400">${idx + 1}</td>
+      ${state.templateFields.map(f => `
+        <td class="px-2 py-1">
+          <input type="text" class="template-field-input w-full text-sm border-0 bg-transparent p-0 focus:ring-1 focus:ring-blue-500 rounded"
+            data-index="${idx}" data-field="${f}" value="${escapeHtml(record[f] || '')}">
+        </td>
+      `).join('')}
+      <td class="px-2 py-1 text-right">
+        <button class="template-delete-row text-red-500 hover:text-red-700 text-xs" data-index="${idx}">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+
+  recordCount.textContent = `${state.templateData.length} record${state.templateData.length !== 1 ? 's' : ''}`;
+
+  // Bind event handlers
+  bindTemplateTableEvents();
+
+  // Update properties panel indicator
+  updateTemplateIndicator();
+}
+
+/**
+ * Bind event handlers for template data table
+ */
+function bindTemplateTableEvents() {
+  // Select all checkbox
+  const selectAll = $('#template-select-all');
+  if (selectAll) {
+    selectAll.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        selectAllRecords();
+      } else {
+        deselectAllRecords();
+      }
+    });
+  }
+
+  // Row checkboxes
+  $$('.template-row-select').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      toggleRecordSelection(parseInt(e.target.dataset.index));
+    });
+  });
+
+  // Field inputs
+  $$('.template-field-input').forEach(input => {
+    input.addEventListener('change', (e) => {
+      updateTemplateRecord(
+        parseInt(e.target.dataset.index),
+        e.target.dataset.field,
+        e.target.value
+      );
+    });
+  });
+
+  // Delete buttons
+  $$('.template-delete-row').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      deleteTemplateRecord(parseInt(e.target.dataset.index));
+    });
+  });
+}
+
+/**
+ * Import CSV data
+ */
+function importCSVData(csvString) {
+  const result = parseCSV(csvString);
+
+  if (result.errors.length > 0) {
+    console.warn('CSV parse warnings:', result.errors);
+  }
+
+  if (result.records.length === 0) {
+    setStatus('No data found in CSV');
+    return;
+  }
+
+  // Map CSV columns to template fields
+  const mappedRecords = result.records.map(csvRecord => {
+    const record = createEmptyRecord(state.templateFields);
+    for (const field of state.templateFields) {
+      // Try exact match first, then case-insensitive
+      if (csvRecord.hasOwnProperty(field)) {
+        record[field] = csvRecord[field];
+      } else {
+        const lowerField = field.toLowerCase();
+        const matchingKey = Object.keys(csvRecord).find(k => k.toLowerCase() === lowerField);
+        if (matchingKey) {
+          record[field] = csvRecord[matchingKey];
+        }
+      }
+    }
+    return record;
+  });
+
+  state.templateData = mappedRecords;
+  state.selectedRecords = mappedRecords.map((_, i) => i);
+  updateTemplateDataTable();
+  setStatus(`Imported ${mappedRecords.length} records`);
+}
+
+/**
+ * Show template data dialog
+ */
+function showTemplateDataDialog() {
+  $('#template-fields-list').textContent = state.templateFields.join(', ');
+  updateTemplateDataTable();
+  $('#template-data-dialog').classList.remove('hidden');
+}
+
+/**
+ * Hide template data dialog
+ */
+function hideTemplateDataDialog() {
+  $('#template-data-dialog').classList.add('hidden');
+}
+
+/**
+ * Show preview dialog with label thumbnails
+ */
+function showPreviewDialog() {
+  if (state.templateData.length === 0) {
+    setStatus('No data to preview - add records first');
+    return;
+  }
+
+  const grid = $('#preview-grid');
+  const recordsToPreview = state.selectedRecords.length > 0
+    ? state.selectedRecords
+    : state.templateData.map((_, i) => i);
+
+  // Generate thumbnails
+  grid.innerHTML = recordsToPreview.map(idx => {
+    const record = state.templateData[idx];
+    const firstField = state.templateFields[0];
+    const label = record[firstField] || `Record ${idx + 1}`;
+
+    return `
+      <div class="preview-thumbnail cursor-pointer hover:ring-2 hover:ring-blue-500 rounded-lg p-2 bg-gray-50"
+           data-index="${idx}">
+        <canvas class="preview-canvas bg-white shadow rounded w-full" data-index="${idx}"></canvas>
+        <div class="text-xs text-gray-600 mt-1 truncate text-center">${escapeHtml(label)}</div>
+        <div class="text-xs text-gray-400 text-center">#${idx + 1}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Render previews
+  requestAnimationFrame(() => {
+    $$('.preview-canvas').forEach(canvas => {
+      const idx = parseInt(canvas.dataset.index);
+      renderPreviewThumbnail(canvas, idx);
+    });
+  });
+
+  // Bind click handlers for full preview
+  $$('.preview-thumbnail').forEach(thumb => {
+    thumb.addEventListener('click', () => {
+      showFullPreview(parseInt(thumb.dataset.index));
+    });
+  });
+
+  $('#preview-count').textContent = `${recordsToPreview.length} label${recordsToPreview.length !== 1 ? 's' : ''}`;
+  $('#preview-dialog').classList.remove('hidden');
+}
+
+/**
+ * Hide preview dialog
+ */
+function hidePreviewDialog() {
+  $('#preview-dialog').classList.add('hidden');
+}
+
+/**
+ * Render a preview thumbnail
+ */
+function renderPreviewThumbnail(canvas, recordIndex) {
+  const record = state.templateData[recordIndex];
+  if (!record) return;
+
+  // Substitute fields
+  const mergedElements = substituteFields(state.elements, record);
+
+  // Create a temporary renderer at smaller scale
+  const scale = 0.5;
+  const dims = state.renderer.getDimensions();
+  canvas.width = dims.width * scale;
+  canvas.height = dims.height * scale;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, dims.width, dims.height);
+
+  // Render elements (simplified - reuse main renderer logic)
+  state.renderer.renderAllToContext(ctx, mergedElements, []);
+}
+
+/**
+ * Show full-size preview of a single label
+ */
+function showFullPreview(recordIndex) {
+  state.currentPreviewIndex = recordIndex;
+
+  const record = state.templateData[recordIndex];
+  const mergedElements = substituteFields(state.elements, record);
+
+  // Render to full preview canvas
+  const canvas = $('#full-preview-canvas');
+  const dims = state.renderer.getDimensions();
+  canvas.width = dims.width;
+  canvas.height = dims.height;
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, dims.width, dims.height);
+  state.renderer.renderAllToContext(ctx, mergedElements, []);
+
+  // Update label info
+  const firstField = state.templateFields[0];
+  const label = record[firstField] || `Record ${recordIndex + 1}`;
+  $('#full-preview-title').textContent = `Label ${recordIndex + 1}: ${label}`;
+
+  // Update include checkbox
+  $('#full-preview-include').checked = state.selectedRecords.includes(recordIndex);
+
+  $('#full-preview-dialog').classList.remove('hidden');
+}
+
+/**
+ * Hide full preview dialog
+ */
+function hideFullPreview() {
+  $('#full-preview-dialog').classList.add('hidden');
+}
+
+/**
+ * Navigate to previous/next preview
+ */
+function navigatePreview(direction) {
+  const indices = state.selectedRecords.length > 0
+    ? state.selectedRecords
+    : state.templateData.map((_, i) => i);
+
+  const currentPos = indices.indexOf(state.currentPreviewIndex);
+  let newPos = currentPos + direction;
+
+  if (newPos < 0) newPos = indices.length - 1;
+  if (newPos >= indices.length) newPos = 0;
+
+  showFullPreview(indices[newPos]);
+}
+
+/**
+ * Print batch of labels
+ */
+async function handleBatchPrint() {
+  const recordsToPrint = state.selectedRecords.length > 0
+    ? state.selectedRecords
+    : state.templateData.map((_, i) => i);
+
+  if (recordsToPrint.length === 0) {
+    showToast('No records selected to print', 'warning');
+    return;
+  }
+
+  const btn = $('#template-print-btn');
+  const originalText = btn.textContent;
+  const { density, feed } = state.printSettings;
+  const total = recordsToPrint.length;
+
+  try {
+    btn.disabled = true;
+
+    // Ensure connected
+    if (!state.transport || !state.transport.isConnected()) {
+      hideTemplateDataDialog();
+      setStatus('Connecting...');
+      await handleConnect();
+
+      if (!state.transport || !state.transport.isConnected()) {
+        throw new Error('Please connect to printer first');
+      }
+      showTemplateDataDialog();
+    }
+
+    // Show progress modal
+    showPrintProgress(`Printing ${total} Label${total !== 1 ? 's' : ''}`, total);
+
+    for (let i = 0; i < total; i++) {
+      // Check for cancellation
+      if (isPrintCancelled()) {
+        showToast(`Printing cancelled after ${i} label${i !== 1 ? 's' : ''}`, 'warning');
+        break;
+      }
+
+      const recordIndex = recordsToPrint[i];
+      const record = state.templateData[recordIndex];
+
+      updatePrintProgress(i + 1, total, `Printing label ${i + 1}...`);
+      btn.textContent = `Printing ${i + 1}/${total}...`;
+
+      // Substitute fields
+      const mergedElements = substituteFields(state.elements, record);
+
+      // Render to raster
+      const rasterData = state.renderer.getRasterData(mergedElements);
+
+      // Print
+      await print(state.transport, rasterData, {
+        isBLE: state.connectionType === 'ble',
+        density,
+        feed,
+        onProgress: (progress) => {
+          updatePrintProgress(i + 1, total, `Sending data... ${progress}%`);
+        },
+      });
+
+      // Delay between prints
+      if (i < total - 1 && !isPrintCancelled()) {
+        updatePrintProgress(i + 1, total, 'Waiting...');
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    if (!isPrintCancelled()) {
+      showToast(`Printed ${total} label${total !== 1 ? 's' : ''}!`, 'success');
+      setStatus(`Printed ${total} label${total !== 1 ? 's' : ''}!`);
+    }
+    btn.textContent = originalText;
+
+  } catch (error) {
+    console.error('Batch print error:', error);
+    showToast(error.message || 'Print failed', 'error');
+    setStatus(error.message || 'Print failed');
+    btn.textContent = originalText;
+  } finally {
+    btn.disabled = false;
+    hidePrintProgress();
+  }
+}
+
+/**
+ * Print single label from preview
+ */
+async function handlePrintSinglePreview() {
+  const recordIndex = state.currentPreviewIndex;
+  const record = state.templateData[recordIndex];
+
+  if (!record) {
+    setStatus('No record to print');
+    return;
+  }
+
+  const btn = $('#full-preview-print');
+  const originalText = btn.textContent;
+  const { density, feed } = state.printSettings;
+
+  try {
+    btn.disabled = true;
+    btn.textContent = 'Printing...';
+
+    // Ensure connected
+    if (!state.transport || !state.transport.isConnected()) {
+      hideFullPreview();
+      setStatus('Connecting...');
+      await handleConnect();
+
+      if (!state.transport || !state.transport.isConnected()) {
+        throw new Error('Please connect to printer first');
+      }
+    }
+
+    // Substitute fields
+    const mergedElements = substituteFields(state.elements, record);
+
+    // Render to raster
+    const rasterData = state.renderer.getRasterData(mergedElements);
+
+    // Print
+    await print(state.transport, rasterData, {
+      isBLE: state.connectionType === 'ble',
+      density,
+      feed,
+      onProgress: (progress) => {
+        btn.textContent = `Printing... ${progress}%`;
+      },
+    });
+
+    setStatus('Label printed!');
+    btn.textContent = originalText;
+
+  } catch (error) {
+    console.error('Print error:', error);
+    setStatus(error.message || 'Print failed');
+    btn.textContent = originalText;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /**
@@ -249,10 +1154,16 @@ function modifyElement(id, changes) {
   state.elements = updateElement(state.elements, id, changes);
 
   // Only clear cache if content or size changed (not just position/rotation)
-  const contentKeys = ['width', 'height', 'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textDecoration', 'imageData', 'barcodeData', 'barcodeFormat', 'qrData'];
+  const contentKeys = ['width', 'height', 'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textDecoration', 'background', 'noWrap', 'clipOverflow', 'autoScale', 'verticalAlign', 'imageData', 'barcodeData', 'barcodeFormat', 'qrData'];
   const needsCacheClear = Object.keys(changes).some(key => contentKeys.includes(key));
   if (needsCacheClear) {
     state.renderer.clearCache(id);
+  }
+
+  // Detect template fields if text/barcode/qr data changed
+  const templateKeys = ['text', 'barcodeData', 'qrData'];
+  if (Object.keys(changes).some(key => templateKeys.includes(key))) {
+    detectTemplateFields();
   }
 
   render();
@@ -331,6 +1242,7 @@ function updatePropertiesPanel() {
   $('#props-image').classList.add('hidden');
   $('#props-barcode').classList.add('hidden');
   $('#props-qr').classList.add('hidden');
+  $('#props-shape').classList.add('hidden');
 
   // Show and populate type-specific panel
   switch (element.type) {
@@ -339,14 +1251,36 @@ function updatePropertiesPanel() {
       $('#prop-text-content').value = element.text || '';
       $('#prop-font-family').value = element.fontFamily || 'Inter, sans-serif';
       $('#prop-font-size').value = element.fontSize || 24;
-      // Update alignment buttons
+      $('#prop-no-wrap').checked = element.noWrap || false;
+      $('#prop-clip-overflow').checked = element.clipOverflow || false;
+      $('#prop-auto-scale').checked = element.autoScale || false;
+      // Update horizontal alignment buttons
       $$('.align-btn').forEach(btn => {
         btn.classList.toggle('bg-gray-100', btn.dataset.align === element.align);
+      });
+      // Update vertical alignment buttons
+      const vAlign = element.verticalAlign || 'middle';
+      $$('.valign-btn').forEach(btn => {
+        btn.classList.toggle('bg-gray-100', btn.dataset.valign === vAlign);
       });
       // Update style buttons
       $('#style-bold').classList.toggle('bg-gray-200', element.fontWeight === 'bold');
       $('#style-italic').classList.toggle('bg-gray-200', element.fontStyle === 'italic');
       $('#style-underline').classList.toggle('bg-gray-200', element.textDecoration === 'underline');
+      // Update text color buttons
+      const colorValue = element.color || 'black';
+      $$('.color-btn').forEach(btn => {
+        btn.classList.toggle('bg-gray-100', btn.dataset.color === colorValue);
+        btn.classList.toggle('ring-2', btn.dataset.color === colorValue);
+        btn.classList.toggle('ring-blue-400', btn.dataset.color === colorValue);
+      });
+      // Update background buttons
+      const bgValue = element.background || 'transparent';
+      $$('.bg-btn').forEach(btn => {
+        btn.classList.toggle('bg-gray-100', btn.dataset.bg === bgValue);
+        btn.classList.toggle('ring-2', btn.dataset.bg === bgValue);
+        btn.classList.toggle('ring-blue-400', btn.dataset.bg === bgValue);
+      });
       break;
 
     case 'image':
@@ -369,6 +1303,29 @@ function updatePropertiesPanel() {
     case 'qr':
       $('#props-qr').classList.remove('hidden');
       $('#prop-qr-data').value = element.qrData || '';
+      break;
+
+    case 'shape':
+      $('#props-shape').classList.remove('hidden');
+      $('#prop-shape-type').value = element.shapeType || 'rectangle';
+      $('#prop-stroke-width').value = element.strokeWidth || 2;
+      $('#prop-corner-radius').value = element.cornerRadius || 0;
+      // Show/hide corner radius based on shape type
+      const showCornerRadius = element.shapeType === 'rectangle';
+      $('#prop-corner-radius-group').classList.toggle('hidden', !showCornerRadius);
+      // Update fill dropdown (map legacy values to new ones)
+      let fillValue = element.fill || 'black';
+      if (fillValue === 'dither-light') fillValue = 'dither-25';
+      if (fillValue === 'dither-medium') fillValue = 'dither-50';
+      if (fillValue === 'dither-dark') fillValue = 'dither-75';
+      $('#shape-fill').value = fillValue;
+      // Update stroke buttons
+      const strokeValue = element.stroke || 'none';
+      $$('.stroke-btn').forEach(btn => {
+        btn.classList.toggle('bg-gray-100', btn.dataset.stroke === strokeValue);
+        btn.classList.toggle('ring-2', btn.dataset.stroke === strokeValue);
+        btn.classList.toggle('ring-blue-400', btn.dataset.stroke === strokeValue);
+      });
       break;
   }
 }
@@ -438,6 +1395,7 @@ function handleCanvasMouseDown(e) {
     if (bounds) {
       const handle = getGroupHandleAtPoint(pos.x, pos.y, bounds);
       if (handle) {
+        saveHistory();
         state.isDragging = true;
         state.dragStartX = pos.x;
         state.dragStartY = pos.y;
@@ -464,6 +1422,7 @@ function handleCanvasMouseDown(e) {
     if (selected) {
       const handle = getHandleAtPoint(pos.x, pos.y, selected);
       if (handle) {
+        saveHistory();
         state.isDragging = true;
         state.dragStartX = pos.x;
         state.dragStartY = pos.y;
@@ -496,6 +1455,7 @@ function handleCanvasMouseDown(e) {
 
     // Start move drag for all selected elements
     const currentSelected = getSelectedElements();
+    saveHistory();
     state.isDragging = true;
     state.dragType = currentSelected.length > 1 ? 'group-move' : 'move';
     state.dragStartX = pos.x;
@@ -556,13 +1516,18 @@ function handleCanvasMouseMove(e) {
         break;
 
       case 'group-resize':
-        // Multi-element proportional resize - always scale from original positions
+        // Multi-element resize - scale from original positions
         const { scaleX, scaleY } = calculateGroupResize(
           state.dragStartBounds,
           state.dragHandle,
           dx, dy,
           e.shiftKey
         );
+
+        // Determine if this is a side handle (only one dimension changes)
+        const isHorizontalSide = state.dragHandle === HandleType.E || state.dragHandle === HandleType.W;
+        const isVerticalSide = state.dragHandle === HandleType.N || state.dragHandle === HandleType.S;
+
         // Apply scale to original elements, not current state
         const scaledElements = state.dragStartElements.map(origEl => {
           const elCx = origEl.x + origEl.width / 2;
@@ -570,13 +1535,17 @@ function handleCanvasMouseMove(e) {
           const centerX = state.dragStartBounds.cx;
           const centerY = state.dragStartBounds.cy;
 
-          // Scale position relative to group center
-          const newCx = centerX + (elCx - centerX) * scaleX;
-          const newCy = centerY + (elCy - centerY) * scaleY;
+          // For side handles, only scale in one direction
+          const effectiveScaleX = isVerticalSide ? 1 : scaleX;
+          const effectiveScaleY = isHorizontalSide ? 1 : scaleY;
 
-          // Scale size
-          const newWidth = Math.max(origEl.width * scaleX, 10);
-          const newHeight = Math.max(origEl.height * scaleY, 10);
+          // Scale position relative to group center
+          const newCx = centerX + (elCx - centerX) * effectiveScaleX;
+          const newCy = centerY + (elCy - centerY) * effectiveScaleY;
+
+          // Scale size - for side handles, only change one dimension
+          const newWidth = Math.max(origEl.width * effectiveScaleX, 10);
+          const newHeight = Math.max(origEl.height * effectiveScaleY, 10);
 
           return {
             ...origEl,
@@ -678,6 +1647,7 @@ function handleCanvasMouseUp() {
  * Add a new text element
  */
 function addTextElement() {
+  saveHistory();
   const dims = state.renderer.getDimensions();
   const element = createTextElement('New Text', {
     x: dims.width / 2 - 75,
@@ -716,11 +1686,13 @@ async function addImageElement(file) {
       naturalHeight: height,
     });
 
+    saveHistory();
     state.elements.push(element);
     selectElement(element.id);
-    setStatus(scale < 1 ? `Image scaled to ${Math.round(scale * 100)}%` : 'Image added at native size');
+    setStatus(scale < 1 ? `Image scaled to ${Math.round(scale * 100)}%` : 'Image added');
   } catch (e) {
     console.error('Failed to load image:', e);
+    showToast('Failed to load image', 'error');
     setStatus('Failed to load image');
   }
 }
@@ -729,6 +1701,7 @@ async function addImageElement(file) {
  * Add a new barcode element
  */
 function addBarcodeElement() {
+  saveHistory();
   const dims = state.renderer.getDimensions();
   const element = createBarcodeElement('123456789012', {
     x: dims.width / 2 - 90,
@@ -745,6 +1718,7 @@ function addBarcodeElement() {
  * Add a new QR element
  */
 function addQRElement() {
+  saveHistory();
   const dims = state.renderer.getDimensions();
   const size = Math.min(dims.width, dims.height) * 0.5;
   const element = createQRElement('https://example.com', {
@@ -756,6 +1730,26 @@ function addQRElement() {
   state.elements.push(element);
   selectElement(element.id);
   setStatus('QR code added');
+}
+
+/**
+ * Add shape element
+ */
+function addShapeElement(shapeType = 'rectangle') {
+  saveHistory();
+  const dims = state.renderer.getDimensions();
+  const width = shapeType === 'line' ? 100 : 80;
+  const height = shapeType === 'line' ? 4 : 60;
+  const element = createShapeElement(shapeType, {
+    x: dims.width / 2 - width / 2,
+    y: dims.height / 2 - height / 2,
+    width: width,
+    height: height,
+    strokeWidth: shapeType === 'line' ? 3 : 2,
+  });
+  state.elements.push(element);
+  selectElement(element.id);
+  setStatus(`${shapeType.charAt(0).toUpperCase() + shapeType.slice(1)} added`);
 }
 
 /**
@@ -919,13 +1913,29 @@ function handleSave() {
   }
 
   try {
-    saveDesign(name, {
+    const designData = {
       elements: state.elements,
       labelSize: state.labelSize,
-    });
+    };
+
+    // Include template data if present
+    if (state.templateFields.length > 0) {
+      designData.isTemplate = true;
+      designData.templateFields = state.templateFields;
+    }
+    if (state.templateData.length > 0) {
+      designData.templateData = state.templateData;
+    }
+
+    saveDesign(name, designData);
     hideSaveDialog();
-    setStatus(`Design "${name}" saved`);
+
+    const templateInfo = state.templateData.length > 0
+      ? ` (with ${state.templateData.length} data records)`
+      : '';
+    setStatus(`Design "${name}" saved${templateInfo}`);
   } catch (e) {
+    showToast(e.message, 'error');
     setStatus(e.message);
   }
 }
@@ -940,15 +1950,32 @@ function showLoadDialog() {
   if (designs.length === 0) {
     listEl.innerHTML = '<div class="text-sm text-gray-400 text-center py-8">No saved designs</div>';
   } else {
-    listEl.innerHTML = designs.map(d => `
-      <div class="design-item flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer border border-gray-100 mb-2" data-name="${d.name}">
-        <div>
-          <div class="font-medium text-sm text-gray-900">${d.name}</div>
-          <div class="text-xs text-gray-400">${d.labelSize.width}x${d.labelSize.height}mm - ${d.elementCount} elements</div>
+    listEl.innerHTML = designs.map(d => {
+      // Build info badges
+      const badges = [];
+      if (d.hasImages) {
+        badges.push('<span class="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">🖼️</span>');
+      }
+      if (d.isTemplate) {
+        badges.push('<span class="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">Template</span>');
+      }
+      if (d.templateDataCount > 0) {
+        badges.push(`<span class="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded">${d.templateDataCount} records</span>`);
+      }
+
+      const badgeHtml = badges.length > 0 ? `<div class="flex gap-1 mt-1">${badges.join('')}</div>` : '';
+
+      return `
+        <div class="design-item flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer border border-gray-100 mb-2" data-name="${d.name}">
+          <div class="flex-1">
+            <div class="font-medium text-sm text-gray-900">${d.name}</div>
+            <div class="text-xs text-gray-400">${d.labelSize.width}x${d.labelSize.height}mm · ${d.elementCount} elements</div>
+            ${badgeHtml}
+          </div>
+          <button class="delete-design text-red-500 hover:text-red-700 text-xs px-2 py-1 ml-2" data-name="${d.name}">Delete</button>
         </div>
-        <button class="delete-design text-red-500 hover:text-red-700 text-xs px-2 py-1" data-name="${d.name}">Delete</button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     // Bind click handlers
     listEl.querySelectorAll('.design-item').forEach(item => {
@@ -979,6 +2006,191 @@ function hideLoadDialog() {
 }
 
 /**
+ * Export current design to file
+ */
+function handleExport() {
+  if (state.elements.length === 0) {
+    setStatus('Nothing to export');
+    return;
+  }
+
+  // Build export data
+  const exportData = {
+    name: 'Untitled Design',
+    version: 2,
+    elements: state.elements,
+    labelSize: state.labelSize,
+    exportedAt: new Date().toISOString(),
+  };
+
+  // Include template data if present
+  if (state.templateFields.length > 0) {
+    exportData.isTemplate = true;
+    exportData.templateFields = state.templateFields;
+  }
+  if (state.templateData.length > 0) {
+    exportData.templateData = state.templateData;
+  }
+
+  // Create and download file
+  const jsonString = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `phomymo-design-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  setStatus('Design exported');
+}
+
+/**
+ * Import design from file
+ */
+function handleImportFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      // Validate the data
+      if (!data.elements || !Array.isArray(data.elements)) {
+        throw new Error('Invalid design file: missing elements');
+      }
+
+      // Load the design
+      state.elements = data.elements;
+
+      // Load label size if present
+      if (data.labelSize) {
+        state.labelSize = data.labelSize;
+        // Update the label size dropdown
+        const sizeKey = `${data.labelSize.width}x${data.labelSize.height}`;
+        const select = $('#label-size');
+        if (LABEL_SIZES[sizeKey]) {
+          select.value = sizeKey;
+          $('#custom-size').classList.add('hidden');
+        } else {
+          select.value = 'custom';
+          $('#custom-size').classList.remove('hidden');
+          $('#custom-width').value = data.labelSize.width;
+          $('#custom-height').value = data.labelSize.height;
+        }
+      }
+
+      // Load template data if present
+      if (data.templateData && Array.isArray(data.templateData)) {
+        state.templateData = data.templateData;
+        state.selectedRecords = data.templateData.map((_, i) => i); // Select all by default
+      }
+
+      // Clear selection and update renderer
+      state.selectedIds = [];
+      state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+      state.renderer.clearCache();
+      resetHistory();
+      updatePrintSize();
+      updateToolbarState();
+      updatePropertiesPanel();
+
+      // Detect template fields from elements
+      detectTemplateFields();
+
+      render();
+      hideLoadDialog();
+
+      const name = data.name || 'Imported design';
+      setStatus(`Imported: ${name}`);
+    } catch (err) {
+      console.error('Import error:', err);
+      showToast('Import failed', 'error');
+      setStatus(`Import failed: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/**
+ * Update elements list dropdown
+ */
+function updateElementsList() {
+  const container = $('#elements-list');
+
+  if (state.elements.length === 0) {
+    container.innerHTML = '<div class="px-3 py-2 text-gray-400 text-center">No elements</div>';
+    return;
+  }
+
+  // Build list HTML - elements in z-order (bottom to top)
+  const html = state.elements.map((el, index) => {
+    const isSelected = state.selectedIds.includes(el.id);
+    const icon = getElementIcon(el.type);
+    const label = getElementLabel(el);
+    const layerNum = index + 1;
+
+    return `
+      <button class="element-list-item w-full px-3 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2 ${isSelected ? 'bg-blue-50 text-blue-700' : ''}"
+              data-element-id="${el.id}">
+        <span class="text-gray-400 text-xs w-4">${layerNum}</span>
+        ${icon}
+        <span class="flex-1 truncate">${escapeHtml(label)}</span>
+        ${el.groupId ? '<span class="text-xs text-gray-400">G</span>' : ''}
+      </button>
+    `;
+  }).reverse().join(''); // Reverse to show top layer first
+
+  container.innerHTML = html;
+
+  // Add click handlers
+  container.querySelectorAll('.element-list-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.elementId;
+      selectElement(id);
+      $('#elements-dropdown').classList.add('hidden');
+    });
+  });
+}
+
+/**
+ * Get icon SVG for element type
+ */
+function getElementIcon(type) {
+  const icons = {
+    text: '<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16"/></svg>',
+    image: '<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
+    barcode: '<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2"/></svg>',
+    qr: '<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2"/></svg>',
+    shape: '<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>',
+  };
+  return icons[type] || icons.shape;
+}
+
+/**
+ * Get label for element
+ */
+function getElementLabel(el) {
+  switch (el.type) {
+    case 'text':
+      return el.text ? (el.text.substring(0, 20) + (el.text.length > 20 ? '...' : '')) : 'Text';
+    case 'image':
+      return 'Image';
+    case 'barcode':
+      return el.barcodeData ? `Barcode: ${el.barcodeData.substring(0, 10)}` : 'Barcode';
+    case 'qr':
+      return el.qrData ? `QR: ${el.qrData.substring(0, 15)}` : 'QR Code';
+    case 'shape':
+      const shapeNames = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', line: 'Line' };
+      return shapeNames[el.shapeType] || 'Shape';
+    default:
+      return 'Element';
+  }
+}
+
+/**
  * Load a design
  */
 function handleLoad(name) {
@@ -991,6 +2203,10 @@ function handleLoad(name) {
   state.elements = design.elements || [];
   state.labelSize = design.labelSize || { width: 40, height: 30 };
   state.selectedIds = [];
+
+  // Restore template data if present
+  state.templateData = design.templateData || [];
+  state.selectedRecords = state.templateData.map((_, i) => i); // Select all by default
 
   // Update label size dropdown
   const sizeKey = `${state.labelSize.width}x${state.labelSize.height}`;
@@ -1007,19 +2223,47 @@ function handleLoad(name) {
 
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
   state.renderer.clearCache();
+  resetHistory();
   updatePrintSize();
   updateToolbarState();
   updatePropertiesPanel();
+
+  // Detect template fields from loaded elements
+  detectTemplateFields();
+
   render();
 
   hideLoadDialog();
-  setStatus(`Loaded "${name}"`);
+
+  // Show status with template info
+  const templateInfo = state.templateData.length > 0
+    ? ` (${state.templateData.length} data records)`
+    : '';
+  setStatus(`Loaded "${name}"${templateInfo}`);
 }
 
 /**
  * Handle keyboard shortcuts
  */
 function handleKeyDown(e) {
+  // Undo: Ctrl/Cmd + Z
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      undo();
+      return;
+    }
+  }
+
+  // Redo: Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || e.key === 'y')) {
+    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      redo();
+      return;
+    }
+  }
+
   const selectedElements = getSelectedElements();
   const hasSelection = selectedElements.length > 0;
 
@@ -1027,12 +2271,14 @@ function handleKeyDown(e) {
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (hasSelection && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       e.preventDefault();
+      saveHistory();
+      const count = selectedElements.length;
       // Delete all selected elements
       state.selectedIds.forEach(id => {
         state.elements = deleteElement(state.elements, id);
       });
       deselect();
-      setStatus(selectedElements.length > 1 ? `${selectedElements.length} elements deleted` : 'Element deleted');
+      setStatus(count > 1 ? `${count} elements deleted` : 'Element deleted');
     }
   }
 
@@ -1069,6 +2315,7 @@ function handleKeyDown(e) {
   // Ctrl/Cmd + D to duplicate
   if ((e.ctrlKey || e.metaKey) && e.key === 'd' && hasSelection) {
     e.preventDefault();
+    saveHistory();
     // Duplicate all selected elements
     const newIds = [];
     selectedElements.forEach(el => {
@@ -1100,20 +2347,22 @@ function handleKeyDown(e) {
 function handleGroup() {
   const selectedElements = getSelectedElements();
   if (selectedElements.length < 2) {
-    setStatus('Select at least 2 elements to group');
+    showToast('Select at least 2 elements to group', 'warning');
     return;
   }
 
   // Check if any are already grouped
   if (selectedElements.some(e => e.groupId)) {
-    setStatus('Cannot group elements that are already grouped');
+    showToast('Cannot group elements that are already grouped', 'warning');
     return;
   }
 
+  saveHistory();
   const result = groupElements(state.elements, state.selectedIds);
   state.elements = result.elements;
   render();
   updateToolbarState();
+  showToast('Elements grouped', 'success');
   setStatus('Elements grouped');
 }
 
@@ -1125,10 +2374,11 @@ function handleUngroup() {
   const groupIds = new Set(selectedElements.map(e => e.groupId).filter(Boolean));
 
   if (groupIds.size === 0) {
-    setStatus('No groups to ungroup');
+    showToast('No groups to ungroup', 'warning');
     return;
   }
 
+  saveHistory();
   // Ungroup all selected groups
   groupIds.forEach(groupId => {
     state.elements = ungroupElements(state.elements, groupId);
@@ -1136,6 +2386,7 @@ function handleUngroup() {
 
   render();
   updateToolbarState();
+  showToast('Elements ungrouped', 'success');
   setStatus('Elements ungrouped');
 }
 
@@ -1353,10 +2604,33 @@ function init() {
   $('#add-barcode').addEventListener('click', addBarcodeElement);
   $('#add-qr').addEventListener('click', addQRElement);
 
+  // Shape dropdown toggle
+  $('#add-shape-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#shape-dropdown').classList.toggle('hidden');
+  });
+
+  // Shape options
+  $$('.shape-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const shapeType = btn.dataset.shape;
+      addShapeElement(shapeType);
+      $('#shape-dropdown').classList.add('hidden');
+    });
+  });
+
+  // Close shape dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#add-shape-btn') && !e.target.closest('#shape-dropdown')) {
+      $('#shape-dropdown').classList.add('hidden');
+    }
+  });
+
   // Element actions
   $('#duplicate-btn').addEventListener('click', () => {
     const selected = getSelected();
     if (selected) {
+      saveHistory();
       state.elements = duplicateElement(state.elements, selected.id);
       selectElement(state.elements[state.elements.length - 1].id);
       setStatus('Element duplicated');
@@ -1366,14 +2640,20 @@ function init() {
   $('#delete-btn').addEventListener('click', () => {
     const selected = getSelected();
     if (selected) {
+      saveHistory();
       state.elements = deleteElement(state.elements, selected.id);
       deselect();
       setStatus('Element deleted');
     }
   });
 
+  // Undo/Redo buttons
+  $('#undo-btn').addEventListener('click', undo);
+  $('#redo-btn').addEventListener('click', redo);
+
   $('#bring-front').addEventListener('click', () => {
     if (state.selectedIds.length > 0) {
+      saveHistory();
       // Bring all selected elements to front (in order)
       state.selectedIds.forEach(id => {
         state.elements = bringToFront(state.elements, id);
@@ -1384,6 +2664,7 @@ function init() {
 
   $('#send-back').addEventListener('click', () => {
     if (state.selectedIds.length > 0) {
+      saveHistory();
       // Send all selected elements to back (in reverse order)
       [...state.selectedIds].reverse().forEach(id => {
         state.elements = sendToBack(state.elements, id);
@@ -1406,6 +2687,38 @@ function init() {
 
   $('#load-btn').addEventListener('click', showLoadDialog);
   $('#load-cancel').addEventListener('click', hideLoadDialog);
+
+  // Import from file
+  $('#import-file-btn').addEventListener('click', () => $('#import-file-input').click());
+  $('#import-file-input').addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+      handleImportFile(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+
+  // Export button
+  $('#export-btn').addEventListener('click', handleExport);
+
+  // Print progress cancel button
+  $('#progress-cancel').addEventListener('click', () => {
+    printProgressCancelled = true;
+    $('#progress-subtitle').textContent = 'Cancelling...';
+  });
+
+  // Elements dropdown
+  $('#elements-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    updateElementsList();
+    $('#elements-dropdown').classList.toggle('hidden');
+  });
+
+  // Close elements dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#elements-btn') && !e.target.closest('#elements-dropdown')) {
+      $('#elements-dropdown').classList.add('hidden');
+    }
+  });
 
   // Zoom controls
   $('#zoom-in').addEventListener('click', zoomIn);
@@ -1443,9 +2756,10 @@ function init() {
     const id = state.selectedIds[0];
     if (id) modifyElement(id, { fontFamily: e.target.value });
   });
-  $('#prop-font-size').addEventListener('change', (e) => {
+  $('#prop-font-size').addEventListener('input', (e) => {
     const id = state.selectedIds[0];
-    if (id) modifyElement(id, { fontSize: parseInt(e.target.value) || 24 });
+    const size = Math.max(6, Math.min(200, parseInt(e.target.value) || 24));
+    if (id) modifyElement(id, { fontSize: size });
   });
   $$('.align-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1455,6 +2769,41 @@ function init() {
         $$('.align-btn').forEach(b => b.classList.toggle('bg-gray-100', b === btn));
       }
     });
+  });
+
+  // Vertical alignment buttons
+  $$('.valign-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = state.selectedIds[0];
+      if (id) {
+        modifyElement(id, { verticalAlign: btn.dataset.valign });
+        $$('.valign-btn').forEach(b => b.classList.toggle('bg-gray-100', b === btn));
+      }
+    });
+  });
+
+  // No wrap checkbox
+  $('#prop-no-wrap').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'text') {
+      modifyElement(element.id, { noWrap: e.target.checked });
+    }
+  });
+
+  // Clip overflow checkbox
+  $('#prop-clip-overflow').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'text') {
+      modifyElement(element.id, { clipOverflow: e.target.checked });
+    }
+  });
+
+  // Auto-scale checkbox
+  $('#prop-auto-scale').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'text') {
+      modifyElement(element.id, { autoScale: e.target.checked });
+    }
   });
 
   // Font style buttons (bold, italic, underline)
@@ -1479,6 +2828,87 @@ function init() {
     if (element && element.type === 'text') {
       const newDecoration = element.textDecoration === 'underline' ? 'none' : 'underline';
       modifyElement(element.id, { textDecoration: newDecoration });
+    }
+  });
+
+  // Background buttons
+  $$('.bg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const element = getSelected();
+      if (element && element.type === 'text') {
+        modifyElement(element.id, { background: btn.dataset.bg });
+        // Update button states
+        $$('.bg-btn').forEach(b => {
+          b.classList.toggle('bg-gray-100', b === btn);
+          b.classList.toggle('ring-2', b === btn);
+          b.classList.toggle('ring-blue-400', b === btn);
+        });
+      }
+    });
+  });
+
+  // Text color buttons
+  $$('.color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const element = getSelected();
+      if (element && element.type === 'text') {
+        modifyElement(element.id, { color: btn.dataset.color });
+        // Update button states
+        $$('.color-btn').forEach(b => {
+          b.classList.toggle('bg-gray-100', b === btn);
+          b.classList.toggle('ring-2', b === btn);
+          b.classList.toggle('ring-blue-400', b === btn);
+        });
+      }
+    });
+  });
+
+  // Shape properties
+  $('#prop-shape-type').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'shape') {
+      modifyElement(element.id, { shapeType: e.target.value });
+      // Show/hide corner radius based on shape type
+      $('#prop-corner-radius-group').classList.toggle('hidden', e.target.value !== 'rectangle');
+    }
+  });
+
+  // Shape fill dropdown
+  $('#shape-fill').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'shape') {
+      modifyElement(element.id, { fill: e.target.value });
+    }
+  });
+
+  // Shape stroke buttons
+  $$('.stroke-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const element = getSelected();
+      if (element && element.type === 'shape') {
+        modifyElement(element.id, { stroke: btn.dataset.stroke });
+        $$('.stroke-btn').forEach(b => {
+          b.classList.toggle('bg-gray-100', b === btn);
+          b.classList.toggle('ring-2', b === btn);
+          b.classList.toggle('ring-blue-400', b === btn);
+        });
+      }
+    });
+  });
+
+  // Shape stroke width
+  $('#prop-stroke-width').addEventListener('input', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'shape') {
+      modifyElement(element.id, { strokeWidth: parseInt(e.target.value) || 2 });
+    }
+  });
+
+  // Shape corner radius
+  $('#prop-corner-radius').addEventListener('input', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'shape') {
+      modifyElement(element.id, { cornerRadius: parseInt(e.target.value) || 0 });
     }
   });
 
@@ -1579,8 +3009,121 @@ function init() {
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyDown);
 
+  // Template toolbar button - toggle template panel
+  $('#template-toolbar-btn').addEventListener('click', toggleTemplatePanel);
+
+  // Template panel close button
+  $('#template-panel-close').addEventListener('click', () => {
+    $('#template-panel').classList.add('hidden');
+  });
+
+  // Template panel: Manage Data button opens the dialog
+  $('#template-manage-data').addEventListener('click', showTemplateDataDialog);
+
+  // Template data dialog close
+  $('#template-data-close').addEventListener('click', hideTemplateDataDialog);
+  $('#template-data-dialog').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hideTemplateDataDialog();
+  });
+
+  // Template quick actions (properties panel)
+  $('#template-quick-preview').addEventListener('click', showPreviewDialog);
+  $('#template-quick-print').addEventListener('click', handleBatchPrint);
+
+  // Template data actions
+  $('#template-import-csv').addEventListener('click', () => $('#template-csv-input').click());
+  $('#template-csv-input').addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        importCSVData(evt.target.result);
+      };
+      reader.readAsText(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+  $('#template-add-row').addEventListener('click', () => addTemplateRecord());
+  $('#template-clear-all').addEventListener('click', () => {
+    if (confirm('Clear all template data?')) {
+      clearTemplateData();
+    }
+  });
+
+  // Template preview
+  $('#template-preview-btn').addEventListener('click', () => {
+    hideTemplateDataDialog();
+    showPreviewDialog();
+  });
+  $('#template-print-btn').addEventListener('click', handleBatchPrint);
+
+  // Insert field buttons
+  ['text', 'barcode', 'qr'].forEach(type => {
+    // Toggle dropdown on button click
+    $(`#insert-field-${type}`).addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFieldDropdown(type);
+    });
+
+    // Handle new field input (Enter key)
+    $(`#new-field-${type}`).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createAndInsertField(type, e.target.value);
+      }
+    });
+
+    // Handle clicking on existing field options (delegated)
+    $(`#field-list-${type}`).addEventListener('click', (e) => {
+      const fieldOption = e.target.closest('.field-option');
+      if (fieldOption) {
+        const fieldName = fieldOption.dataset.field;
+        insertFieldIntoInput(type, fieldName);
+      }
+    });
+  });
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('[id^="field-dropdown-"]') && !e.target.closest('[id^="insert-field-"]')) {
+      $$('[id^="field-dropdown-"]').forEach(d => d.classList.add('hidden'));
+    }
+  });
+
+  // Preview dialog
+  $('#preview-close').addEventListener('click', hidePreviewDialog);
+  $('#preview-dialog').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hidePreviewDialog();
+  });
+  $('#preview-print-selected').addEventListener('click', () => {
+    hidePreviewDialog();
+    handleBatchPrint();
+  });
+
+  // Full preview dialog
+  $('#full-preview-close').addEventListener('click', hideFullPreview);
+  $('#full-preview-dialog').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hideFullPreview();
+  });
+  $('#full-preview-prev').addEventListener('click', () => navigatePreview(-1));
+  $('#full-preview-next').addEventListener('click', () => navigatePreview(1));
+  $('#full-preview-include').addEventListener('change', (e) => {
+    const idx = state.currentPreviewIndex;
+    if (e.target.checked) {
+      if (!state.selectedRecords.includes(idx)) {
+        state.selectedRecords.push(idx);
+        state.selectedRecords.sort((a, b) => a - b);
+      }
+    } else {
+      state.selectedRecords = state.selectedRecords.filter(i => i !== idx);
+    }
+  });
+  $('#full-preview-print').addEventListener('click', handlePrintSinglePreview);
+
   // Initial render
   render();
+
+  // Detect template fields on load
+  detectTemplateFields();
 
   // Show info dialog on first visit
   if (shouldShowInfoOnLoad()) {

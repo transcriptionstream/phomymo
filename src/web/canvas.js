@@ -3,7 +3,7 @@
  * Supports multi-element rendering with transforms
  */
 
-import { drawHandles, drawGroupHandles } from './handles.js?v=4';
+import { drawHandles, drawGroupHandles } from './handles.js?v=5';
 
 // Pixels per mm (203 DPI ≈ 8 px/mm)
 const PX_PER_MM = 8;
@@ -115,6 +115,28 @@ export class CanvasRenderer {
   }
 
   /**
+   * Render all elements to an external context (for preview thumbnails)
+   * @param {CanvasRenderingContext2D} ctx - External canvas context
+   * @param {Array} elements - Elements to render
+   * @param {Array} selectedIds - Selected element IDs (usually empty for previews)
+   */
+  renderAllToContext(ctx, elements, selectedIds = []) {
+    // Save original context
+    const originalCtx = this.ctx;
+
+    // Temporarily use the provided context
+    this.ctx = ctx;
+
+    // Render elements without handles
+    for (const element of elements) {
+      this.renderElement(element);
+    }
+
+    // Restore original context
+    this.ctx = originalCtx;
+  }
+
+  /**
    * Get bounding box for multiple elements
    */
   getMultiElementBounds(elementsToMeasure) {
@@ -204,6 +226,9 @@ export class CanvasRenderer {
       case 'qr':
         this.renderQRElement(element, width, height);
         break;
+      case 'shape':
+        this.renderShapeElement(element, width, height);
+        break;
     }
 
     this.ctx.restore();
@@ -213,16 +238,38 @@ export class CanvasRenderer {
    * Render text element (centered at origin)
    */
   renderTextElement(element, width, height) {
-    const { text, fontSize, align, fontFamily, fontWeight, fontStyle, textDecoration } = element;
+    const { text, fontSize, color, align, verticalAlign, fontFamily, fontWeight, fontStyle, textDecoration, background, noWrap, clipOverflow, autoScale } = element;
+
+    // Draw background if not transparent
+    if (background && background !== 'transparent') {
+      this.ctx.fillStyle = background;
+      this.ctx.fillRect(-width / 2, -height / 2, width, height);
+    }
 
     if (!text || !text.trim()) return;
 
-    this.ctx.fillStyle = 'black';
+    // Set up clipping region if clipOverflow is enabled
+    if (clipOverflow) {
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.rect(-width / 2, -height / 2, width, height);
+      this.ctx.clip();
+    }
+
+    // Set text color - use explicit color property, default to black
+    const textColor = color || 'black';
+    this.ctx.fillStyle = textColor;
+
+    // Calculate effective font size (auto-scale if enabled)
+    let effectiveFontSize = fontSize;
+    if (autoScale) {
+      effectiveFontSize = this.calculateAutoScaleFontSize(text, width, height, fontFamily, fontWeight, fontStyle, noWrap);
+    }
 
     // Build font string with weight and style
     const weight = fontWeight === 'bold' ? 'bold' : '';
     const style = fontStyle === 'italic' ? 'italic' : '';
-    const fontStr = `${style} ${weight} ${fontSize}px ${fontFamily || 'Inter, sans-serif'}`.trim();
+    const fontStr = `${style} ${weight} ${effectiveFontSize}px ${fontFamily || 'Inter, sans-serif'}`.trim();
     this.ctx.font = fontStr;
     this.ctx.textBaseline = 'middle';
 
@@ -238,11 +285,30 @@ export class CanvasRenderer {
       this.ctx.textAlign = 'center';
     }
 
-    // Word wrap
-    const lines = this.wrapText(text, width - 8, fontSize, fontFamily, fontWeight, fontStyle);
-    const lineHeight = fontSize * 1.2;
+    // Get lines - either wrapped or split by newlines only
+    let lines;
+    if (noWrap) {
+      // No wrap mode: only split by explicit newlines, allow overflow
+      lines = text.split('\n');
+    } else {
+      // Word wrap mode
+      lines = this.wrapText(text, width - 8, effectiveFontSize, fontFamily, fontWeight, fontStyle);
+    }
+
+    const lineHeight = effectiveFontSize * 1.2;
     const totalHeight = lines.length * lineHeight;
-    let textY = -totalHeight / 2 + lineHeight / 2;
+
+    // Calculate vertical start position based on alignment
+    let textY;
+    const vAlign = verticalAlign || 'middle';
+    if (vAlign === 'top') {
+      textY = -height / 2 + lineHeight / 2 + 2; // 2px padding from top
+    } else if (vAlign === 'bottom') {
+      textY = height / 2 - totalHeight + lineHeight / 2 - 2; // 2px padding from bottom
+    } else {
+      // middle (default)
+      textY = -totalHeight / 2 + lineHeight / 2;
+    }
 
     for (const line of lines) {
       this.ctx.fillText(line, textX, textY);
@@ -251,8 +317,8 @@ export class CanvasRenderer {
       if (textDecoration === 'underline') {
         const metrics = this.ctx.measureText(line);
         // Position underline below text - since textBaseline is 'middle',
-        // the bottom of the text is at textY + fontSize/2, add small gap
-        const underlineY = textY + fontSize * 0.45;
+        // the bottom of the text is at textY + effectiveFontSize/2, add small gap
+        const underlineY = textY + effectiveFontSize * 0.45;
         let underlineX;
         let underlineWidth = metrics.width;
 
@@ -265,8 +331,8 @@ export class CanvasRenderer {
         }
 
         this.ctx.beginPath();
-        this.ctx.strokeStyle = 'black';
-        this.ctx.lineWidth = Math.max(1, fontSize / 16);
+        this.ctx.strokeStyle = textColor;
+        this.ctx.lineWidth = Math.max(1, effectiveFontSize / 16);
         this.ctx.moveTo(underlineX, underlineY);
         this.ctx.lineTo(underlineX + underlineWidth, underlineY);
         this.ctx.stroke();
@@ -274,6 +340,70 @@ export class CanvasRenderer {
 
       textY += lineHeight;
     }
+
+    // Restore context if we applied clipping
+    if (clipOverflow) {
+      this.ctx.restore();
+    }
+  }
+
+  /**
+   * Calculate optimal font size to fit text within box
+   */
+  calculateAutoScaleFontSize(text, width, height, fontFamily, fontWeight, fontStyle, noWrap) {
+    const padding = 8; // 4px on each side
+    const availableWidth = width - padding;
+    const availableHeight = height - padding;
+
+    if (availableWidth <= 0 || availableHeight <= 0) return 8;
+
+    const weight = fontWeight === 'bold' ? 'bold' : '';
+    const style = fontStyle === 'italic' ? 'italic' : '';
+
+    // Binary search for optimal font size
+    let minSize = 6;
+    let maxSize = 200;
+    let bestSize = minSize;
+
+    while (minSize <= maxSize) {
+      const testSize = Math.floor((minSize + maxSize) / 2);
+      const fontStr = `${style} ${weight} ${testSize}px ${fontFamily || 'Inter, sans-serif'}`.trim();
+      this.ctx.font = fontStr;
+
+      let fits = false;
+
+      if (noWrap) {
+        // For no-wrap, check if all lines fit
+        const lines = text.split('\n');
+        const lineHeight = testSize * 1.2;
+        const totalHeight = lines.length * lineHeight;
+
+        // Check width of longest line
+        let maxLineWidth = 0;
+        for (const line of lines) {
+          const metrics = this.ctx.measureText(line);
+          maxLineWidth = Math.max(maxLineWidth, metrics.width);
+        }
+
+        fits = maxLineWidth <= availableWidth && totalHeight <= availableHeight;
+      } else {
+        // For wrapped text, check if text fits with wrapping
+        const lines = this.wrapText(text, availableWidth, testSize, fontFamily, fontWeight, fontStyle);
+        const lineHeight = testSize * 1.2;
+        const totalHeight = lines.length * lineHeight;
+
+        fits = totalHeight <= availableHeight;
+      }
+
+      if (fits) {
+        bestSize = testSize;
+        minSize = testSize + 1;
+      } else {
+        maxSize = testSize - 1;
+      }
+    }
+
+    return Math.max(bestSize, 6); // Minimum 6px
   }
 
   /**
@@ -288,6 +418,12 @@ export class CanvasRenderer {
     let img = this.imageCache.get(element.id);
     if (!img || img.src !== imageData) {
       img = new Image();
+      img.onload = () => {
+        // Trigger re-render when image finishes loading
+        if (this.onAsyncLoad) {
+          this.onAsyncLoad();
+        }
+      };
       img.src = imageData;
       this.imageCache.set(element.id, img);
     }
@@ -418,6 +554,247 @@ export class CanvasRenderer {
       this.ctx.strokeStyle = '#ccc';
       this.ctx.strokeRect(-size / 2, -size / 2, size, size);
     }
+  }
+
+  /**
+   * Render shape element (centered at origin)
+   */
+  renderShapeElement(element, width, height) {
+    const { shapeType, fill, stroke, strokeWidth, cornerRadius } = element;
+
+    // Draw based on shape type
+    switch (shapeType) {
+      case 'rectangle':
+        this.drawRectangle(width, height, cornerRadius, fill, stroke, strokeWidth);
+        break;
+      case 'ellipse':
+        this.drawEllipse(width, height, fill, stroke, strokeWidth);
+        break;
+      case 'triangle':
+        this.drawTriangle(width, height, fill, stroke, strokeWidth);
+        break;
+      case 'line':
+        this.drawLine(width, height, stroke || fill, strokeWidth);
+        break;
+      default:
+        this.drawRectangle(width, height, 0, fill, stroke, strokeWidth);
+    }
+  }
+
+  /**
+   * Get dither density for a fill type
+   */
+  getDitherDensity(fill) {
+    switch (fill) {
+      case 'dither-6':
+        return 0.0625;  // 6.25% - very sparse
+      case 'dither-12':
+        return 0.125;   // 12.5%
+      case 'dither-25':
+      case 'dither-light':  // Legacy
+        return 0.25;    // 25%
+      case 'dither-37':
+        return 0.375;   // 37.5%
+      case 'dither-50':
+      case 'dither-medium':  // Legacy
+        return 0.50;    // 50%
+      case 'dither-62':
+        return 0.625;   // 62.5%
+      case 'dither-75':
+      case 'dither-dark':  // Legacy
+        return 0.75;    // 75%
+      case 'dither-87':
+        return 0.875;   // 87.5%
+      case 'dither-94':
+        return 0.9375;  // 93.75% - almost solid
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Check if a cell should be black for dithering
+   * Uses ordered dithering with a 4x4 Bayer matrix for consistent patterns
+   * @param {number} cellX - Cell X index (not pixel)
+   * @param {number} cellY - Cell Y index (not pixel)
+   * @param {number} density - Black density 0-1
+   */
+  isDitherCellBlack(cellX, cellY, density) {
+    // 4x4 Bayer matrix threshold values (0-15, normalized to 0-1)
+    const bayerMatrix = [
+      [ 0,  8,  2, 10],
+      [12,  4, 14,  6],
+      [ 3, 11,  1,  9],
+      [15,  7, 13,  5]
+    ];
+
+    // Get threshold for this cell position (use absolute value for negative coords)
+    const threshold = bayerMatrix[Math.abs(cellY) & 3][Math.abs(cellX) & 3] / 16;
+    return density > threshold;
+  }
+
+  /**
+   * Fill a path with dither pattern
+   * The path must already be defined with beginPath/closePath
+   * @param {string} fill - The dither pattern type
+   * @param {number} width - Shape width (for efficient bounds)
+   * @param {number} height - Shape height (for efficient bounds)
+   */
+  fillWithDither(fill, width, height) {
+    // Cell size - use 2x2 pixels per cell for better visibility with transforms
+    const cellSize = 2;
+
+    // Calculate bounds in cells (shape centered at origin, add padding)
+    const halfW = Math.ceil(width / 2 / cellSize) + 2;
+    const halfH = Math.ceil(height / 2 / cellSize) + 2;
+
+    // Get density for this fill type
+    const density = this.getDitherDensity(fill);
+    if (density === 0) return;
+
+    // Clip to the current path
+    this.ctx.save();
+    this.ctx.clip();
+
+    // Disable anti-aliasing for crisp pixel rendering
+    this.ctx.imageSmoothingEnabled = false;
+
+    // Fill with white base first
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillRect(-halfW * cellSize - cellSize, -halfH * cellSize - cellSize,
+                      (halfW * 2 + 2) * cellSize, (halfH * 2 + 2) * cellSize);
+
+    // Draw black dither pattern cells
+    this.ctx.fillStyle = 'black';
+    for (let cy = -halfH; cy <= halfH; cy++) {
+      for (let cx = -halfW; cx <= halfW; cx++) {
+        if (this.isDitherCellBlack(cx, cy, density)) {
+          this.ctx.fillRect(cx * cellSize, cy * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Check if fill is a dither pattern
+   */
+  isDitherFill(fill) {
+    return fill && fill.startsWith('dither-');
+  }
+
+  /**
+   * Draw rectangle (optionally rounded)
+   */
+  drawRectangle(width, height, cornerRadius, fill, stroke, strokeWidth) {
+    const x = -width / 2;
+    const y = -height / 2;
+    const r = Math.min(cornerRadius || 0, width / 2, height / 2);
+
+    this.ctx.beginPath();
+    if (r > 0) {
+      // Rounded rectangle
+      this.ctx.moveTo(x + r, y);
+      this.ctx.lineTo(x + width - r, y);
+      this.ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+      this.ctx.lineTo(x + width, y + height - r);
+      this.ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      this.ctx.lineTo(x + r, y + height);
+      this.ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+      this.ctx.lineTo(x, y + r);
+      this.ctx.quadraticCurveTo(x, y, x + r, y);
+    } else {
+      this.ctx.rect(x, y, width, height);
+    }
+    this.ctx.closePath();
+
+    // Fill
+    if (fill && fill !== 'none') {
+      if (this.isDitherFill(fill)) {
+        this.fillWithDither(fill, width, height);
+      } else {
+        this.ctx.fillStyle = fill;
+        this.ctx.fill();
+      }
+    }
+
+    // Stroke
+    if (stroke && stroke !== 'none') {
+      this.ctx.strokeStyle = stroke;
+      this.ctx.lineWidth = strokeWidth || 2;
+      this.ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw ellipse
+   */
+  drawEllipse(width, height, fill, stroke, strokeWidth) {
+    this.ctx.beginPath();
+    this.ctx.ellipse(0, 0, width / 2, height / 2, 0, 0, Math.PI * 2);
+    this.ctx.closePath();
+
+    // Fill
+    if (fill && fill !== 'none') {
+      if (this.isDitherFill(fill)) {
+        this.fillWithDither(fill, width, height);
+      } else {
+        this.ctx.fillStyle = fill;
+        this.ctx.fill();
+      }
+    }
+
+    // Stroke
+    if (stroke && stroke !== 'none') {
+      this.ctx.strokeStyle = stroke;
+      this.ctx.lineWidth = strokeWidth || 2;
+      this.ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw triangle
+   */
+  drawTriangle(width, height, fill, stroke, strokeWidth) {
+    const x = -width / 2;
+    const y = -height / 2;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, y);                    // Top center
+    this.ctx.lineTo(x + width, y + height);   // Bottom right
+    this.ctx.lineTo(x, y + height);           // Bottom left
+    this.ctx.closePath();
+
+    // Fill
+    if (fill && fill !== 'none') {
+      if (this.isDitherFill(fill)) {
+        this.fillWithDither(fill, width, height);
+      } else {
+        this.ctx.fillStyle = fill;
+        this.ctx.fill();
+      }
+    }
+
+    // Stroke
+    if (stroke && stroke !== 'none') {
+      this.ctx.strokeStyle = stroke;
+      this.ctx.lineWidth = strokeWidth || 2;
+      this.ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw line (diagonal from corner to corner)
+   */
+  drawLine(width, height, color, strokeWidth) {
+    this.ctx.beginPath();
+    this.ctx.moveTo(-width / 2, 0);
+    this.ctx.lineTo(width / 2, 0);
+    this.ctx.strokeStyle = color || 'black';
+    this.ctx.lineWidth = strokeWidth || 2;
+    this.ctx.lineCap = 'round';
+    this.ctx.stroke();
   }
 
   /**

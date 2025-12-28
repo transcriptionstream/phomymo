@@ -131,6 +131,32 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2M4 8h2m10 0h2m2-4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
         QR
       </button>
+      <!-- Shape dropdown -->
+      <div class="relative">
+        <button id="add-shape-btn" class="toolbar-btn">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
+          Shape
+          <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div id="shape-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
+          <button data-shape="rectangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" stroke-width="2"/></svg>
+            Rectangle
+          </button>
+          <button data-shape="ellipse" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6" stroke-width="2"/></svg>
+            Ellipse
+          </button>
+          <button data-shape="triangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 5l8 14H4z"/></svg>
+            Triangle
+          </button>
+          <button data-shape="line" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12" stroke-width="2"/></svg>
+            Line
+          </button>
+        </div>
+      </div>
 
       <div class="toolbar-divider"></div>
 
@@ -142,6 +168,18 @@
       <button id="delete-btn" class="toolbar-btn" disabled>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         Delete
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Undo/Redo -->
+      <button id="undo-btn" class="toolbar-btn" disabled title="Undo (Ctrl+Z)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+        Undo
+      </button>
+      <button id="redo-btn" class="toolbar-btn" disabled title="Redo (Ctrl+Shift+Z)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/></svg>
+        Redo
       </button>
 
       <div class="toolbar-divider"></div>
@@ -176,7 +214,7 @@
 
       <div class="toolbar-divider"></div>
 
-      <!-- Save/Load -->
+      <!-- Save/Load/Export -->
       <button id="save-btn" class="toolbar-btn">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
         Save
@@ -184,6 +222,34 @@
       <button id="load-btn" class="toolbar-btn">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
         Load
+      </button>
+      <button id="export-btn" class="toolbar-btn" title="Export design to file">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Export
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Elements list -->
+      <div class="relative">
+        <button id="elements-btn" class="toolbar-btn">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+          Elements
+          <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[180px] max-h-[300px] overflow-y-auto">
+          <div id="elements-list" class="text-sm">
+            <div class="px-3 py-2 text-gray-400 text-center">No elements</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar-divider hidden" id="template-toolbar-divider"></div>
+
+      <!-- Template Manage Data (shows when template fields detected) -->
+      <button id="template-toolbar-btn" class="hidden toolbar-btn bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+        <span id="template-toolbar-label">Manage Data</span>
       </button>
     </div>
   </div>
@@ -196,8 +262,8 @@
         <canvas id="preview-canvas" class="bg-white shadow-md rounded cursor-crosshair"></canvas>
       </div>
 
-      <!-- Zoom Controls - Fixed bottom right -->
-      <div class="absolute bottom-6 right-6 flex items-center gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 z-50">
+      <!-- Zoom Controls - Centered bottom -->
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 z-50">
         <button id="zoom-out" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom Out">
           <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"/></svg>
         </button>
@@ -212,6 +278,57 @@
       </div>
     </div>
 
+    <!-- Template Panel (shown when template button clicked) -->
+    <aside id="template-panel" class="hidden w-64 bg-purple-50 border-l border-purple-200 flex-shrink-0 flex flex-col">
+      <!-- Header -->
+      <div class="p-4 border-b border-purple-200 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+          <span class="text-sm font-semibold text-purple-900">Template</span>
+        </div>
+        <button id="template-panel-close" class="text-purple-400 hover:text-purple-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Content -->
+      <div class="flex-1 overflow-y-auto p-4">
+        <!-- Fields Section -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-purple-700 uppercase tracking-wide">Fields Detected</span>
+            <span id="template-field-count" class="text-xs text-purple-600 font-medium bg-purple-100 px-2 py-0.5 rounded-full">0</span>
+          </div>
+          <div id="template-field-tags" class="flex flex-wrap gap-1.5 text-xs">
+            <span class="text-purple-400 italic">None</span>
+          </div>
+        </div>
+
+        <!-- Data Section -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-purple-700 uppercase tracking-wide">Data Records</span>
+            <span id="template-data-count" class="text-xs text-purple-600">0</span>
+          </div>
+          <button id="template-manage-data" class="w-full px-3 py-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium">
+            Manage Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Actions Footer -->
+      <div class="p-4 border-t border-purple-200 flex flex-col gap-2">
+        <button id="template-quick-preview" class="w-full px-3 py-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          Preview Labels
+        </button>
+        <button id="template-quick-print" class="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+          Print All (<span id="template-print-count">0</span>)
+        </button>
+      </div>
+    </aside>
+
     <!-- Properties Panel -->
     <aside id="props-panel" class="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto flex-shrink-0">
       <h2 class="text-sm font-semibold text-gray-900 mb-4">Properties</h2>
@@ -223,157 +340,239 @@
 
       <!-- Element Properties -->
       <div id="props-content" class="hidden">
-        <!-- Position -->
-        <div class="prop-group">
-          <div class="prop-label">Position</div>
-          <div class="prop-row">
-            <div class="flex-1">
-              <input type="number" id="prop-x" class="prop-input" placeholder="X">
+        <!-- Transform: Position, Size, Rotation, Layer - Compact layout -->
+        <div class="space-y-2 mb-3">
+          <!-- Position & Size: X, Y, W, H in a single row -->
+          <div class="grid grid-cols-4 gap-1.5">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">X</label>
+              <input type="number" id="prop-x" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
             </div>
-            <div class="flex-1">
-              <input type="number" id="prop-y" class="prop-input" placeholder="Y">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Y</label>
+              <input type="number" id="prop-y" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
             </div>
-          </div>
-        </div>
-
-        <!-- Size -->
-        <div class="prop-group">
-          <div class="prop-label">Size</div>
-          <div class="prop-row">
-            <div class="flex-1">
-              <input type="number" id="prop-width" class="prop-input" placeholder="W" min="10">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">W</label>
+              <input type="number" id="prop-width" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" min="10">
             </div>
-            <div class="flex-1">
-              <input type="number" id="prop-height" class="prop-input" placeholder="H" min="10">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">H</label>
+              <input type="number" id="prop-height" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" min="10">
             </div>
           </div>
-        </div>
-
-        <!-- Rotation -->
-        <div class="prop-group">
-          <div class="prop-label">Rotation</div>
-          <div class="flex items-center gap-2">
-            <input type="number" id="prop-rotation" class="prop-input flex-1" min="0" max="360" step="15">
-            <span class="text-sm text-gray-400">deg</span>
-          </div>
-        </div>
-
-        <!-- Layer -->
-        <div class="prop-group">
-          <div class="prop-label">Layer</div>
-          <div class="flex items-center gap-2">
-            <span id="prop-layer" class="text-sm text-gray-700 font-medium">1</span>
-            <span class="text-sm text-gray-400">of <span id="prop-layer-total">1</span></span>
-          </div>
-        </div>
-
-        <hr class="my-4 border-gray-200">
-
-        <!-- Text Properties -->
-        <div id="props-text" class="hidden">
-          <div class="prop-group">
-            <div class="prop-label">Text</div>
-            <textarea id="prop-text-content" class="prop-input h-20 resize-none" placeholder="Enter text..."></textarea>
-          </div>
-          <div class="prop-group">
-            <div class="prop-label">Font</div>
-            <select id="prop-font-family" class="prop-input">
-              <optgroup label="Sans-Serif">
-                <option value="Inter, sans-serif">Inter</option>
-                <option value="Roboto, sans-serif">Roboto</option>
-                <option value="Open Sans, sans-serif">Open Sans</option>
-                <option value="Lato, sans-serif">Lato</option>
-                <option value="Montserrat, sans-serif">Montserrat</option>
-                <option value="Oswald, sans-serif">Oswald</option>
-              </optgroup>
-              <optgroup label="Serif">
-                <option value="Playfair Display, serif">Playfair Display</option>
-                <option value="Merriweather, serif">Merriweather</option>
-                <option value="Georgia, serif">Georgia</option>
-                <option value="Times New Roman, serif">Times New Roman</option>
-              </optgroup>
-              <optgroup label="Monospace">
-                <option value="Roboto Mono, monospace">Roboto Mono</option>
-                <option value="Source Code Pro, monospace">Source Code Pro</option>
-                <option value="Courier New, monospace">Courier New</option>
-              </optgroup>
-            </select>
-          </div>
-          <div class="prop-group">
-            <div class="prop-label">Size & Style</div>
-            <div class="flex gap-2">
-              <select id="prop-font-size" class="prop-input flex-1">
-                <option value="12">12px</option>
-                <option value="16">16px</option>
-                <option value="20">20px</option>
-                <option value="24">24px</option>
-                <option value="32">32px</option>
-                <option value="48">48px</option>
-                <option value="64">64px</option>
-              </select>
-              <div class="flex border border-gray-200 rounded-lg overflow-hidden">
-                <button id="style-bold" class="style-btn px-2.5 py-1.5 hover:bg-gray-100 transition-colors font-bold text-sm" title="Bold">B</button>
-                <button id="style-italic" class="style-btn px-2.5 py-1.5 hover:bg-gray-100 transition-colors italic text-sm border-l border-gray-200" title="Italic">I</button>
-                <button id="style-underline" class="style-btn px-2.5 py-1.5 hover:bg-gray-100 transition-colors underline text-sm border-l border-gray-200" title="Underline">U</button>
+          <!-- Rotation & Layer on same row -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Rotation</label>
+              <div class="flex items-center gap-1">
+                <input type="number" id="prop-rotation" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" min="0" max="360" step="15">
+                <span class="text-[10px] text-gray-400">°</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Layer</label>
+              <div class="text-xs text-gray-600 py-1 px-1.5">
+                <span id="prop-layer" class="font-medium">1</span><span class="text-gray-400"> / <span id="prop-layer-total">1</span></span>
               </div>
             </div>
           </div>
-          <div class="prop-group">
-            <div class="prop-label">Alignment</div>
-            <div class="flex gap-1">
-              <button data-align="left" class="align-btn flex-1 py-1.5 border border-gray-200 rounded-l-lg hover:bg-gray-50">
-                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h14"/></svg>
-              </button>
-              <button data-align="center" class="align-btn flex-1 py-1.5 border-t border-b border-gray-200 hover:bg-gray-50">
-                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M7 12h10M5 18h14"/></svg>
-              </button>
-              <button data-align="right" class="align-btn flex-1 py-1.5 border border-gray-200 rounded-r-lg hover:bg-gray-50">
-                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M10 12h10M6 18h14"/></svg>
-              </button>
+        </div>
+
+        <hr class="my-3 border-gray-200">
+
+        <!-- Text Properties -->
+        <div id="props-text" class="hidden space-y-2">
+          <!-- Text Content -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Text</label>
+              <div class="relative">
+                <button id="insert-field-text" class="text-[10px] text-purple-600 hover:text-purple-800 font-medium flex items-center gap-0.5" title="Insert template field">
+                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  {{Field}}
+                </button>
+                <div id="field-dropdown-text" class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[140px]">
+                  <div class="p-2 border-b border-gray-100">
+                    <input type="text" id="new-field-text" class="w-full px-2 py-1 text-xs border border-gray-200 rounded" placeholder="New field name...">
+                  </div>
+                  <div id="field-list-text" class="max-h-32 overflow-y-auto"></div>
+                </div>
+              </div>
             </div>
+            <textarea id="prop-text-content" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 h-16 resize-none" placeholder="Enter text..."></textarea>
+          </div>
+
+          <!-- Font & Size on same row -->
+          <div class="grid grid-cols-3 gap-1.5">
+            <div class="col-span-2">
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Font</label>
+              <select id="prop-font-family" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
+                <optgroup label="Sans-Serif">
+                  <option value="Inter, sans-serif">Inter</option>
+                  <option value="Roboto, sans-serif">Roboto</option>
+                  <option value="Open Sans, sans-serif">Open Sans</option>
+                  <option value="Lato, sans-serif">Lato</option>
+                  <option value="Montserrat, sans-serif">Montserrat</option>
+                  <option value="Oswald, sans-serif">Oswald</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Helvetica, sans-serif">Helvetica</option>
+                </optgroup>
+                <optgroup label="Serif">
+                  <option value="Playfair Display, serif">Playfair Display</option>
+                  <option value="Merriweather, serif">Merriweather</option>
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="Times New Roman, serif">Times New Roman</option>
+                </optgroup>
+                <optgroup label="Monospace">
+                  <option value="Roboto Mono, monospace">Roboto Mono</option>
+                  <option value="Source Code Pro, monospace">Source Code Pro</option>
+                  <option value="Courier New, monospace">Courier New</option>
+                </optgroup>
+                <optgroup label="Display">
+                  <option value="Impact, sans-serif">Impact</option>
+                  <option value="Comic Sans MS, cursive">Comic Sans</option>
+                </optgroup>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Size</label>
+              <input type="number" id="prop-font-size" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-center" min="6" max="200" value="24">
+            </div>
+          </div>
+
+          <!-- Style, Color & Background -->
+          <div class="grid grid-cols-3 gap-1.5">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Style</label>
+              <div class="flex border border-gray-200 rounded overflow-hidden">
+                <button id="style-bold" class="style-btn flex-1 py-1 hover:bg-gray-100 transition-colors font-bold text-xs" title="Bold">B</button>
+                <button id="style-italic" class="style-btn flex-1 py-1 hover:bg-gray-100 transition-colors italic text-xs border-l border-gray-200" title="Italic">I</button>
+                <button id="style-underline" class="style-btn flex-1 py-1 hover:bg-gray-100 transition-colors underline text-xs border-l border-gray-200" title="Underline">U</button>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Color</label>
+              <div class="flex border border-gray-200 rounded overflow-hidden">
+                <button data-color="black" class="color-btn flex-1 py-1 hover:bg-gray-50" title="Black text">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-black"></span>
+                </button>
+                <button data-color="white" class="color-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="White text">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-white"></span>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">BG</label>
+              <div class="flex border border-gray-200 rounded overflow-hidden">
+                <button data-bg="transparent" class="bg-btn flex-1 py-1 hover:bg-gray-50" title="Transparent">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300" style="background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 4px 4px; background-position: 0 0, 0 2px, 2px -2px, -2px 0px;"></span>
+                </button>
+                <button data-bg="white" class="bg-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="White">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-white"></span>
+                </button>
+                <button data-bg="black" class="bg-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Black">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-black"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- H-Align & V-Align on same row -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">H-Align</label>
+              <div class="flex border border-gray-200 rounded overflow-hidden">
+                <button data-align="left" class="align-btn flex-1 py-1 hover:bg-gray-50" title="Left">
+                  <svg class="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h14"/></svg>
+                </button>
+                <button data-align="center" class="align-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Center">
+                  <svg class="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M7 12h10M5 18h14"/></svg>
+                </button>
+                <button data-align="right" class="align-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Right">
+                  <svg class="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M10 12h10M6 18h14"/></svg>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">V-Align</label>
+              <div class="flex border border-gray-200 rounded overflow-hidden">
+                <button data-valign="top" class="valign-btn flex-1 py-1 hover:bg-gray-50" title="Top">
+                  <svg class="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h16M12 8v12"/></svg>
+                </button>
+                <button data-valign="middle" class="valign-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Middle">
+                  <svg class="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12h16"/></svg>
+                </button>
+                <button data-valign="bottom" class="valign-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Bottom">
+                  <svg class="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12M4 20h16"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Text Options - compact row -->
+          <div class="flex flex-wrap gap-x-3 gap-y-1 pt-1">
+            <label class="flex items-center gap-1 cursor-pointer text-[11px] text-gray-600">
+              <input type="checkbox" id="prop-no-wrap" class="w-3 h-3 rounded border-gray-300">
+              No wrap
+            </label>
+            <label class="flex items-center gap-1 cursor-pointer text-[11px] text-gray-600">
+              <input type="checkbox" id="prop-clip-overflow" class="w-3 h-3 rounded border-gray-300">
+              Clip
+            </label>
+            <label class="flex items-center gap-1 cursor-pointer text-[11px] text-gray-600">
+              <input type="checkbox" id="prop-auto-scale" class="w-3 h-3 rounded border-gray-300">
+              Auto-fit
+            </label>
           </div>
         </div>
 
         <!-- Image Properties -->
-        <div id="props-image" class="hidden">
-          <div class="prop-group">
-            <div class="prop-label">Scale</div>
-            <div class="flex items-center gap-2">
+        <div id="props-image" class="hidden space-y-2">
+          <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Scale</label>
+            <div class="flex items-center gap-1.5">
               <input type="range" id="prop-image-scale" min="10" max="200" value="100" class="flex-1">
-              <input type="number" id="prop-image-scale-input" min="10" max="200" value="100" class="w-16 px-2 py-1 text-sm border border-gray-200 rounded text-center">
-              <span class="text-sm text-gray-500">%</span>
+              <input type="number" id="prop-image-scale-input" min="10" max="200" value="100" class="w-12 px-1.5 py-1 text-xs border border-gray-200 rounded text-center">
+              <span class="text-[10px] text-gray-400">%</span>
             </div>
           </div>
-          <div class="prop-group">
-            <div class="prop-label">Proportions</div>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="prop-image-lock-ratio" checked class="w-4 h-4 rounded border-gray-300">
-              <span class="text-sm text-gray-700">Lock aspect ratio</span>
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-1.5 cursor-pointer text-[11px] text-gray-600">
+              <input type="checkbox" id="prop-image-lock-ratio" checked class="w-3 h-3 rounded border-gray-300">
+              Lock aspect ratio
             </label>
-          </div>
-          <div class="prop-group">
-            <div class="prop-label">Actions</div>
-            <div class="flex gap-2">
-              <button id="prop-image-reset" class="toolbar-btn flex-1 justify-center text-xs">
-                Reset Size
-              </button>
-              <button id="prop-replace-image" class="toolbar-btn flex-1 justify-center text-xs">
-                Replace
-              </button>
+            <div class="flex gap-1">
+              <button id="prop-image-reset" class="px-2 py-1 text-[10px] border border-gray-200 rounded hover:bg-gray-50">Reset</button>
+              <button id="prop-replace-image" class="px-2 py-1 text-[10px] border border-gray-200 rounded hover:bg-gray-50">Replace</button>
             </div>
-            <input type="file" id="prop-image-input" accept="image/*" class="hidden">
           </div>
+          <input type="file" id="prop-image-input" accept="image/*" class="hidden">
         </div>
 
         <!-- Barcode Properties -->
-        <div id="props-barcode" class="hidden">
-          <div class="prop-group">
-            <div class="prop-label">Data</div>
-            <input type="text" id="prop-barcode-data" class="prop-input" placeholder="Enter barcode data">
+        <div id="props-barcode" class="hidden space-y-2">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Data</label>
+              <div class="relative">
+                <button id="insert-field-barcode" class="text-[10px] text-purple-600 hover:text-purple-800 font-medium flex items-center gap-0.5" title="Insert template field">
+                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  {{Field}}
+                </button>
+                <div id="field-dropdown-barcode" class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[140px]">
+                  <div class="p-2 border-b border-gray-100">
+                    <input type="text" id="new-field-barcode" class="w-full px-2 py-1 text-xs border border-gray-200 rounded" placeholder="New field name...">
+                  </div>
+                  <div id="field-list-barcode" class="max-h-32 overflow-y-auto"></div>
+                </div>
+              </div>
+            </div>
+            <input type="text" id="prop-barcode-data" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Enter barcode data">
           </div>
-          <div class="prop-group">
-            <div class="prop-label">Format</div>
-            <select id="prop-barcode-format" class="prop-input">
+          <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Format</label>
+            <select id="prop-barcode-format" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
               <option value="CODE128">CODE128</option>
               <option value="EAN13">EAN-13</option>
               <option value="CODE39">CODE39</option>
@@ -382,12 +581,82 @@
         </div>
 
         <!-- QR Properties -->
-        <div id="props-qr" class="hidden">
-          <div class="prop-group">
-            <div class="prop-label">Data</div>
-            <input type="text" id="prop-qr-data" class="prop-input" placeholder="Enter URL or text">
+        <div id="props-qr" class="hidden space-y-2">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Data</label>
+              <div class="relative">
+                <button id="insert-field-qr" class="text-[10px] text-purple-600 hover:text-purple-800 font-medium flex items-center gap-0.5" title="Insert template field">
+                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  {{Field}}
+                </button>
+                <div id="field-dropdown-qr" class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[140px]">
+                  <div class="p-2 border-b border-gray-100">
+                    <input type="text" id="new-field-qr" class="w-full px-2 py-1 text-xs border border-gray-200 rounded" placeholder="New field name...">
+                  </div>
+                  <div id="field-list-qr" class="max-h-32 overflow-y-auto"></div>
+                </div>
+              </div>
+            </div>
+            <input type="text" id="prop-qr-data" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Enter URL or text">
           </div>
         </div>
+
+        <!-- Shape Properties -->
+        <div id="props-shape" class="hidden space-y-2">
+          <!-- Shape Type -->
+          <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Shape</label>
+            <select id="prop-shape-type" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
+              <option value="rectangle">Rectangle</option>
+              <option value="ellipse">Ellipse</option>
+              <option value="triangle">Triangle</option>
+              <option value="line">Line</option>
+            </select>
+          </div>
+          <!-- Fill -->
+          <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Fill</label>
+            <select id="shape-fill" class="prop-input">
+              <option value="white">White (0%)</option>
+              <option value="dither-6">6% Gray</option>
+              <option value="dither-12">12% Gray</option>
+              <option value="dither-25">25% Gray</option>
+              <option value="dither-37">37% Gray</option>
+              <option value="dither-50">50% Gray</option>
+              <option value="dither-62">62% Gray</option>
+              <option value="dither-75">75% Gray</option>
+              <option value="dither-87">87% Gray</option>
+              <option value="dither-94">94% Gray</option>
+              <option value="black">Black (100%)</option>
+            </select>
+          </div>
+          <!-- Stroke & Width -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Stroke</label>
+              <div class="flex border border-gray-200 rounded overflow-hidden">
+                <button data-stroke="none" class="stroke-btn flex-1 py-1 hover:bg-gray-50 text-[10px]" title="No stroke">None</button>
+                <button data-stroke="black" class="stroke-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Black stroke">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border-2 border-black bg-transparent"></span>
+                </button>
+                <button data-stroke="white" class="stroke-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="White stroke">
+                  <span class="block w-3 h-3 mx-auto rounded-sm border-2 border-white bg-gray-400"></span>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400 uppercase tracking-wide">Width</label>
+              <input type="number" id="prop-stroke-width" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-center" min="1" max="20" value="2">
+            </div>
+          </div>
+          <!-- Corner Radius (for rectangles) -->
+          <div id="prop-corner-radius-group">
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Corner Radius</label>
+            <input type="number" id="prop-corner-radius" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-center" min="0" max="100" value="0">
+          </div>
+        </div>
+
       </div>
     </aside>
   </main>
@@ -430,6 +699,14 @@
       <h3 class="text-lg font-semibold text-gray-900 mb-4">Load Design</h3>
       <div id="design-list" class="flex-1 overflow-y-auto mb-4 min-h-[100px]">
         <div class="text-sm text-gray-400 text-center py-8">No saved designs</div>
+      </div>
+      <div class="border-t border-gray-200 pt-4 mb-4">
+        <p class="text-xs text-gray-500 mb-2">Or import from file:</p>
+        <button id="import-file-btn" class="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Import from File
+        </button>
+        <input type="file" id="import-file-input" class="hidden" accept=".json,application/json">
       </div>
       <div class="flex gap-2">
         <button id="load-cancel" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
@@ -508,7 +785,7 @@
         <div>
           <h4 class="font-medium text-gray-900 mb-1">What is this?</h4>
           <p>Phomymo is an open-source web-based label designer for Phomemo thermal printers. It runs entirely in your browser using Web Bluetooth technology.</p>
-          <p class="mt-2 text-gray-500"><strong>Note:</strong> Currently only tested with the <strong>Phomemo M260</strong> printer. Other models may or may not work.</p>
+          <p class="mt-2 text-gray-500"><strong>Note:</strong> Tested with <strong>Phomemo M221</strong> and <strong>M260</strong> printers. Other models may also work.</p>
         </div>
 
         <div>
@@ -562,9 +839,147 @@
     </div>
   </div>
 
+  <!-- Template Data Dialog -->
+  <div id="template-data-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <div>
+          <h3 class="text-lg font-semibold text-gray-900">Template Data</h3>
+          <p class="text-sm text-gray-500">Fields: <span id="template-fields-list" class="font-medium text-purple-600"></span></p>
+        </div>
+        <button id="template-data-close" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-4 border-b border-gray-200 flex items-center gap-3">
+        <button id="template-import-csv" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Import CSV
+        </button>
+        <input type="file" id="template-csv-input" class="hidden" accept=".csv,text/csv">
+        <button id="template-add-row" class="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Add Row
+        </button>
+        <button id="template-clear-all" class="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium">
+          Clear All
+        </button>
+        <div class="flex-1"></div>
+        <span id="template-record-count" class="text-sm text-gray-500">0 records</span>
+      </div>
+
+      <div class="flex-1 overflow-auto p-4">
+        <div id="template-data-empty" class="text-center py-12 text-gray-400">
+          <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          <p class="mb-2">No data yet</p>
+          <p class="text-sm">Import a CSV file or add rows manually</p>
+        </div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr id="template-data-header" class="hidden"></tr>
+          </thead>
+          <tbody id="template-data-body"></tbody>
+        </table>
+      </div>
+
+      <div class="p-4 border-t border-gray-200 flex items-center justify-between">
+        <button id="template-preview-btn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          Preview Labels
+        </button>
+        <button id="template-print-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+          Print All
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Dialog -->
+  <div id="preview-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <div>
+          <h3 class="text-lg font-semibold text-gray-900">Preview Labels</h3>
+          <p class="text-sm text-gray-500"><span id="preview-count">0 labels</span> - Click to view full size</p>
+        </div>
+        <button id="preview-close" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-auto p-4">
+        <div id="preview-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4"></div>
+      </div>
+
+      <div class="p-4 border-t border-gray-200 flex justify-end">
+        <button id="preview-print-selected" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">
+          Print Selected
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Preview Dialog -->
+  <div id="full-preview-dialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <h3 id="full-preview-title" class="text-lg font-semibold text-gray-900">Label Preview</h3>
+        <button id="full-preview-close" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-4 flex justify-center">
+        <canvas id="full-preview-canvas" class="bg-white shadow-lg rounded max-w-full"></canvas>
+      </div>
+
+      <div class="p-4 border-t border-gray-200 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button id="full-preview-prev" class="p-2 hover:bg-gray-100 rounded-lg" title="Previous">
+            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <button id="full-preview-next" class="p-2 hover:bg-gray-100 rounded-lg" title="Next">
+            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-2 text-sm text-gray-600">
+            <input type="checkbox" id="full-preview-include" class="rounded">
+            Include in print
+          </label>
+          <button id="full-preview-print" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">
+            Print This One
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <!-- Print Progress Modal -->
+  <div id="print-progress-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-xl p-6 w-80">
+      <div class="text-center mb-4">
+        <div class="text-lg font-semibold" id="progress-title">Printing Labels</div>
+        <div class="text-sm text-gray-500" id="progress-subtitle">Preparing...</div>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
+        <div id="progress-bar" class="bg-purple-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+      <div class="text-center text-sm text-gray-500" id="progress-detail">0 of 0</div>
+      <button id="progress-cancel" class="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
+        Cancel
+      </button>
+    </div>
+  </div>
+
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-  <script type="module" src="app.js?v=14"></script>
+  <script type="module" src="app.js?v=34"></script>
 </body>
 </html>

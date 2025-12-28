@@ -65,7 +65,7 @@ export function loadDesign(name) {
 
 /**
  * Get list of saved design names with metadata
- * @returns {Array} - [{ name, savedAt, labelSize }]
+ * @returns {Array} - [{ name, savedAt, labelSize, elementCount, isTemplate, templateDataCount }]
  */
 export function listDesigns() {
   const designs = getAllDesigns();
@@ -75,6 +75,10 @@ export function listDesigns() {
       savedAt: design.savedAt,
       labelSize: design.labelSize,
       elementCount: design.elements?.length || 0,
+      isTemplate: design.isTemplate || false,
+      templateFieldCount: design.templateFields?.length || 0,
+      templateDataCount: design.templateData?.length || 0,
+      hasImages: design.elements?.some(el => el.type === 'image') || false,
     }))
     .sort((a, b) => b.savedAt - a.savedAt); // Most recent first
 }
@@ -142,7 +146,7 @@ export function exportDesign(name) {
 
   return JSON.stringify({
     name,
-    version: 1,
+    version: 2, // Version 2 includes template data
     ...design,
   }, null, 2);
 }
@@ -151,6 +155,7 @@ export function exportDesign(name) {
  * Import design from JSON string
  * @param {string} jsonString - JSON data
  * @param {string} overrideName - Optional name override
+ * @returns {object} - { name, hasTemplateData }
  */
 export function importDesign(jsonString, overrideName = null) {
   try {
@@ -166,12 +171,29 @@ export function importDesign(jsonString, overrideName = null) {
 
     const name = overrideName || data.name || `Imported ${new Date().toLocaleString()}`;
 
-    saveDesign(name, {
+    const designData = {
       elements: data.elements,
       labelSize: data.labelSize,
-    });
+    };
 
-    return name;
+    // Import template data if present
+    if (data.isTemplate) {
+      designData.isTemplate = true;
+    }
+    if (data.templateFields && Array.isArray(data.templateFields)) {
+      designData.templateFields = data.templateFields;
+    }
+    if (data.templateData && Array.isArray(data.templateData)) {
+      designData.templateData = data.templateData;
+    }
+
+    saveDesign(name, designData);
+
+    return {
+      name,
+      hasTemplateData: (data.templateData?.length || 0) > 0,
+      templateDataCount: data.templateData?.length || 0,
+    };
   } catch (e) {
     if (e instanceof SyntaxError) {
       throw new Error('Invalid JSON format');

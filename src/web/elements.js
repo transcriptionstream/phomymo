@@ -25,11 +25,17 @@ export function createTextElement(text = 'Text', options = {}) {
     // Text-specific
     text: text,
     fontSize: options.fontSize ?? 24,
-    align: options.align ?? 'left',
+    color: options.color ?? 'black',              // 'black' or 'white'
+    align: options.align ?? 'left',                 // horizontal: 'left', 'center', 'right'
+    verticalAlign: options.verticalAlign ?? 'middle', // vertical: 'top', 'middle', 'bottom'
     fontFamily: options.fontFamily ?? 'Inter, sans-serif',
     fontWeight: options.fontWeight ?? 'normal',    // 'normal' or 'bold'
     fontStyle: options.fontStyle ?? 'normal',      // 'normal' or 'italic'
     textDecoration: options.textDecoration ?? 'none', // 'none' or 'underline'
+    background: options.background ?? 'transparent', // 'transparent', 'white', or 'black'
+    noWrap: options.noWrap ?? false,               // true = single line, no wrap
+    clipOverflow: options.clipOverflow ?? false,   // true = clip text at box boundary
+    autoScale: options.autoScale ?? false,         // true = auto-fit text to box size
   };
 }
 
@@ -85,6 +91,29 @@ export function createQRElement(data = 'https://example.com', options = {}) {
     rotation: options.rotation ?? 0,
     // QR-specific
     qrData: data,
+  };
+}
+
+/**
+ * Create a shape element
+ * @param {string} shapeType - 'rectangle', 'ellipse', 'line', 'triangle'
+ * @param {object} options - Position, size, and shape-specific options
+ */
+export function createShapeElement(shapeType = 'rectangle', options = {}) {
+  return {
+    id: generateId(),
+    type: 'shape',
+    x: options.x ?? 50,
+    y: options.y ?? 50,
+    width: options.width ?? 80,
+    height: options.height ?? 60,
+    rotation: options.rotation ?? 0,
+    // Shape-specific
+    shapeType: shapeType,                         // 'rectangle', 'ellipse', 'line', 'triangle'
+    fill: options.fill ?? 'black',                // 'white', 'black', 'dither-light', 'dither-medium', 'dither-dark'
+    stroke: options.stroke ?? 'none',             // 'none', 'black', 'white'
+    strokeWidth: options.strokeWidth ?? 2,        // Stroke width in pixels
+    cornerRadius: options.cornerRadius ?? 0,      // For rounded rectangles
   };
 }
 
@@ -261,6 +290,7 @@ export const MIN_SIZES = {
   image: { width: 30, height: 30 },
   barcode: { width: 80, height: 40 },
   qr: { width: 50, height: 50 },
+  shape: { width: 10, height: 10 },
 };
 
 /**

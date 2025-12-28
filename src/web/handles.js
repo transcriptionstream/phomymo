@@ -203,89 +203,151 @@ export function getCursorForHandle(handleType, rotation = 0) {
 
 /**
  * Calculate new element bounds after resize
+ * Properly handles rotated elements by anchoring the opposite corner/edge
  * @param {object} element - Original element
  * @param {string} handleType - Which handle is being dragged
- * @param {number} dx - Mouse delta X
- * @param {number} dy - Mouse delta Y
+ * @param {number} dx - Mouse delta X (canvas coordinates)
+ * @param {number} dy - Mouse delta Y (canvas coordinates)
  * @param {boolean} preserveAspect - Maintain aspect ratio (Shift key)
  */
 export function calculateResize(element, handleType, dx, dy, preserveAspect = false) {
-  let { x, y, width, height, rotation } = element;
-
-  // Transform delta to element's local coordinate system
-  const rad = (-rotation * Math.PI) / 180;
+  const { x, y, width, height, rotation } = element;
+  const rad = (rotation * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const localDx = dx * cos - dy * sin;
-  const localDy = dx * sin + dy * cos;
 
-  const aspect = width / height;
+  // Element center
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+
+  // Transform mouse delta to element's local coordinate system (unrotated)
+  const localDx = dx * cos + dy * sin;
+  const localDy = -dx * sin + dy * cos;
+
+  // Calculate new dimensions and anchor offset based on handle type
+  // Anchor offset is in local coordinates, relative to center
   let newWidth = width;
   let newHeight = height;
-  let offsetX = 0;
-  let offsetY = 0;
+  let anchorLocalX = 0; // Local X of the point that should stay fixed
+  let anchorLocalY = 0; // Local Y of the point that should stay fixed
 
   switch (handleType) {
-    case HandleType.E:
+    case HandleType.E: // Anchor west edge
       newWidth = width + localDx;
+      anchorLocalX = -width / 2;
+      anchorLocalY = 0;
       break;
-    case HandleType.W:
+    case HandleType.W: // Anchor east edge
       newWidth = width - localDx;
-      offsetX = localDx;
+      anchorLocalX = width / 2;
+      anchorLocalY = 0;
       break;
-    case HandleType.S:
+    case HandleType.S: // Anchor north edge
       newHeight = height + localDy;
+      anchorLocalX = 0;
+      anchorLocalY = -height / 2;
       break;
-    case HandleType.N:
+    case HandleType.N: // Anchor south edge
       newHeight = height - localDy;
-      offsetY = localDy;
+      anchorLocalX = 0;
+      anchorLocalY = height / 2;
       break;
-    case HandleType.SE:
+    case HandleType.SE: // Anchor NW corner
       newWidth = width + localDx;
       newHeight = height + localDy;
+      anchorLocalX = -width / 2;
+      anchorLocalY = -height / 2;
       break;
-    case HandleType.NW:
+    case HandleType.NW: // Anchor SE corner
       newWidth = width - localDx;
       newHeight = height - localDy;
-      offsetX = localDx;
-      offsetY = localDy;
+      anchorLocalX = width / 2;
+      anchorLocalY = height / 2;
       break;
-    case HandleType.NE:
+    case HandleType.NE: // Anchor SW corner
       newWidth = width + localDx;
       newHeight = height - localDy;
-      offsetY = localDy;
+      anchorLocalX = -width / 2;
+      anchorLocalY = height / 2;
       break;
-    case HandleType.SW:
+    case HandleType.SW: // Anchor NE corner
       newWidth = width - localDx;
       newHeight = height + localDy;
-      offsetX = localDx;
+      anchorLocalX = width / 2;
+      anchorLocalY = -height / 2;
       break;
   }
 
-  // Apply aspect ratio constraint
+  // Enforce minimum size
+  newWidth = Math.max(newWidth, 10);
+  newHeight = Math.max(newHeight, 10);
+
+  // Apply aspect ratio constraint for corner handles
+  const aspect = width / height;
   if (preserveAspect && [HandleType.NW, HandleType.NE, HandleType.SE, HandleType.SW].includes(handleType)) {
     if (Math.abs(localDx) > Math.abs(localDy)) {
       newHeight = newWidth / aspect;
-      if (handleType === HandleType.NW || handleType === HandleType.NE) {
-        offsetY = height - newHeight;
-      }
     } else {
       newWidth = newHeight * aspect;
-      if (handleType === HandleType.NW || handleType === HandleType.SW) {
-        offsetX = width - newWidth;
-      }
     }
   }
 
-  // Transform offset back to canvas coordinates
-  const canvasOffsetX = offsetX * Math.cos(rotation * Math.PI / 180) - offsetY * Math.sin(rotation * Math.PI / 180);
-  const canvasOffsetY = offsetX * Math.sin(rotation * Math.PI / 180) + offsetY * Math.cos(rotation * Math.PI / 180);
+  // Calculate anchor point in world coordinates (before resize)
+  const anchorWorldX = cx + anchorLocalX * cos - anchorLocalY * sin;
+  const anchorWorldY = cy + anchorLocalX * sin + anchorLocalY * cos;
+
+  // Calculate where the anchor should be in the NEW element's local coordinates
+  let newAnchorLocalX, newAnchorLocalY;
+  switch (handleType) {
+    case HandleType.E:
+      newAnchorLocalX = -newWidth / 2;
+      newAnchorLocalY = 0;
+      break;
+    case HandleType.W:
+      newAnchorLocalX = newWidth / 2;
+      newAnchorLocalY = 0;
+      break;
+    case HandleType.S:
+      newAnchorLocalX = 0;
+      newAnchorLocalY = -newHeight / 2;
+      break;
+    case HandleType.N:
+      newAnchorLocalX = 0;
+      newAnchorLocalY = newHeight / 2;
+      break;
+    case HandleType.SE:
+      newAnchorLocalX = -newWidth / 2;
+      newAnchorLocalY = -newHeight / 2;
+      break;
+    case HandleType.NW:
+      newAnchorLocalX = newWidth / 2;
+      newAnchorLocalY = newHeight / 2;
+      break;
+    case HandleType.NE:
+      newAnchorLocalX = -newWidth / 2;
+      newAnchorLocalY = newHeight / 2;
+      break;
+    case HandleType.SW:
+      newAnchorLocalX = newWidth / 2;
+      newAnchorLocalY = -newHeight / 2;
+      break;
+  }
+
+  // Calculate new center such that anchor point stays in place
+  // anchorWorld = newCenter + rotate(newAnchorLocal)
+  // newCenter = anchorWorld - rotate(newAnchorLocal)
+  const newCx = anchorWorldX - (newAnchorLocalX * cos - newAnchorLocalY * sin);
+  const newCy = anchorWorldY - (newAnchorLocalX * sin + newAnchorLocalY * cos);
+
+  // Calculate new top-left position
+  const newX = newCx - newWidth / 2;
+  const newY = newCy - newHeight / 2;
 
   return {
-    x: x + canvasOffsetX,
-    y: y + canvasOffsetY,
-    width: Math.max(newWidth, 10),
-    height: Math.max(newHeight, 10),
+    x: newX,
+    y: newY,
+    width: newWidth,
+    height: newHeight,
   };
 }
 

@@ -5,7 +5,7 @@ Phomymo is a toolkit for interfacing with Phomemo thermal label printers. It inc
 - **Web Label Designer** - A browser-based visual editor for creating and printing labels
 - **CLI Tool** - A command-line tool for batch printing images
 
-Supports Phomemo M110, M200, M220, M260, D30, D110, and similar thermal printers.
+Supports Phomemo M110, M200, M220, M221, M260, D30, D110, and similar thermal printers.
 
 ## Web Label Designer
 
@@ -15,13 +15,41 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 
 ### Features
 
-- **Multi-element canvas** - Add text, images, barcodes (Code128, EAN-13, UPC-A, Code39), and QR codes
+#### Elements
+- **Text** - Multiple fonts, sizes, bold, italic, underline, horizontal and vertical alignment, background colors
+- **Images** - Import with scale control and aspect ratio lock
+- **Barcodes** - Code128, EAN-13, UPC-A, Code39 formats
+- **QR Codes** - Automatic sizing and encoding
+- **Shapes** - Rectangle, ellipse, triangle, and line with fill options
+
+#### Shape Fills
+- Solid black/white fills
+- 9 dithered grayscale levels (6%, 12%, 25%, 37%, 50%, 62%, 75%, 87%, 94%)
+- Stroke options with adjustable width
+- Rounded corners for rectangles
+
+#### Editing
 - **Visual editing** - Drag to move, resize handles on corners/edges, rotation handle
-- **Multi-select & grouping** - Select multiple elements (Shift+click), group them (Ctrl/Cmd+G)
-- **Text formatting** - Multiple fonts, sizes, bold, italic, underline, alignment
-- **Image support** - Import images with scale control and aspect ratio lock
-- **Label presets** - Common sizes (12x40, 15x30, 20x30, 25x50, 30x20, 40x30, 50x30, 60x40, etc.) plus custom dimensions
-- **Save/Load designs** - Persist designs to browser localStorage
+- **Multi-select** - Shift+click to select multiple elements
+- **Grouping** - Group elements together (Ctrl/Cmd+G), ungroup (Ctrl/Cmd+Shift+G)
+- **Undo/Redo** - Full history support (Ctrl/Cmd+Z to undo, Ctrl/Cmd+Shift+Z to redo)
+- **Keyboard shortcuts** - Arrow keys to nudge, Delete to remove, Ctrl/Cmd+D to duplicate
+- **Layer ordering** - Raise/lower elements in z-order
+
+#### Templates & Batch Printing
+- **Variable fields** - Use `{{FieldName}}` syntax in text, barcodes, and QR codes
+- **CSV import** - Load data from spreadsheet exports
+- **Manual data entry** - Add/edit records in a table interface
+- **Preview grid** - See all labels before printing with click-to-enlarge
+- **Batch printing** - Print multiple labels with progress indicator and cancel support
+
+#### Label Sizes
+- Common presets: 12x12, 12x22, 12x40, 14x25, 15x30, 20x30, 25x50, 30x20, 40x30, 40x60, 50x30, 50x50, 50x80, 60x40
+- Custom dimensions with live preview
+
+#### File Operations
+- **Save/Load** - Persist designs to browser localStorage
+- **Export/Import** - Share designs as JSON files
 - **Print settings** - Density control, multiple copies, feed adjustment
 
 ### Quick Start
@@ -39,6 +67,20 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
    ```
 2. Open http://localhost:8080 in Chrome (or another Chromium-based browser)
 3. Connect, design, and print
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl/Cmd + Z` | Undo |
+| `Ctrl/Cmd + Shift + Z` | Redo |
+| `Ctrl/Cmd + D` | Duplicate selected |
+| `Ctrl/Cmd + G` | Group selected |
+| `Ctrl/Cmd + Shift + G` | Ungroup |
+| `Delete / Backspace` | Delete selected |
+| `Arrow keys` | Nudge by 1px |
+| `Shift + Arrow keys` | Nudge by 10px |
+| `Shift + Click` | Add to selection |
 
 ### Browser Requirements
 
@@ -111,7 +153,9 @@ phomymo/
 │       ├── elements.js # Element management
 │       ├── handles.js # Selection handles
 │       ├── storage.js # localStorage persistence
+│       ├── templates.js # Variable substitution
 │       ├── ble.js     # Web Bluetooth transport
+│       ├── usb.js     # WebUSB transport
 │       └── printer.js # Print protocol
 ├── phomymo-cli.js     # CLI tool
 ├── package.json

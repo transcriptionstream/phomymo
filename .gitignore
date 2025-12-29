@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+
+# Site-specific SEO files (contain domain-specific URLs)
+src/web/sitemap.xml
+src/web/robots.txt
+src/web/screenshot.png

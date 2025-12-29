@@ -19,10 +19,27 @@
       background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
     }
     .toolbar-btn {
-      @apply px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center gap-1 sm:gap-1.5 whitespace-nowrap;
+      @apply px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg border border-gray-200 bg-white flex items-center gap-1 sm:gap-1.5 whitespace-nowrap;
+      transition: all 0.15s ease;
+    }
+    .toolbar-btn:hover {
+      background-color: #f3f4f6;
+      border-color: #d1d5db;
+    }
+    .toolbar-btn:active {
+      background-color: #e5e7eb;
+      transform: scale(0.96);
     }
     .toolbar-btn:disabled {
       @apply opacity-50 cursor-not-allowed;
+    }
+    .toolbar-btn:disabled:hover {
+      background-color: white;
+      border-color: #e5e7eb;
+    }
+    button.toolbar-btn.toolbar-btn-menu {
+      border-style: dashed;
+      border-width: 1px;
     }
     .toolbar-divider {
       @apply w-px h-5 sm:h-6 bg-gray-200 mx-1 sm:mx-2 flex-shrink-0;
@@ -147,11 +164,10 @@
         <span class="hidden sm:inline">QR</span>
       </button>
       <!-- Shape dropdown -->
-      <div class="relative">
-        <button id="add-shape-btn" class="toolbar-btn" title="Add Shape">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
+      <div class="relative flex items-center">
+        <button id="add-shape-btn" class="toolbar-btn toolbar-btn-menu" title="Add Shape">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
           <span class="hidden sm:inline">Shape</span>
-          <svg class="w-2.5 h-2.5 flex-shrink-0 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </button>
         <div id="shape-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
           <button data-shape="rectangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
@@ -246,11 +262,10 @@
       <div class="toolbar-divider hidden sm:block"></div>
 
       <!-- Elements list -->
-      <div class="relative">
-        <button id="elements-btn" class="toolbar-btn" title="Elements List">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+      <div class="relative flex items-center">
+        <button id="elements-btn" class="toolbar-btn toolbar-btn-menu" title="Elements List">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
           <span class="hidden sm:inline">Elements</span>
-          <svg class="w-2.5 h-2.5 flex-shrink-0 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </button>
         <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[180px] max-h-[300px] overflow-y-auto">
           <div id="elements-list" class="text-sm">

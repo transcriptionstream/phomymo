@@ -282,12 +282,29 @@ export function calculateResize(element, handleType, dx, dy, preserveAspect = fa
   newWidth = Math.max(newWidth, 10);
   newHeight = Math.max(newHeight, 10);
 
-  // Apply aspect ratio constraint for corner handles
-  const aspect = width / height;
-  if (preserveAspect && [HandleType.NW, HandleType.NE, HandleType.SE, HandleType.SW].includes(handleType)) {
-    if (Math.abs(localDx) > Math.abs(localDy)) {
+  // Apply aspect ratio constraint
+  // For images, use natural dimensions; otherwise use current dimensions
+  const aspect = (element.naturalWidth && element.naturalHeight)
+    ? element.naturalWidth / element.naturalHeight
+    : width / height;
+  if (preserveAspect) {
+    const isCorner = handleType === HandleType.NW || handleType === HandleType.NE ||
+                     handleType === HandleType.SE || handleType === HandleType.SW;
+    const isHorizontalSide = handleType === HandleType.E || handleType === HandleType.W;
+    const isVerticalSide = handleType === HandleType.N || handleType === HandleType.S;
+
+    if (isCorner) {
+      // Corner handles: use dominant drag direction
+      if (Math.abs(localDx) > Math.abs(localDy)) {
+        newHeight = newWidth / aspect;
+      } else {
+        newWidth = newHeight * aspect;
+      }
+    } else if (isHorizontalSide) {
+      // Horizontal side handles: width drives height
       newHeight = newWidth / aspect;
-    } else {
+    } else if (isVerticalSide) {
+      // Vertical side handles: height drives width
       newWidth = newHeight * aspect;
     }
   }

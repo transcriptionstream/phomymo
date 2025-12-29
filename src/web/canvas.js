@@ -306,8 +306,30 @@ export class CanvasRenderer {
     } else if (vAlign === 'bottom') {
       textY = height / 2 - totalHeight + lineHeight / 2 - 2; // 2px padding from bottom
     } else {
-      // middle (default)
+      // middle (default) - center text block within element bounds
       textY = -totalHeight / 2 + lineHeight / 2;
+    }
+
+    // When autoScale is enabled, adjust vertical position to maintain baseline alignment
+    if (autoScale) {
+      const unusedSpace = height - totalHeight;
+      const unusedRatio = unusedSpace / height;
+      if (unusedRatio > 0.4) {
+        // Text was scaled down significantly - shift up
+        const adjustment = unusedSpace * 0.08;
+        textY -= adjustment;
+      } else {
+        // Text was not scaled down much - shift down to match non-autoScale position
+        // Adjustment varies by vertical alignment
+        if (vAlign === 'bottom') {
+          textY += 1;
+        } else if (vAlign === 'top') {
+          textY += 0;
+        } else {
+          // middle
+          textY += 0.5;
+        }
+      }
     }
 
     for (const line of lines) {

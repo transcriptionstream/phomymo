@@ -19,13 +19,28 @@
       background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
     }
     .toolbar-btn {
-      @apply px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center gap-1.5;
+      @apply px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center gap-1 sm:gap-1.5 whitespace-nowrap;
     }
     .toolbar-btn:disabled {
       @apply opacity-50 cursor-not-allowed;
     }
     .toolbar-divider {
-      @apply w-px h-6 bg-gray-200 mx-2;
+      @apply w-px h-5 sm:h-6 bg-gray-200 mx-1 sm:mx-2 flex-shrink-0;
+    }
+    /* Hide toolbar button text on small screens */
+    @media (max-width: 640px) {
+      .toolbar-btn-text { display: none; }
+    }
+    /* Properties panel open state */
+    #props-panel.panel-open {
+      transform: translateX(0);
+    }
+    /* Mobile backdrop for properties panel */
+    #props-backdrop {
+      @apply fixed inset-0 bg-black/50 z-40 hidden;
+    }
+    #props-backdrop.backdrop-visible {
+      @apply block md:hidden;
     }
     .prop-label {
       font-size: 0.75rem;
@@ -48,19 +63,19 @@
 <body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
 
   <!-- Top Bar -->
-  <header class="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <div class="flex items-center gap-2">
-          <h1 class="text-lg font-semibold text-gray-900">Phomymo</h1>
+  <header class="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex-shrink-0">
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+        <div class="flex items-center gap-1 sm:gap-2">
+          <h1 class="text-base sm:text-lg font-semibold text-gray-900">Phomymo</h1>
           <button id="info-btn" class="text-gray-400 hover:text-gray-600 transition-colors" title="About this project">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           </button>
         </div>
 
         <!-- Label Size -->
-        <div class="flex items-center gap-2">
-          <select id="label-size" class="text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-400">
+        <div class="flex items-center gap-1 sm:gap-2">
+          <select id="label-size" class="text-xs sm:text-sm px-1.5 sm:px-2 py-1 sm:py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-400">
             <option value="12x40">12x40mm</option>
             <option value="15x30">15x30mm</option>
             <option value="20x30">20x30mm</option>
@@ -77,33 +92,33 @@
           </select>
           <!-- Custom size inputs (hidden by default) -->
           <div id="custom-size" class="hidden flex items-center gap-1">
-            <input type="number" id="custom-width" class="w-14 px-2 py-1.5 text-sm border border-gray-300 rounded-lg" placeholder="W" min="10" max="100">
-            <span class="text-gray-400">x</span>
-            <input type="number" id="custom-height" class="w-14 px-2 py-1.5 text-sm border border-gray-300 rounded-lg" placeholder="H" min="10" max="200">
+            <input type="number" id="custom-width" class="w-12 sm:w-14 px-1.5 sm:px-2 py-1 sm:py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg" placeholder="W" min="10" max="100">
+            <span class="text-gray-400 text-xs">x</span>
+            <input type="number" id="custom-height" class="w-12 sm:w-14 px-1.5 sm:px-2 py-1 sm:py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg" placeholder="H" min="10" max="200">
             <span class="text-xs text-gray-400">mm</span>
           </div>
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5 sm:gap-3">
         <!-- Connection -->
-        <div class="flex items-center gap-2 text-sm">
-          <select id="conn-type" class="px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none">
+        <div class="flex items-center gap-1 sm:gap-2 text-sm">
+          <select id="conn-type" class="hidden sm:block px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none text-xs sm:text-sm">
             <option value="ble">Bluetooth</option>
             <option value="usb">USB</option>
           </select>
-          <button id="connect-btn" class="px-3 py-1.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-sm font-medium transition-colors">
+          <button id="connect-btn" class="px-2 sm:px-3 py-1 sm:py-1.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-xs sm:text-sm font-medium transition-colors">
             Connect
           </button>
           <div id="status-dot" class="w-2 h-2 rounded-full bg-gray-400"></div>
         </div>
 
         <!-- Print Settings & Button -->
-        <div class="flex items-center gap-1">
-          <button id="print-settings-btn" class="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-l-lg transition-colors" title="Print Settings">
+        <div class="flex items-center gap-0.5 sm:gap-1">
+          <button id="print-settings-btn" class="p-1.5 sm:p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-l-lg transition-colors" title="Print Settings">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           </button>
-          <button id="print-btn" class="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-r-lg transition-colors">
+          <button id="print-btn" class="px-3 sm:px-5 py-1.5 sm:py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs sm:text-sm font-medium rounded-r-lg transition-colors">
             Print
           </button>
         </div>
@@ -112,31 +127,31 @@
   </header>
 
   <!-- Toolbar -->
-  <div class="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0">
-    <div class="flex items-center gap-2">
+  <div class="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex-shrink-0">
+    <div class="flex items-center gap-1 sm:gap-2 flex-wrap">
       <!-- Add Elements -->
-      <button id="add-text" class="toolbar-btn">
+      <button id="add-text" class="toolbar-btn" title="Add Text">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16"/></svg>
-        Text
+        <span class="hidden sm:inline">Text</span>
       </button>
-      <button id="add-image" class="toolbar-btn">
+      <button id="add-image" class="toolbar-btn" title="Add Image">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-        Image
+        <span class="hidden sm:inline">Image</span>
       </button>
-      <button id="add-barcode" class="toolbar-btn">
+      <button id="add-barcode" class="toolbar-btn" title="Add Barcode">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2M4 8h2m10 0h2m2-4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
-        Barcode
+        <span class="hidden sm:inline">Barcode</span>
       </button>
-      <button id="add-qr" class="toolbar-btn">
+      <button id="add-qr" class="toolbar-btn" title="Add QR Code">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2M4 8h2m10 0h2m2-4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>
-        QR
+        <span class="hidden sm:inline">QR</span>
       </button>
       <!-- Shape dropdown -->
       <div class="relative">
-        <button id="add-shape-btn" class="toolbar-btn">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
-          Shape
-          <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        <button id="add-shape-btn" class="toolbar-btn" title="Add Shape">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
+          <span class="hidden sm:inline">Shape</span>
+          <svg class="w-2.5 h-2.5 flex-shrink-0 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </button>
         <div id="shape-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
           <button data-shape="rectangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
@@ -161,81 +176,81 @@
       <div class="toolbar-divider"></div>
 
       <!-- Element Actions -->
-      <button id="duplicate-btn" class="toolbar-btn" disabled>
+      <button id="duplicate-btn" class="toolbar-btn" disabled title="Duplicate">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-        Duplicate
+        <span class="hidden sm:inline">Duplicate</span>
       </button>
-      <button id="delete-btn" class="toolbar-btn" disabled>
+      <button id="delete-btn" class="toolbar-btn" disabled title="Delete">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        Delete
+        <span class="hidden sm:inline">Delete</span>
       </button>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-divider hidden sm:block"></div>
 
       <!-- Undo/Redo -->
       <button id="undo-btn" class="toolbar-btn" disabled title="Undo (Ctrl+Z)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
-        Undo
+        <span class="hidden sm:inline">Undo</span>
       </button>
       <button id="redo-btn" class="toolbar-btn" disabled title="Redo (Ctrl+Shift+Z)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/></svg>
-        Redo
+        <span class="hidden sm:inline">Redo</span>
       </button>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-divider hidden sm:block"></div>
 
       <!-- Z-Order / Layers -->
-      <button id="bring-front" class="toolbar-btn" disabled title="Raise - Move selected element(s) above others">
+      <button id="bring-front" class="toolbar-btn" disabled title="Raise">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <rect x="4" y="8" width="10" height="10" rx="1" stroke-width="2"/>
           <rect x="10" y="4" width="10" height="10" rx="1" stroke-width="2" fill="white"/>
         </svg>
-        Raise
+        <span class="hidden sm:inline">Raise</span>
       </button>
-      <button id="send-back" class="toolbar-btn" disabled title="Lower - Move selected element(s) behind others">
+      <button id="send-back" class="toolbar-btn" disabled title="Lower">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <rect x="10" y="10" width="10" height="10" rx="1" stroke-width="2"/>
           <rect x="4" y="4" width="10" height="10" rx="1" stroke-width="2" fill="white"/>
         </svg>
-        Lower
+        <span class="hidden sm:inline">Lower</span>
       </button>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-divider hidden sm:block"></div>
 
       <!-- Grouping -->
       <button id="group-btn" class="toolbar-btn" disabled title="Group (Ctrl+G)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
-        Group
+        <span class="hidden sm:inline">Group</span>
       </button>
       <button id="ungroup-btn" class="toolbar-btn" disabled title="Ungroup (Ctrl+Shift+G)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zm0 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
-        Ungroup
+        <span class="hidden sm:inline">Ungroup</span>
       </button>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-divider hidden sm:block"></div>
 
       <!-- Save/Load/Export -->
-      <button id="save-btn" class="toolbar-btn">
+      <button id="save-btn" class="toolbar-btn" title="Save">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-        Save
+        <span class="hidden sm:inline">Save</span>
       </button>
-      <button id="load-btn" class="toolbar-btn">
+      <button id="load-btn" class="toolbar-btn" title="Load">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-        Load
+        <span class="hidden sm:inline">Load</span>
       </button>
-      <button id="export-btn" class="toolbar-btn" title="Export design to file">
+      <button id="export-btn" class="toolbar-btn" title="Export">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        Export
+        <span class="hidden sm:inline">Export</span>
       </button>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-divider hidden sm:block"></div>
 
       <!-- Elements list -->
       <div class="relative">
-        <button id="elements-btn" class="toolbar-btn">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-          Elements
-          <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        <button id="elements-btn" class="toolbar-btn" title="Elements List">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+          <span class="hidden sm:inline">Elements</span>
+          <svg class="w-2.5 h-2.5 flex-shrink-0 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </button>
         <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[180px] max-h-[300px] overflow-y-auto">
           <div id="elements-list" class="text-sm">
@@ -247,39 +262,44 @@
       <div class="toolbar-divider hidden" id="template-toolbar-divider"></div>
 
       <!-- Template Manage Data (shows when template fields detected) -->
-      <button id="template-toolbar-btn" class="hidden toolbar-btn bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200">
+      <button id="template-toolbar-btn" class="hidden toolbar-btn bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200" title="Manage Template Data">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
-        <span id="template-toolbar-label">Manage Data</span>
+        <span id="template-toolbar-label" class="hidden sm:inline">Manage Data</span>
       </button>
     </div>
   </div>
 
   <!-- Main Content -->
-  <main class="flex-1 flex overflow-hidden">
+  <main class="flex-1 flex overflow-hidden relative">
     <!-- Canvas Area -->
-    <div class="flex-1 flex items-center justify-center p-6 overflow-auto relative">
-      <div id="canvas-container" class="canvas-bg rounded-lg p-6 shadow-inner transition-transform origin-center">
+    <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto relative">
+      <div id="canvas-container" class="canvas-bg rounded-lg p-3 sm:p-6 shadow-inner transition-transform origin-center">
         <canvas id="preview-canvas" class="bg-white shadow-md rounded cursor-crosshair"></canvas>
       </div>
 
       <!-- Zoom Controls - Centered bottom -->
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-4 py-3 z-50">
-        <button id="zoom-out" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom Out">
-          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"/></svg>
+      <div class="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-2 sm:px-4 py-2 sm:py-3 z-40">
+        <button id="zoom-out" class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom Out">
+          <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"/></svg>
         </button>
-        <span id="zoom-level" class="text-base text-gray-700 w-14 text-center font-semibold">100%</span>
-        <button id="zoom-in" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom In">
-          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
+        <span id="zoom-level" class="text-sm sm:text-base text-gray-700 w-12 sm:w-14 text-center font-semibold">100%</span>
+        <button id="zoom-in" class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom In">
+          <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
         </button>
-        <div class="w-px h-6 bg-gray-200"></div>
-        <button id="zoom-reset" class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors font-medium" title="Reset Zoom">
+        <div class="w-px h-5 sm:h-6 bg-gray-200"></div>
+        <button id="zoom-reset" class="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors font-medium" title="Reset Zoom">
           Reset
         </button>
       </div>
+
+      <!-- Mobile Properties Toggle Button -->
+      <button id="props-toggle" class="md:hidden fixed bottom-20 right-4 z-50 p-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors" title="Properties">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+      </button>
     </div>
 
     <!-- Template Panel (shown when template button clicked) -->
-    <aside id="template-panel" class="hidden w-64 bg-purple-50 border-l border-purple-200 flex-shrink-0 flex flex-col">
+    <aside id="template-panel" class="hidden fixed md:relative inset-y-0 right-0 w-72 sm:w-64 bg-purple-50 border-l border-purple-200 flex-shrink-0 flex flex-col z-50 shadow-xl md:shadow-none">
       <!-- Header -->
       <div class="p-4 border-b border-purple-200 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -329,8 +349,15 @@
       </div>
     </aside>
 
+    <!-- Properties Panel Backdrop (mobile) -->
+    <div id="props-backdrop"></div>
+
     <!-- Properties Panel -->
-    <aside id="props-panel" class="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto flex-shrink-0">
+    <aside id="props-panel" class="fixed md:relative inset-y-0 right-0 w-72 sm:w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto flex-shrink-0 z-50 transform translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out shadow-xl md:shadow-none">
+      <!-- Mobile Close Button -->
+      <button id="props-close" class="md:hidden absolute top-3 right-3 p-1 text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
       <h2 class="text-sm font-semibold text-gray-900 mb-4">Properties</h2>
 
       <!-- No Selection State -->
@@ -662,18 +689,18 @@
   </main>
 
   <!-- Status Bar -->
-  <footer class="bg-white border-t border-gray-200 px-4 py-2 flex-shrink-0">
+  <footer class="bg-white border-t border-gray-200 px-2 sm:px-4 py-1.5 sm:py-2 flex-shrink-0">
     <div class="flex items-center justify-between text-xs text-gray-400">
-      <span id="status-message">Ready</span>
-      <div class="flex items-center gap-4">
-        <span id="print-size">40 x 30 mm</span>
-        <span class="text-gray-300">|</span>
+      <span id="status-message" class="truncate max-w-[150px] sm:max-w-none">Ready</span>
+      <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+        <span id="print-size" class="hidden sm:inline">40 x 30 mm</span>
+        <span class="text-gray-300 hidden sm:inline">|</span>
         <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="hover:text-gray-600 transition-colors flex items-center gap-1">
           <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-          GitHub
+          <span class="hidden sm:inline">GitHub</span>
         </a>
-        <span class="text-gray-300">|</span>
-        <a href="https://affordablemagic.com" target="_blank" rel="noopener" class="inline-flex items-center gap-1 hover:text-gray-600 transition-colors">
+        <span class="text-gray-300 hidden md:inline">|</span>
+        <a href="https://affordablemagic.com" target="_blank" rel="noopener" class="hidden md:inline-flex items-center gap-1 hover:text-gray-600 transition-colors">
           <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-3">
           An Affordable Magic product
         </a>
@@ -980,6 +1007,6 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-  <script type="module" src="app.js?v=34"></script>
+  <script type="module" src="app.js?v=36"></script>
 </body>
 </html>

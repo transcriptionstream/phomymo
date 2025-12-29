@@ -3,7 +3,7 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=15';
+import { CanvasRenderer } from './canvas.js?v=47';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
 import { print, printDensityTest } from './printer.js?v=6';
@@ -2724,6 +2724,32 @@ function init() {
   $('#zoom-in').addEventListener('click', zoomIn);
   $('#zoom-out').addEventListener('click', zoomOut);
   $('#zoom-reset').addEventListener('click', zoomReset);
+
+  // Mobile properties panel toggle
+  const propsPanel = $('#props-panel');
+  const propsBackdrop = $('#props-backdrop');
+  const propsToggle = $('#props-toggle');
+  const propsClose = $('#props-close');
+
+  function openPropsPanel() {
+    propsPanel.classList.add('panel-open');
+    propsBackdrop.classList.add('backdrop-visible');
+  }
+
+  function closePropsPanel() {
+    propsPanel.classList.remove('panel-open');
+    propsBackdrop.classList.remove('backdrop-visible');
+  }
+
+  if (propsToggle) {
+    propsToggle.addEventListener('click', openPropsPanel);
+  }
+  if (propsClose) {
+    propsClose.addEventListener('click', closePropsPanel);
+  }
+  if (propsBackdrop) {
+    propsBackdrop.addEventListener('click', closePropsPanel);
+  }
 
   // Properties panel - common (only works for single selection)
   $('#prop-x').addEventListener('change', (e) => {

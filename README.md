@@ -13,6 +13,8 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 
 **Try it now: https://phomymo.affordablemagic.net**
 
+![Phomymo Label Designer](screenshot.png)
+
 ### Features
 
 #### Elements

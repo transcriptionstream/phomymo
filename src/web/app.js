@@ -83,6 +83,7 @@ const state = {
   selectedIds: [],  // Array of selected element IDs (supports multi-select)
   transport: null,
   renderer: null,
+  canPrint: true,   // Set to false if browser doesn't support Bluetooth/USB
   // Drag state
   isDragging: false,
   dragType: null, // 'move', 'resize', 'rotate'
@@ -1756,6 +1757,12 @@ function addShapeElement(shapeType = 'rectangle') {
  * Handle connect button click
  */
 async function handleConnect() {
+  // Check if printing is supported in this browser
+  if (!state.canPrint) {
+    alert('Printing is not available in this browser.\n\nPlease use Chrome, Edge, or Opera on desktop for Bluetooth printing.');
+    return;
+  }
+
   const btn = $('#connect-btn');
   const originalText = btn.textContent;
 
@@ -2394,41 +2401,55 @@ function handleUngroup() {
  * Check browser compatibility
  */
 function checkCompatibility() {
-  const errors = [];
+  const warnings = [];
+  let canPrint = true;
 
   if (!window.isSecureContext) {
-    errors.push('HTTPS required - this app must be served over a secure connection');
+    warnings.push('HTTPS required for printing - this app must be served over a secure connection');
+    canPrint = false;
   }
 
   if (!('bluetooth' in navigator)) {
-    errors.push('Web Bluetooth not supported - please use Chrome, Edge, or Opera');
+    warnings.push('Web Bluetooth not supported - printing requires Chrome, Edge, or Opera');
+    canPrint = false;
   }
 
   if (!('usb' in navigator)) {
     console.warn('WebUSB not supported - USB printing will not be available');
   }
 
-  if (errors.length > 0) {
+  // Store print capability in state for disabling print buttons
+  state.canPrint = canPrint;
+
+  if (warnings.length > 0) {
     const overlay = document.createElement('div');
+    overlay.id = 'compatibility-warning';
     overlay.className = 'fixed inset-0 bg-gray-900 bg-opacity-90 flex items-center justify-center z-50';
     overlay.innerHTML = `
       <div class="bg-white rounded-xl p-8 max-w-md mx-4 text-center">
-        <div class="text-red-500 text-5xl mb-4">!</div>
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">Browser Not Supported</h2>
+        <div class="text-yellow-500 text-5xl mb-4">⚠</div>
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">Limited Browser Support</h2>
         <div class="text-gray-600 space-y-2 mb-6">
-          ${errors.map(e => `<p>${e}</p>`).join('')}
+          ${warnings.map(w => `<p>${w}</p>`).join('')}
         </div>
-        <div class="text-sm text-gray-500">
-          <p class="mb-2"><strong>Recommended:</strong> Chrome on desktop</p>
-          <p>Make sure you're accessing via HTTPS</p>
+        <div class="text-sm text-gray-500 mb-6">
+          <p class="mb-2"><strong>For printing:</strong> Use Chrome, Edge, or Opera on desktop</p>
+          <p>You can still design, save, and export labels without printing.</p>
         </div>
+        <button id="dismiss-warning-btn" class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+          Continue Anyway
+        </button>
       </div>
     `;
     document.body.appendChild(overlay);
-    return false;
+
+    // Set up dismiss button
+    document.getElementById('dismiss-warning-btn').addEventListener('click', () => {
+      overlay.remove();
+    });
   }
 
-  return true;
+  return true; // Always return true to allow app to initialize
 }
 
 /**

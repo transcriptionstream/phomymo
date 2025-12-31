@@ -3,10 +3,10 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=47';
+import { CanvasRenderer } from './canvas.js?v=48';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest } from './printer.js?v=6';
+import { print, printDensityTest, isDSeriesPrinter } from './printer.js?v=7';
 import {
   createTextElement,
   createImageElement,
@@ -59,8 +59,8 @@ import {
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-// Label size presets (width x height in mm)
-const LABEL_SIZES = {
+// Label size presets for M-series (width x height in mm)
+const M_SERIES_LABEL_SIZES = {
   '12x40': { width: 12, height: 40 },
   '15x30': { width: 15, height: 30 },
   '20x30': { width: 20, height: 30 },
@@ -74,6 +74,22 @@ const LABEL_SIZES = {
   '50x80': { width: 50, height: 80 },
   '60x40': { width: 60, height: 40 },
 };
+
+// Label size presets for D-series (D30, D110) - max width is 12-15mm
+// Displayed as WxH but D30 prints rotated, so user designs in landscape
+const D_SERIES_LABEL_SIZES = {
+  '40x12': { width: 40, height: 12 },
+  '30x12': { width: 30, height: 12 },
+  '22x12': { width: 22, height: 12 },
+  '12x12': { width: 12, height: 12 },
+  '30x14': { width: 30, height: 14 },
+  '22x14': { width: 22, height: 14 },
+  '40x15': { width: 40, height: 15 },
+  '30x15': { width: 30, height: 15 },
+};
+
+// Default to M-series sizes
+let LABEL_SIZES = { ...M_SERIES_LABEL_SIZES };
 
 // App state
 const state = {
@@ -311,6 +327,58 @@ function updateConnectionStatus(connected) {
   const dot = $('#status-dot');
   dot.classList.toggle('bg-green-500', connected);
   dot.classList.toggle('bg-gray-400', !connected);
+}
+
+/**
+ * Update label size dropdown options based on connected printer type
+ * @param {boolean} isDSeries - Whether the connected printer is D-series
+ */
+function updateLabelSizeDropdown(isDSeries) {
+  const select = $('#label-size');
+  const currentValue = select.value;
+  const currentSize = state.labelSize;
+
+  // Update the active label sizes
+  LABEL_SIZES = isDSeries ? { ...D_SERIES_LABEL_SIZES } : { ...M_SERIES_LABEL_SIZES };
+
+  // Clear existing options (except custom)
+  while (select.options.length > 0) {
+    select.remove(0);
+  }
+
+  // Add new options
+  for (const [key, size] of Object.entries(LABEL_SIZES)) {
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = `${size.width}x${size.height}mm`;
+    select.appendChild(option);
+  }
+
+  // Add custom option
+  const customOption = document.createElement('option');
+  customOption.value = 'custom';
+  customOption.textContent = 'Custom...';
+  select.appendChild(customOption);
+
+  // Try to restore current size or pick a sensible default
+  const currentKey = `${currentSize.width}x${currentSize.height}`;
+  if (LABEL_SIZES[currentKey]) {
+    select.value = currentKey;
+    $('#custom-size').classList.add('hidden');
+  } else if (currentValue === 'custom') {
+    select.value = 'custom';
+    $('#custom-size').classList.remove('hidden');
+  } else {
+    // Pick default based on printer type
+    const defaultKey = isDSeries ? '40x12' : '40x30';
+    select.value = defaultKey;
+    state.labelSize = { ...LABEL_SIZES[defaultKey] };
+    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+    state.renderer.clearCache();
+    updatePrintSize();
+    render();
+    $('#custom-size').classList.add('hidden');
+  }
 }
 
 /**
@@ -967,12 +1035,16 @@ async function handleBatchPrint() {
       // Substitute fields
       const mergedElements = substituteFields(state.elements, record);
 
-      // Render to raster
-      const rasterData = state.renderer.getRasterData(mergedElements);
+      // Render to raster (use raw format for D-series printers)
+      const deviceName = state.transport.getDeviceName?.() || '';
+      const rasterData = isDSeriesPrinter(deviceName)
+        ? state.renderer.getRasterDataRaw(mergedElements)
+        : state.renderer.getRasterData(mergedElements);
 
       // Print
       await print(state.transport, rasterData, {
         isBLE: state.connectionType === 'ble',
+        deviceName,
         density,
         feed,
         onProgress: (progress) => {
@@ -1038,12 +1110,16 @@ async function handlePrintSinglePreview() {
     // Substitute fields
     const mergedElements = substituteFields(state.elements, record);
 
-    // Render to raster
-    const rasterData = state.renderer.getRasterData(mergedElements);
+    // Render to raster (use raw format for D-series printers)
+    const deviceName = state.transport.getDeviceName?.() || '';
+    const rasterData = isDSeriesPrinter(deviceName)
+      ? state.renderer.getRasterDataRaw(mergedElements)
+      : state.renderer.getRasterData(mergedElements);
 
     // Print
     await print(state.transport, rasterData, {
       isBLE: state.connectionType === 'ble',
+      deviceName,
       density,
       feed,
       onProgress: (progress) => {
@@ -1797,6 +1873,10 @@ async function handleConnect() {
     btn.classList.add('bg-green-100', 'text-green-800', 'border-green-300');
     setStatus(`Connected to ${state.transport.getDeviceName()}`);
 
+    // Update label sizes based on connected printer type
+    const deviceName = state.transport.getDeviceName?.() || '';
+    updateLabelSizeDropdown(isDSeriesPrinter(deviceName));
+
   } catch (error) {
     console.error('Connect error:', error);
     setStatus(error.message || 'Connection failed');
@@ -1828,7 +1908,12 @@ async function handlePrint() {
     }
 
     btn.textContent = 'Printing...';
-    const rasterData = state.renderer.getRasterData(state.elements);
+
+    // Render to raster (use raw format for D-series printers)
+    const deviceName = state.transport.getDeviceName?.() || '';
+    const rasterData = isDSeriesPrinter(deviceName)
+      ? state.renderer.getRasterDataRaw(state.elements)
+      : state.renderer.getRasterData(state.elements);
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {
@@ -1837,6 +1922,7 @@ async function handlePrint() {
 
       await print(state.transport, rasterData, {
         isBLE: state.connectionType === 'ble',
+        deviceName,
         density,
         feed,
         onProgress: (progress) => {
@@ -2496,6 +2582,8 @@ function init() {
     btn.classList.remove('bg-green-100', 'text-green-800', 'border-green-300');
     btn.classList.add('bg-white', 'hover:bg-gray-50');
     updateConnectionStatus(false);
+    // Reset to M-series sizes when disconnecting/changing connection
+    updateLabelSizeDropdown(false);
   });
 
   // Info dialog

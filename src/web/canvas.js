@@ -960,6 +960,66 @@ export class CanvasRenderer {
   }
 
   /**
+   * Get canvas image data as raw raster (no padding/centering)
+   * Used for D-series printers that have different print widths
+   */
+  getRasterDataRaw(elements) {
+    // Render elements without handles
+    this.clear();
+    for (const element of elements) {
+      this.renderElement(element);
+    }
+
+    // Get dimensions
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+
+    // Get image data
+    const imageData = this.ctx.getImageData(0, 0, width, height);
+    const pixels = imageData.data;
+
+    // Calculate bytes per row (actual canvas width, no padding)
+    const widthBytes = Math.ceil(width / 8);
+
+    // Output: actual canvas width x height
+    const output = new Uint8Array(widthBytes * height);
+
+    // Convert pixels to bits
+    for (let y = 0; y < height; y++) {
+      for (let byteX = 0; byteX < widthBytes; byteX++) {
+        let byte = 0;
+
+        for (let bit = 0; bit < 8; bit++) {
+          const x = byteX * 8 + bit;
+          if (x >= width) continue;
+
+          // Get pixel value (RGBA)
+          const idx = (y * width + x) * 4;
+          const r = pixels[idx];
+          const g = pixels[idx + 1];
+          const b = pixels[idx + 2];
+
+          // Calculate brightness
+          const brightness = (r + g + b) / 3;
+
+          // Black pixel (brightness < 128) = set bit to 1
+          if (brightness < 128) {
+            byte |= (1 << (7 - bit));
+          }
+        }
+
+        output[y * widthBytes + byteX] = byte;
+      }
+    }
+
+    return {
+      data: output,
+      widthBytes: widthBytes,
+      heightLines: height,
+    };
+  }
+
+  /**
    * Convert canvas coordinates to element-local coordinates
    */
   canvasToLocal(canvasX, canvasY, element) {

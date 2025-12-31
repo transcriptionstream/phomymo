@@ -1,6 +1,7 @@
 /**
- * Printer protocol for Phomemo M260
+ * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
+ * Supports M-series (M110, M200, M220, M260) and D-series (D30, D110)
  */
 
 /**
@@ -14,7 +15,7 @@ function densityToHeatTime(density) {
   return heatTimes[Math.max(0, Math.min(7, density - 1))];
 }
 
-// ESC/POS commands
+// ESC/POS commands for M-series
 const CMD = {
   INIT: new Uint8Array([0x1b, 0x40]),
   FEED: (dots) => new Uint8Array([0x1b, 0x4a, dots]),
@@ -33,6 +34,77 @@ const CMD = {
   ]),
 };
 
+// D-series (D30, D110) specific commands
+const D_CMD = {
+  // D30 header includes init inline: ESC @ GS v 0 \0 widthLow widthHigh rowsLow rowsHigh
+  HEADER: (widthBytes, rows) => new Uint8Array([
+    0x1b, 0x40,           // ESC @ - Initialize
+    0x1d, 0x76, 0x30, 0x00, // GS v 0 \0 - Raster bit image
+    widthBytes % 256,
+    Math.floor(widthBytes / 256),
+    rows % 256,
+    Math.floor(rows / 256),
+  ]),
+  END: new Uint8Array([0x1b, 0x64, 0x00]),
+};
+
+/**
+ * Detect if device is D-series based on name
+ */
+export function isDSeriesPrinter(deviceName) {
+  if (!deviceName) return false;
+  const name = deviceName.toUpperCase();
+  return name.startsWith('D30') || name.startsWith('D110') || name.startsWith('D');
+}
+
+/**
+ * Rotate raster data 90 degrees clockwise for D-series printers
+ * D-series prints labels top-to-bottom, so we need to rotate the image
+ *
+ * @param {Uint8Array} data - Original raster data (1 bit per pixel, packed in bytes)
+ * @param {number} widthBytes - Width in bytes (8 pixels per byte)
+ * @param {number} heightLines - Height in lines
+ * @returns {Object} { data, widthBytes, heightLines } - Rotated raster data
+ */
+function rotateRaster90CW(data, widthBytes, heightLines) {
+  const srcWidthPx = widthBytes * 8;
+  const srcHeightPx = heightLines;
+
+  // After 90° CW rotation: new width = old height, new height = old width
+  const dstWidthPx = srcHeightPx;
+  const dstHeightPx = srcWidthPx;
+  const dstWidthBytes = Math.ceil(dstWidthPx / 8);
+
+  const rotated = new Uint8Array(dstWidthBytes * dstHeightPx);
+
+  // For each pixel in source, calculate its position in destination
+  for (let srcY = 0; srcY < srcHeightPx; srcY++) {
+    for (let srcX = 0; srcX < srcWidthPx; srcX++) {
+      // Get source pixel
+      const srcByteIdx = srcY * widthBytes + Math.floor(srcX / 8);
+      const srcBitIdx = 7 - (srcX % 8);
+      const pixel = (data[srcByteIdx] >> srcBitIdx) & 1;
+
+      // 90° CW rotation: (x, y) -> (height - 1 - y, x)
+      const dstX = srcHeightPx - 1 - srcY;
+      const dstY = srcX;
+
+      // Set destination pixel
+      const dstByteIdx = dstY * dstWidthBytes + Math.floor(dstX / 8);
+      const dstBitIdx = 7 - (dstX % 8);
+      if (pixel) {
+        rotated[dstByteIdx] |= (1 << dstBitIdx);
+      }
+    }
+  }
+
+  return {
+    data: rotated,
+    widthBytes: dstWidthBytes,
+    heightLines: dstHeightPx,
+  };
+}
+
 /**
  * Print raster data to a Phomemo printer
  *
@@ -40,22 +112,65 @@ const CMD = {
  * @param {Object} rasterData - Raster data from canvas { data, widthBytes, heightLines }
  * @param {Object} options - Print options
  * @param {boolean} options.isBLE - Whether using BLE transport
+ * @param {string} options.deviceName - Device name for protocol detection
  * @param {number} options.density - Print density 1-8 (default 6)
  * @param {number} options.feed - Feed after print in dots (default 32)
  * @param {Function} options.onProgress - Progress callback (percent)
  */
 export async function print(transport, rasterData, options = {}) {
-  const { isBLE = false, density = 6, feed = 32, onProgress = null } = options;
+  const { isBLE = false, deviceName = '', density = 6, feed = 32, onProgress = null } = options;
   const { data, widthBytes, heightLines } = rasterData;
 
+  const isDSeries = isDSeriesPrinter(deviceName);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
+  console.log(`Device: ${deviceName}, Protocol: ${isDSeries ? 'D-series' : 'M-series'}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
-  if (isBLE) {
+  if (isDSeries && isBLE) {
+    await printDSeries(transport, data, widthBytes, heightLines, onProgress);
+  } else if (isBLE) {
     await printBLE(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else {
     await printUSB(transport, data, widthBytes, heightLines, density, feed, onProgress);
   }
+}
+
+/**
+ * Print via BLE for D-series printers (D30, D110)
+ */
+async function printDSeries(transport, data, widthBytes, heightLines, onProgress) {
+  console.log('Using D-series protocol...');
+  console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
+
+  // Rotate for D-series (they print labels sideways)
+  const rotated = rotateRaster90CW(data, widthBytes, heightLines);
+  console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
+
+  // D-series header
+  console.log('Sending D-series header...');
+  await transport.send(D_CMD.HEADER(rotated.widthBytes, rotated.heightLines));
+
+  // Send data in 128-byte chunks
+  console.log('Sending data...');
+  const chunkSize = 128;
+
+  for (let i = 0; i < rotated.data.length; i += chunkSize) {
+    const chunk = rotated.data.slice(i, Math.min(i + chunkSize, rotated.data.length));
+    await transport.send(chunk);
+    await transport.delay(20);
+
+    if (onProgress) {
+      const progress = Math.round((i + chunk.length) / rotated.data.length * 100);
+      onProgress(progress);
+    }
+  }
+
+  // D-series end command
+  await transport.delay(100);
+  console.log('Sending D-series end command...');
+  await transport.send(D_CMD.END);
+
+  console.log('Print complete!');
 }
 
 /**

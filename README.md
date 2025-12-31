@@ -46,13 +46,26 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 - **Batch printing** - Print multiple labels with progress indicator and cancel support
 
 #### Label Sizes
-- Common presets: 12x12, 12x22, 12x40, 14x25, 15x30, 20x30, 25x50, 30x20, 40x30, 40x60, 50x30, 50x50, 50x80, 60x40
+- **M-series presets**: 12x40, 15x30, 20x30, 25x50, 30x20, 30x40, 40x30, 40x60, 50x25, 50x30, 50x80, 60x40
+- **D-series presets**: 40x12, 30x12, 22x12, 12x12, 30x14, 22x14, 40x15, 30x15
 - Custom dimensions with live preview
+- **Auto-detection**: Label size options automatically switch when connecting to D-series printers
 
 #### File Operations
 - **Save/Load** - Persist designs to browser localStorage
 - **Export/Import** - Share designs as JSON files
 - **Print settings** - Density control, multiple copies, feed adjustment
+
+### Supported Printers
+
+#### M-series (M110, M200, M220, M221, M260)
+Standard thermal label printers with print widths up to 60mm. These use the standard ESC/POS raster protocol over Bluetooth or USB.
+
+#### D-series (D30, D110)
+Compact label makers with 12-15mm print width. These use a different protocol and print labels rotated 90 degrees. The app automatically detects D-series printers and:
+- Switches to D-series label size presets
+- Rotates image data for correct orientation
+- Uses the appropriate print protocol
 
 ### Quick Start
 
@@ -173,6 +186,7 @@ phomymo/
 
 - **Density control**: Some printers (like M260) may not respond to runtime density commands. Print darkness may need to be adjusted via the printer's own settings.
 - **Web Bluetooth**: Only available in Chromium-based browsers, requires HTTPS or localhost.
+- **D-series USB**: D-series printers (D30, D110) are currently only supported via Bluetooth, not USB.
 
 ## Acknowledgments
 

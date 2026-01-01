@@ -122,6 +122,8 @@ const state = {
   templateData: [],       // Array of data records for batch printing
   selectedRecords: [],    // Indices of selected records for printing
   currentPreviewIndex: 0, // Current label index in full preview
+  // Inline text editing state
+  editingTextId: null,    // ID of text element being inline-edited
   // Undo/Redo history
   history: [],            // Array of previous element states
   historyIndex: -1,       // Current position in history (-1 = no history)
@@ -1248,6 +1250,77 @@ function modifyElement(id, changes) {
 }
 
 /**
+ * Start inline editing of a text element
+ * Shows a textarea overlay positioned over the element
+ */
+function startInlineEdit(elementId) {
+  const element = state.elements.find(e => e.id === elementId);
+  if (!element || element.type !== 'text') return;
+
+  // Save current text for potential cancel
+  state.editingTextId = elementId;
+  state.editingOriginalText = element.text;
+
+  const editor = $('#inline-text-editor');
+  const canvas = $('#preview-canvas');
+  const canvasRect = canvas.getBoundingClientRect();
+
+  // Calculate scale (canvas display size vs internal size)
+  const scale = canvasRect.width / canvas.width;
+
+  // Position overlay to match element (using fixed positioning)
+  const left = canvasRect.left + (element.x * scale);
+  const top = canvasRect.top + (element.y * scale);
+  const width = element.width * scale;
+  const height = element.height * scale;
+
+  // Apply styles to match the element
+  Object.assign(editor.style, {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    height: `${height}px`,
+    transform: `rotate(${element.rotation || 0}deg)`,
+    transformOrigin: 'top left',
+    fontFamily: element.fontFamily || 'Inter, sans-serif',
+    fontSize: `${(element.fontSize || 24) * scale}px`,
+    fontWeight: element.fontWeight || 'normal',
+    fontStyle: element.fontStyle || 'normal',
+    textAlign: element.align || 'left',
+    color: element.color === 'white' ? '#fff' : '#000',
+    lineHeight: '1.2',
+  });
+
+  // Set content and show
+  editor.value = element.text || '';
+  editor.classList.remove('hidden');
+  editor.focus();
+  editor.select();
+}
+
+/**
+ * Stop inline editing
+ * @param {boolean} save - Whether to save changes (false = cancel/revert)
+ */
+function stopInlineEdit(save = true) {
+  if (!state.editingTextId) return;
+
+  const editor = $('#inline-text-editor');
+
+  if (save) {
+    // Save the final text
+    modifyElement(state.editingTextId, { text: editor.value });
+  } else {
+    // Revert to original text
+    modifyElement(state.editingTextId, { text: state.editingOriginalText });
+  }
+
+  editor.classList.add('hidden');
+  state.editingTextId = null;
+  state.editingOriginalText = null;
+}
+
+/**
  * Update toolbar button states
  */
 function updateToolbarState() {
@@ -1463,6 +1536,14 @@ function getCanvasPos(e) {
  */
 function handleCanvasMouseDown(e) {
   const pos = getCanvasPos(e);
+
+  // If inline editing is active, clicking on canvas closes it
+  if (state.editingTextId) {
+    // Don't close immediately - let the dblclick event fire first if it's a double-click
+    return;
+  }
+
+  const clickedElement = getElementAtPoint(pos.x, pos.y, state.elements);
   const selectedElements = getSelectedElements();
   const isMultiSelect = state.selectedIds.length > 1;
 
@@ -1517,7 +1598,6 @@ function handleCanvasMouseDown(e) {
   }
 
   // Check if clicking on an element
-  const clickedElement = getElementAtPoint(pos.x, pos.y, state.elements);
   if (clickedElement) {
     // Shift+click toggles selection
     if (e.shiftKey) {
@@ -1735,6 +1815,9 @@ function addTextElement() {
   state.elements.push(element);
   selectElement(element.id);
   setStatus('Text added');
+
+  // Start inline editing immediately so user can type
+  setTimeout(() => startInlineEdit(element.id), 50);
 }
 
 /**
@@ -2339,6 +2422,11 @@ function handleLoad(name) {
  * Handle keyboard shortcuts
  */
 function handleKeyDown(e) {
+  // Skip all shortcuts when inline text editing is active
+  if (state.editingTextId) {
+    return;
+  }
+
   // Undo: Ctrl/Cmd + Z
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
     if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
@@ -3140,6 +3228,52 @@ function init() {
   canvas.addEventListener('mousemove', handleCanvasMouseMove);
   canvas.addEventListener('mouseup', handleCanvasMouseUp);
   canvas.addEventListener('mouseleave', handleCanvasMouseUp);
+
+  // Native double-click for inline text editing
+  canvas.addEventListener('dblclick', (e) => {
+    const pos = getCanvasPos(e);
+    const clickedElement = getElementAtPoint(pos.x, pos.y, state.elements);
+    if (clickedElement?.type === 'text') {
+      e.preventDefault();
+      e.stopPropagation();
+      startInlineEdit(clickedElement.id);
+    }
+  });
+
+  // Inline text editor events
+  const inlineEditor = $('#inline-text-editor');
+
+  // Real-time sync as user types
+  inlineEditor.addEventListener('input', (e) => {
+    if (state.editingTextId) {
+      modifyElement(state.editingTextId, { text: e.target.value });
+    }
+  });
+
+  // Handle Escape to cancel, Enter for single-line exit
+  inlineEditor.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      stopInlineEdit(false); // Cancel - revert to original
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const element = state.elements.find(el => el.id === state.editingTextId);
+      if (element?.noWrap) {
+        e.preventDefault();
+        stopInlineEdit(true); // Save and exit for single-line text
+      }
+    }
+  });
+
+  // Blur saves and exits (with delay to prevent immediate close)
+  inlineEditor.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (state.editingTextId) {
+        stopInlineEdit(true);
+      }
+    }, 150);
+  });
 
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyDown);

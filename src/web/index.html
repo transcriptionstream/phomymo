@@ -350,6 +350,9 @@
         <canvas id="preview-canvas" class="bg-white shadow-md rounded cursor-crosshair"></canvas>
       </div>
 
+      <!-- Inline Text Editor Overlay -->
+      <textarea id="inline-text-editor" class="hidden fixed resize-none border-2 border-blue-400 rounded outline-none p-1" style="background: rgba(255,255,255,0.95); overflow: hidden; z-index: 100; box-sizing: border-box;"></textarea>
+
       <!-- Zoom Controls - Centered bottom -->
       <div class="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-2 sm:px-4 py-2 sm:py-3 z-40">
         <button id="zoom-out" class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom Out">
@@ -1086,6 +1089,6 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-  <script type="module" src="app.js?v=37"></script>
+  <script type="module" src="app.js?v=42"></script>
 </body>
 </html>

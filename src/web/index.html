@@ -67,7 +67,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Lato:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Oswald:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Roboto+Mono:wght@400;500;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; }
+    /* Hide body until styles are ready to prevent FOUC */
+    body { opacity: 0; font-family: 'Inter', system-ui, sans-serif; }
+    body.ready { opacity: 1; transition: opacity 0.1s ease-in; }
     .canvas-bg {
       background-image: linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
                         linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
@@ -875,75 +877,90 @@
   <input type="file" id="image-file-input" accept="image/*" class="hidden">
 
   <!-- Info Dialog -->
-  <div id="info-dialog" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-xl p-6 w-[500px] max-w-[90vw] shadow-xl max-h-[80vh] overflow-y-auto">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-gray-900">About Phomymo</h3>
-        <button id="info-close" class="text-gray-400 hover:text-gray-600">
+  <div id="info-dialog" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[600px] max-w-full overflow-hidden">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 text-white relative">
+        <button id="info-close" class="absolute top-3 right-3 text-white/80 hover:text-white transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-lg font-bold">Phomymo</h3>
+            <p class="text-blue-100 text-xs">Free Label Designer for Phomemo Printers</p>
+          </div>
+        </div>
       </div>
 
-      <div class="space-y-4 text-sm text-gray-600">
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">What is this?</h4>
-          <p>Phomymo is an open-source web-based label designer for Phomemo thermal printers. It runs entirely in your browser using Web Bluetooth technology.</p>
-          <p class="mt-2 text-gray-500"><strong>Tested with:</strong> M221, M260, D30, and D110 printers. Other M-series and D-series models should also work.</p>
+      <!-- Content -->
+      <div class="p-5 space-y-4">
+        <!-- Top row: Features + Privacy -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
+            <div class="flex items-center gap-2 mb-1">
+              <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <h4 class="font-semibold text-gray-900 text-sm">No Install Required</h4>
+            </div>
+            <p class="text-xs text-gray-600">Runs in browser. No downloads, no drivers, no account.</p>
+          </div>
+          <div class="bg-amber-50 rounded-lg p-3 border border-amber-100">
+            <div class="flex items-center gap-2 mb-1">
+              <div class="w-6 h-6 bg-amber-500 rounded flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              </div>
+              <h4 class="font-semibold text-gray-900 text-sm">Privacy Focused</h4>
+            </div>
+            <p class="text-xs text-gray-600">No data collected. Everything stays on your device.</p>
+          </div>
         </div>
 
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">Supported Printers</h4>
-          <p><strong>M-series</strong> (M110, M200, M220, M221, M260): Standard thermal label printers with various print widths up to 60mm.</p>
-          <p class="mt-1"><strong>D-series</strong> (D30, D110): Compact label makers with 12-15mm print width. The app automatically detects D-series printers and adjusts label sizes accordingly.</p>
+        <!-- Supported Printers -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
+            <p class="text-sm text-gray-700">M110, M200, M220, M221, M260</p>
+            <p class="text-xs text-gray-500">Up to 60mm print width</p>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
+            <p class="text-sm text-gray-700">D30, D110</p>
+            <p class="text-xs text-gray-500">Compact 12-15mm width</p>
+          </div>
         </div>
 
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">No Software Installation Required</h4>
-          <p>Unlike the official Phomemo apps, this tool requires <strong>no downloads or installations</strong>. Everything runs directly in your browser over a secure HTTPS connection.</p>
+        <!-- GitHub CTA -->
+        <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 border border-gray-200 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <p class="text-sm text-gray-700">Like this tool? <span class="font-medium">Star us on GitHub!</span></p>
+          </div>
+          <div class="flex gap-2">
+            <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+              Star
+            </a>
+            <a href="https://github.com/transcriptionstream/phomymo/issues" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+              Report Issue
+            </a>
+          </div>
         </div>
 
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">Why Avoid the Official Software?</h4>
-          <p>The official Phomemo desktop and mobile apps have been flagged for concerning behaviors including:</p>
-          <ul class="list-disc list-inside mt-2 space-y-1 text-gray-500">
-            <li>Excessive data collection and telemetry</li>
-            <li>Requests for unnecessary permissions</li>
-            <li>Unclear privacy policies regarding user data</li>
-            <li>Potential security vulnerabilities in closed-source code</li>
-          </ul>
-          <p class="mt-2">This web app processes everything locally in your browser. No data is sent to any server.</p>
-        </div>
+        <!-- Browser note -->
+        <p class="text-xs text-gray-500 text-center">Requires Chrome, Edge, or Chromium-based browser with Web Bluetooth.</p>
+      </div>
 
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">Browser Requirements</h4>
-          <p>Requires a Chromium-based browser (Chrome, Edge, Opera) with Web Bluetooth support. Must be accessed over HTTPS.</p>
-        </div>
-
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">Sources & References</h4>
-          <ul class="space-y-1 text-gray-500">
-            <li><a href="https://github.com/vivier/phomern" target="_blank" rel="noopener" class="text-blue-600 hover:underline">phomemo-tools</a> - Protocol research and documentation</li>
-            <li><a href="https://github.com/vrk/label-sticker-js" target="_blank" rel="noopener" class="text-blue-600 hover:underline">label-sticker-js</a> - Web Bluetooth implementation reference</li>
-            <li><a href="https://developer.chrome.com/docs/capabilities/bluetooth" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Web Bluetooth API</a> - Chrome documentation</li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 class="font-medium text-gray-900 mb-1">Open Source</h4>
-          <p>This project is open source. View the code, report issues, or contribute on GitHub:</p>
-          <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="inline-flex items-center gap-2 mt-2 text-blue-600 hover:underline">
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-            github.com/transcriptionstream/phomymo
-          </a>
-        </div>
-
-        <div class="pt-2 border-t border-gray-200">
-          <p class="text-xs text-gray-400">This is an independent open-source project and is not affiliated with Phomemo.</p>
-          <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 mt-2 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-            <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
-            An Affordable Magic product
-          </a>
-        </div>
+      <!-- Footer -->
+      <div class="bg-gray-50 px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+        <p class="text-xs text-gray-400">Not affiliated with Phomemo</p>
+        <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all">
+          <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
+          <span class="text-xs font-medium text-gray-700">An Affordable Magic Product</span>
+        </a>
       </div>
     </div>
   </div>
@@ -1089,6 +1106,14 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-  <script type="module" src="app.js?v=55"></script>
+  <script type="module" src="app.js?v=56"></script>
+  <script>
+    // Show body once styles are ready
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.body.classList.add('ready');
+      });
+    });
+  </script>
 </body>
 </html>

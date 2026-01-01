@@ -2746,21 +2746,94 @@ function checkCompatibility() {
   if (warnings.length > 0) {
     const overlay = document.createElement('div');
     overlay.id = 'compatibility-warning';
-    overlay.className = 'fixed inset-0 bg-gray-900 bg-opacity-90 flex items-center justify-center z-50';
+    overlay.className = 'fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4';
     overlay.innerHTML = `
-      <div class="bg-white rounded-xl p-8 max-w-md mx-4 text-center">
-        <div class="text-yellow-500 text-5xl mb-4">⚠</div>
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">Limited Browser Support</h2>
-        <div class="text-gray-600 space-y-2 mb-6">
-          ${warnings.map(w => `<p>${w}</p>`).join('')}
+      <div class="bg-white rounded-2xl shadow-2xl w-[600px] max-w-full overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4 text-white relative">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold">Limited Browser Support</h3>
+              <p class="text-amber-100 text-xs">Printing requires Chrome, Edge, or Opera</p>
+            </div>
+          </div>
         </div>
-        <div class="text-sm text-gray-500 mb-6">
-          <p class="mb-2"><strong>For printing:</strong> Use Chrome, Edge, or Opera on desktop</p>
-          <p>You can still design, save, and export labels without printing.</p>
+
+        <!-- Content -->
+        <div class="p-5 space-y-4">
+          <!-- Warning Messages -->
+          <div class="bg-amber-50 rounded-lg p-3 border border-amber-200">
+            <div class="flex items-start gap-2">
+              <svg class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <div class="text-sm text-gray-700 space-y-1">
+                ${warnings.map(w => `<p>${w}</p>`).join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- Still Available -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-green-50 rounded-lg p-3 border border-green-100">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <h4 class="font-semibold text-gray-900 text-sm">Design Labels</h4>
+              </div>
+              <p class="text-xs text-gray-600">Create text, barcodes, QR codes, shapes</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-3 border border-green-100">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <h4 class="font-semibold text-gray-900 text-sm">Save & Export</h4>
+              </div>
+              <p class="text-xs text-gray-600">Save designs, export as JSON files</p>
+            </div>
+          </div>
+
+          <!-- Supported Printers Info -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
+              <p class="text-sm text-gray-700">M110, M200, M220, M221, M260</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
+              <p class="text-sm text-gray-700">D30, D110</p>
+            </div>
+          </div>
+
+          <!-- GitHub CTA -->
+          <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 border border-gray-200 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/></svg>
+              <span class="text-sm text-gray-700">Open source &amp; free forever</span>
+            </div>
+            <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="px-3 py-1 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-1">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.4 8.168L12 18.896l-7.334 3.857 1.4-8.168-5.934-5.787 8.2-1.192L12 .587z"/></svg>
+              Star on GitHub
+            </a>
+          </div>
+
+          <!-- Affordable Magic -->
+          <div class="flex items-center justify-center gap-2 pt-2 border-t border-gray-100">
+            <span class="text-xs text-gray-500">An</span>
+            <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="flex items-center gap-1 hover:opacity-80 transition-opacity">
+              <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
+            </a>
+            <span class="text-xs text-gray-500">product</span>
+          </div>
+
+          <!-- Action Button -->
+          <button id="dismiss-warning-btn" class="w-full px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium">
+            Continue to Designer
+          </button>
         </div>
-        <button id="dismiss-warning-btn" class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
-          Continue Anyway
-        </button>
       </div>
     `;
     document.body.appendChild(overlay);

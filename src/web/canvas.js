@@ -12,6 +12,9 @@ const PX_PER_MM = 8;
 const PRINTER_WIDTH_BYTES = 72;
 const PRINTER_WIDTH_PIXELS = PRINTER_WIDTH_BYTES * 8;
 
+// Overflow area padding in pixels (visible area around label)
+const OVERFLOW_PADDING = 120;
+
 /**
  * Canvas renderer class
  */
@@ -21,6 +24,14 @@ export class CanvasRenderer {
     this.ctx = canvas.getContext('2d');
     this.widthMm = 40;
     this.heightMm = 30;
+
+    // Label dimensions in pixels (without overflow)
+    this.labelWidth = 0;
+    this.labelHeight = 0;
+
+    // Offset where label starts within canvas
+    this.labelOffsetX = OVERFLOW_PADDING;
+    this.labelOffsetY = OVERFLOW_PADDING;
 
     // Image cache for elements
     this.imageCache = new Map();
@@ -39,53 +50,101 @@ export class CanvasRenderer {
     this.widthMm = widthMm;
     this.heightMm = heightMm;
 
-    // Canvas dimensions in pixels
-    const canvasWidth = Math.round(widthMm * PX_PER_MM);
-    const canvasHeight = Math.round(heightMm * PX_PER_MM);
+    // Label dimensions in pixels
+    this.labelWidth = Math.round(widthMm * PX_PER_MM);
+    this.labelHeight = Math.round(heightMm * PX_PER_MM);
 
-    this.canvas.width = canvasWidth;
-    this.canvas.height = canvasHeight;
+    // Canvas includes overflow padding on all sides
+    this.canvas.width = this.labelWidth + (OVERFLOW_PADDING * 2);
+    this.canvas.height = this.labelHeight + (OVERFLOW_PADDING * 2);
 
-    return { width: canvasWidth, height: canvasHeight };
+    // Return label dimensions (what elements use for positioning)
+    return { width: this.labelWidth, height: this.labelHeight };
   }
 
   /**
-   * Get dimensions in pixels
+   * Get label dimensions in pixels (for element positioning)
    */
   getDimensions() {
     return {
-      width: this.canvas.width,
-      height: this.canvas.height,
+      width: this.labelWidth,
+      height: this.labelHeight,
       widthMm: this.widthMm,
       heightMm: this.heightMm,
     };
   }
 
   /**
-   * Clear canvas to white
+   * Clear canvas - checkerboard overflow area with white label
    */
   clear() {
-    this.ctx.fillStyle = 'white';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    const ctx = this.ctx;
+
+    // Draw checkerboard pattern for entire canvas (overflow area)
+    this.drawCheckerboard(ctx, 0, 0, this.canvas.width, this.canvas.height);
+
+    // Draw white label area with rounded corners (like physical labels)
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.roundRect(this.labelOffsetX, this.labelOffsetY, this.labelWidth, this.labelHeight, 8);
+    ctx.fill();
+  }
+
+  /**
+   * Draw a checkerboard pattern
+   */
+  drawCheckerboard(ctx, x, y, width, height) {
+    const squareSize = 10;
+    const lightColor = '#f0f0f0';
+    const darkColor = '#d0d0d0';
+
+    // Fill with light color first
+    ctx.fillStyle = lightColor;
+    ctx.fillRect(x, y, width, height);
+
+    // Draw dark squares
+    ctx.fillStyle = darkColor;
+    for (let row = 0; row < Math.ceil(height / squareSize); row++) {
+      for (let col = 0; col < Math.ceil(width / squareSize); col++) {
+        if ((row + col) % 2 === 1) {
+          ctx.fillRect(
+            x + col * squareSize,
+            y + row * squareSize,
+            squareSize,
+            squareSize
+          );
+        }
+      }
+    }
   }
 
   /**
    * Render all elements
    * @param {Array} elements - Array of elements to render
    * @param {Array|string|null} selectedIds - Array of selected element IDs (or single ID for backwards compatibility)
+   * @param {Array} alignmentGuides - Array of alignment guides { type: 'h'|'v', pos: number }
    */
-  renderAll(elements, selectedIds = null) {
+  renderAll(elements, selectedIds = null, alignmentGuides = []) {
     this.clear();
+
+    const ctx = this.ctx;
 
     // Normalize to array
     const selectedArray = selectedIds
       ? (Array.isArray(selectedIds) ? selectedIds : [selectedIds])
       : [];
 
+    // Translate to label origin for element rendering
+    ctx.save();
+    ctx.translate(this.labelOffsetX, this.labelOffsetY);
+
     // Render elements in z-order (first = bottom)
     for (const element of elements) {
       this.renderElement(element);
     }
+
+    // Draw alignment guides (after elements, before handles)
+    this.drawAlignmentGuides(alignmentGuides);
 
     // Draw handles based on selection
     if (selectedArray.length === 1) {
@@ -97,11 +156,11 @@ export class CanvasRenderer {
           const groupMembers = elements.filter(e => e.groupId === selected.groupId);
           const bounds = this.getMultiElementBounds(groupMembers);
           if (bounds) {
-            drawGroupHandles(this.ctx, bounds);
+            drawGroupHandles(ctx, bounds);
           }
         } else {
           // Single ungrouped element
-          drawHandles(this.ctx, selected);
+          drawHandles(ctx, selected);
         }
       }
     } else if (selectedArray.length > 1) {
@@ -109,9 +168,72 @@ export class CanvasRenderer {
       const selectedElements = elements.filter(e => selectedArray.includes(e.id));
       const bounds = this.getMultiElementBounds(selectedElements);
       if (bounds) {
-        drawGroupHandles(this.ctx, bounds);
+        drawGroupHandles(ctx, bounds);
       }
     }
+
+    ctx.restore();
+
+    // Dim overflow areas (content outside label bounds)
+    this.dimOverflowContent();
+  }
+
+  /**
+   * Dim content that extends outside the label area
+   * Uses semi-transparent overlay with rounded label cutout
+   */
+  dimOverflowContent() {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // Create path covering entire canvas with rounded label hole
+    ctx.beginPath();
+    // Outer rectangle (clockwise)
+    ctx.rect(0, 0, this.canvas.width, this.canvas.height);
+    // Inner rounded rectangle (counter-clockwise to create hole)
+    ctx.roundRect(this.labelOffsetX, this.labelOffsetY, this.labelWidth, this.labelHeight, 8);
+
+    // Fill using evenodd rule (fills area between outer and inner paths)
+    ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+    ctx.fill('evenodd');
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw alignment guides
+   * @param {Array} guides - Array of { type: 'h'|'v', pos: number }
+   */
+  drawAlignmentGuides(guides) {
+    if (!guides || guides.length === 0) return;
+
+    const ctx = this.ctx;
+    ctx.save();
+
+    // Magenta dashed line style
+    ctx.strokeStyle = '#ff00ff';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+
+    // Extend guides into overflow area (context is translated, so use negative offsets)
+    const extendX = this.labelOffsetX;
+    const extendY = this.labelOffsetY;
+
+    for (const guide of guides) {
+      ctx.beginPath();
+      if (guide.type === 'v') {
+        // Vertical line (x position) - extend into overflow
+        ctx.moveTo(guide.pos, -extendY);
+        ctx.lineTo(guide.pos, this.labelHeight + extendY);
+      } else {
+        // Horizontal line (y position) - extend into overflow
+        ctx.moveTo(-extendX, guide.pos);
+        ctx.lineTo(this.labelWidth + extendX, guide.pos);
+      }
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   /**

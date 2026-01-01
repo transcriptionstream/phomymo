@@ -3,7 +3,7 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=48';
+import { CanvasRenderer } from './canvas.js?v=60';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
 import { print, printDensityTest, isDSeriesPrinter } from './printer.js?v=7';
@@ -127,7 +127,12 @@ const state = {
   // Undo/Redo history
   history: [],            // Array of previous element states
   historyIndex: -1,       // Current position in history (-1 = no history)
+  // Alignment guides (populated during drag)
+  alignmentGuides: [],    // Array of { type: 'h'|'v', pos: number, label?: string }
 };
+
+// Alignment guide threshold (pixels)
+const GUIDE_THRESHOLD = 5;
 
 // Maximum history size
 const MAX_HISTORY = 50;
@@ -427,7 +432,7 @@ function zoomReset() {
  * Render the canvas
  */
 function render() {
-  state.renderer.renderAll(state.elements, state.selectedIds);
+  state.renderer.renderAll(state.elements, state.selectedIds, state.alignmentGuides);
 }
 
 /**
@@ -1269,8 +1274,11 @@ function startInlineEdit(elementId) {
   const scale = canvasRect.width / canvas.width;
 
   // Position overlay to match element (using fixed positioning)
-  const left = canvasRect.left + (element.x * scale);
-  const top = canvasRect.top + (element.y * scale);
+  // Account for label offset within canvas
+  const labelOffsetX = state.renderer.labelOffsetX * scale;
+  const labelOffsetY = state.renderer.labelOffsetY * scale;
+  const left = canvasRect.left + labelOffsetX + (element.x * scale);
+  const top = canvasRect.top + labelOffsetY + (element.y * scale);
   const width = element.width * scale;
   const height = element.height * scale;
 
@@ -1518,16 +1526,125 @@ function handleCustomSizeChange() {
 }
 
 /**
- * Get mouse position relative to canvas (accounting for zoom)
+ * Get mouse position relative to label (accounting for zoom and label offset)
  */
 function getCanvasPos(e) {
   const rect = state.renderer.canvas.getBoundingClientRect();
   // Account for zoom when calculating scale
   const scaleX = state.renderer.canvas.width / (rect.width);
   const scaleY = state.renderer.canvas.height / (rect.height);
+  // Convert to canvas coordinates, then subtract label offset for label-relative coordinates
   return {
-    x: (e.clientX - rect.left) * scaleX,
-    y: (e.clientY - rect.top) * scaleY,
+    x: (e.clientX - rect.left) * scaleX - state.renderer.labelOffsetX,
+    y: (e.clientY - rect.top) * scaleY - state.renderer.labelOffsetY,
+  };
+}
+
+/**
+ * Detect alignment guides and calculate snap adjustments
+ * Returns { guides: [...], snapX: number, snapY: number }
+ *
+ * @param {Object} bounds - { x, y, width, height } of the element(s) being moved
+ * @param {Array} excludeIds - IDs to exclude from other element matching
+ */
+function detectAlignmentGuides(bounds, excludeIds = []) {
+  const guides = [];
+  // Use label dimensions, not canvas dimensions (canvas includes overflow padding)
+  const labelWidth = state.renderer.labelWidth;
+  const labelHeight = state.renderer.labelHeight;
+
+  // Element bounds
+  const left = bounds.x;
+  const right = bounds.x + bounds.width;
+  const top = bounds.y;
+  const bottom = bounds.y + bounds.height;
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+
+  // Label center
+  const labelCenterX = labelWidth / 2;
+  const labelCenterY = labelHeight / 2;
+
+  // Track best snap for each axis (closest match)
+  let snapX = null;
+  let snapXDist = GUIDE_THRESHOLD;
+  let snapY = null;
+  let snapYDist = GUIDE_THRESHOLD;
+
+  // Helper to check and record vertical snap (x position)
+  const checkSnapX = (elementEdge, targetPos, edgeType) => {
+    const dist = Math.abs(elementEdge - targetPos);
+    if (dist < snapXDist) {
+      snapXDist = dist;
+      // Calculate how much to move the element
+      if (edgeType === 'left') snapX = targetPos - left;
+      else if (edgeType === 'right') snapX = targetPos - right;
+      else if (edgeType === 'center') snapX = targetPos - centerX;
+      guides.push({ type: 'v', pos: targetPos });
+    }
+  };
+
+  // Helper to check and record horizontal snap (y position)
+  const checkSnapY = (elementEdge, targetPos, edgeType) => {
+    const dist = Math.abs(elementEdge - targetPos);
+    if (dist < snapYDist) {
+      snapYDist = dist;
+      if (edgeType === 'top') snapY = targetPos - top;
+      else if (edgeType === 'bottom') snapY = targetPos - bottom;
+      else if (edgeType === 'center') snapY = targetPos - centerY;
+      guides.push({ type: 'h', pos: targetPos });
+    }
+  };
+
+  // Check label center alignment
+  checkSnapX(centerX, labelCenterX, 'center');
+  checkSnapY(centerY, labelCenterY, 'center');
+
+  // Check label edge alignment
+  checkSnapX(left, 0, 'left');
+  checkSnapX(right, labelWidth, 'right');
+  checkSnapY(top, 0, 'top');
+  checkSnapY(bottom, labelHeight, 'bottom');
+
+  // Check alignment with other elements
+  for (const other of state.elements) {
+    if (excludeIds.includes(other.id)) continue;
+
+    const oLeft = other.x;
+    const oRight = other.x + other.width;
+    const oTop = other.y;
+    const oBottom = other.y + other.height;
+    const oCenterX = other.x + other.width / 2;
+    const oCenterY = other.y + other.height / 2;
+
+    // Vertical snaps (x positions)
+    checkSnapX(left, oLeft, 'left');
+    checkSnapX(left, oRight, 'left');
+    checkSnapX(right, oLeft, 'right');
+    checkSnapX(right, oRight, 'right');
+    checkSnapX(centerX, oCenterX, 'center');
+
+    // Horizontal snaps (y positions)
+    checkSnapY(top, oTop, 'top');
+    checkSnapY(top, oBottom, 'top');
+    checkSnapY(bottom, oTop, 'bottom');
+    checkSnapY(bottom, oBottom, 'bottom');
+    checkSnapY(centerY, oCenterY, 'center');
+  }
+
+  // Deduplicate guides (same type and position within 1px)
+  const unique = [];
+  for (const guide of guides) {
+    const exists = unique.some(g =>
+      g.type === guide.type && Math.abs(g.pos - guide.pos) < 1
+    );
+    if (!exists) unique.push(guide);
+  }
+
+  return {
+    guides: unique,
+    snapX: snapX || 0,
+    snapY: snapY || 0,
   };
 }
 
@@ -1641,19 +1758,45 @@ function handleCanvasMouseMove(e) {
       case 'move':
         // Single element move
         const el = state.dragStartElements[0];
-        modifyElement(el.id, {
-          x: el.x + dx,
-          y: el.y + dy,
-        });
+        let newX = el.x + dx;
+        let newY = el.y + dy;
+        // Detect alignment guides and get snap adjustments
+        const snapResult = detectAlignmentGuides(
+          { x: newX, y: newY, width: el.width, height: el.height },
+          [el.id]
+        );
+        // Apply soft snap
+        newX += snapResult.snapX;
+        newY += snapResult.snapY;
+        modifyElement(el.id, { x: newX, y: newY });
+        state.alignmentGuides = snapResult.guides;
         break;
 
       case 'group-move':
-        // Multi-element move
+        // Multi-element move - first move without snap to calculate bounds
         state.elements = moveElements(
           state.elements,
           state.dragStartElements.map(e => e.id),
           dx, dy
         );
+        // Detect alignment guides for the group bounds
+        const movedElements = getSelectedElements();
+        const groupBounds = getMultiElementBounds(movedElements);
+        if (groupBounds) {
+          const groupSnapResult = detectAlignmentGuides(
+            { x: groupBounds.x, y: groupBounds.y, width: groupBounds.width, height: groupBounds.height },
+            movedElements.map(e => e.id)
+          );
+          // Apply soft snap by moving elements again by snap offset
+          if (groupSnapResult.snapX !== 0 || groupSnapResult.snapY !== 0) {
+            state.elements = moveElements(
+              state.elements,
+              movedElements.map(e => e.id),
+              groupSnapResult.snapX, groupSnapResult.snapY
+            );
+          }
+          state.alignmentGuides = groupSnapResult.guides;
+        }
         // Reset start positions for continuous drag
         state.dragStartElements = getSelectedElements().map(e => ({ ...e }));
         state.dragStartX = pos.x;
@@ -1798,6 +1941,11 @@ function handleCanvasMouseUp() {
   state.dragStartElements = null;
   state.dragStartBounds = null;
   state.dragStartAngle = 0;
+  // Clear alignment guides when drag ends
+  if (state.alignmentGuides.length > 0) {
+    state.alignmentGuides = [];
+    render();
+  }
 }
 
 /**

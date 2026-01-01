@@ -3,7 +3,7 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=60';
+import { CanvasRenderer } from './canvas.js?v=63';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
 import { print, printDensityTest, isDSeriesPrinter } from './printer.js?v=7';
@@ -397,11 +397,13 @@ function updatePrintSize() {
 }
 
 /**
- * Update zoom level display and apply transform
+ * Update zoom level display and re-render at new resolution
  */
 function updateZoom() {
   $('#zoom-level').textContent = `${Math.round(state.zoom * 100)}%`;
-  $('#canvas-container').style.transform = `scale(${state.zoom})`;
+  // Set zoom on renderer for high-resolution rendering (prevents pixelation)
+  state.renderer.setZoom(state.zoom);
+  render();
 }
 
 /**
@@ -1269,20 +1271,17 @@ function startInlineEdit(elementId) {
   const editor = $('#inline-text-editor');
   const canvas = $('#preview-canvas');
   const canvasRect = canvas.getBoundingClientRect();
+  const zoom = state.renderer.zoom;
 
-  // Calculate scale (canvas display size vs internal size)
-  const scale = canvasRect.width / canvas.width;
+  // Canvas CSS size is scaled by zoom, so scale element coordinates too
+  const baseLabelOffsetX = state.renderer.baseLabelOffsetX;
+  const baseLabelOffsetY = state.renderer.baseLabelOffsetY;
+  const left = canvasRect.left + (baseLabelOffsetX + element.x) * zoom;
+  const top = canvasRect.top + (baseLabelOffsetY + element.y) * zoom;
+  const width = element.width * zoom;
+  const height = element.height * zoom;
 
-  // Position overlay to match element (using fixed positioning)
-  // Account for label offset within canvas
-  const labelOffsetX = state.renderer.labelOffsetX * scale;
-  const labelOffsetY = state.renderer.labelOffsetY * scale;
-  const left = canvasRect.left + labelOffsetX + (element.x * scale);
-  const top = canvasRect.top + labelOffsetY + (element.y * scale);
-  const width = element.width * scale;
-  const height = element.height * scale;
-
-  // Apply styles to match the element
+  // Apply styles to match the element (scaled by zoom)
   Object.assign(editor.style, {
     left: `${left}px`,
     top: `${top}px`,
@@ -1291,7 +1290,7 @@ function startInlineEdit(elementId) {
     transform: `rotate(${element.rotation || 0}deg)`,
     transformOrigin: 'top left',
     fontFamily: element.fontFamily || 'Inter, sans-serif',
-    fontSize: `${(element.fontSize || 24) * scale}px`,
+    fontSize: `${(element.fontSize || 24) * zoom}px`,
     fontWeight: element.fontWeight || 'normal',
     fontStyle: element.fontStyle || 'normal',
     textAlign: element.align || 'left',
@@ -1530,13 +1529,16 @@ function handleCustomSizeChange() {
  */
 function getCanvasPos(e) {
   const rect = state.renderer.canvas.getBoundingClientRect();
-  // Account for zoom when calculating scale
-  const scaleX = state.renderer.canvas.width / (rect.width);
-  const scaleY = state.renderer.canvas.height / (rect.height);
-  // Convert to canvas coordinates, then subtract label offset for label-relative coordinates
+  const zoom = state.renderer.zoom;
+
+  // Convert mouse position from screen coordinates to base label coordinates
+  // rect is now scaled by zoom, so divide by zoom to get base coordinates
+  const baseLabelOffsetX = state.renderer.baseLabelOffsetX;
+  const baseLabelOffsetY = state.renderer.baseLabelOffsetY;
+
   return {
-    x: (e.clientX - rect.left) * scaleX - state.renderer.labelOffsetX,
-    y: (e.clientY - rect.top) * scaleY - state.renderer.labelOffsetY,
+    x: (e.clientX - rect.left) / zoom - baseLabelOffsetX,
+    y: (e.clientY - rect.top) / zoom - baseLabelOffsetY,
   };
 }
 

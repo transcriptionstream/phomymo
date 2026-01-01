@@ -25,13 +25,20 @@ export class CanvasRenderer {
     this.widthMm = 40;
     this.heightMm = 30;
 
-    // Label dimensions in pixels (without overflow)
+    // Label dimensions in pixels (without overflow, at base resolution)
     this.labelWidth = 0;
     this.labelHeight = 0;
 
-    // Offset where label starts within canvas
+    // Base offset where label starts (without zoom)
+    this.baseLabelOffsetX = OVERFLOW_PADDING;
+    this.baseLabelOffsetY = OVERFLOW_PADDING;
+
+    // Current offset (scaled by zoom)
     this.labelOffsetX = OVERFLOW_PADDING;
     this.labelOffsetY = OVERFLOW_PADDING;
+
+    // Zoom level for high-resolution rendering
+    this.zoom = 1;
 
     // Image cache for elements
     this.imageCache = new Map();
@@ -45,21 +52,45 @@ export class CanvasRenderer {
 
   /**
    * Set label dimensions and resize canvas
+   * @param {number} widthMm - Label width in mm
+   * @param {number} heightMm - Label height in mm
+   * @param {number} zoom - Zoom level (1 = 100%, 2 = 200%, etc.)
    */
-  setDimensions(widthMm, heightMm) {
+  setDimensions(widthMm, heightMm, zoom = this.zoom) {
     this.widthMm = widthMm;
     this.heightMm = heightMm;
+    this.zoom = zoom;
 
-    // Label dimensions in pixels
+    // Label dimensions in pixels (base resolution, used for element coordinates)
     this.labelWidth = Math.round(widthMm * PX_PER_MM);
     this.labelHeight = Math.round(heightMm * PX_PER_MM);
 
-    // Canvas includes overflow padding on all sides
-    this.canvas.width = this.labelWidth + (OVERFLOW_PADDING * 2);
-    this.canvas.height = this.labelHeight + (OVERFLOW_PADDING * 2);
+    // Calculate base canvas size (without zoom)
+    const baseCanvasWidth = this.labelWidth + (OVERFLOW_PADDING * 2);
+    const baseCanvasHeight = this.labelHeight + (OVERFLOW_PADDING * 2);
 
-    // Return label dimensions (what elements use for positioning)
+    // Scale canvas internal resolution by zoom for crisp rendering
+    this.canvas.width = Math.round(baseCanvasWidth * zoom);
+    this.canvas.height = Math.round(baseCanvasHeight * zoom);
+
+    // Scale CSS size by zoom so canvas appears larger when zoomed
+    this.canvas.style.width = `${baseCanvasWidth * zoom}px`;
+    this.canvas.style.height = `${baseCanvasHeight * zoom}px`;
+
+    // Scale label offset by zoom for rendering
+    this.labelOffsetX = Math.round(this.baseLabelOffsetX * zoom);
+    this.labelOffsetY = Math.round(this.baseLabelOffsetY * zoom);
+
+    // Return label dimensions (what elements use for positioning - base resolution)
     return { width: this.labelWidth, height: this.labelHeight };
+  }
+
+  /**
+   * Set zoom level and re-render
+   * @param {number} zoom - Zoom level (1 = 100%, 2 = 200%, etc.)
+   */
+  setZoom(zoom) {
+    this.setDimensions(this.widthMm, this.heightMm, zoom);
   }
 
   /**
@@ -79,14 +110,22 @@ export class CanvasRenderer {
    */
   clear() {
     const ctx = this.ctx;
+    const zoom = this.zoom;
 
     // Draw checkerboard pattern for entire canvas (overflow area)
     this.drawCheckerboard(ctx, 0, 0, this.canvas.width, this.canvas.height);
 
     // Draw white label area with rounded corners (like physical labels)
+    // Scale dimensions by zoom
     ctx.fillStyle = 'white';
     ctx.beginPath();
-    ctx.roundRect(this.labelOffsetX, this.labelOffsetY, this.labelWidth, this.labelHeight, 8);
+    ctx.roundRect(
+      this.labelOffsetX,
+      this.labelOffsetY,
+      this.labelWidth * zoom,
+      this.labelHeight * zoom,
+      8 * zoom
+    );
     ctx.fill();
   }
 
@@ -94,7 +133,8 @@ export class CanvasRenderer {
    * Draw a checkerboard pattern
    */
   drawCheckerboard(ctx, x, y, width, height) {
-    const squareSize = 10;
+    // Scale square size by zoom for consistent visual appearance
+    const squareSize = 10 * this.zoom;
     const lightColor = '#f0f0f0';
     const darkColor = '#d0d0d0';
 
@@ -128,15 +168,17 @@ export class CanvasRenderer {
     this.clear();
 
     const ctx = this.ctx;
+    const zoom = this.zoom;
 
     // Normalize to array
     const selectedArray = selectedIds
       ? (Array.isArray(selectedIds) ? selectedIds : [selectedIds])
       : [];
 
-    // Translate to label origin for element rendering
+    // Translate to label origin and scale by zoom for element rendering
     ctx.save();
     ctx.translate(this.labelOffsetX, this.labelOffsetY);
+    ctx.scale(zoom, zoom);
 
     // Render elements in z-order (first = bottom)
     for (const element of elements) {
@@ -184,14 +226,21 @@ export class CanvasRenderer {
    */
   dimOverflowContent() {
     const ctx = this.ctx;
+    const zoom = this.zoom;
     ctx.save();
 
     // Create path covering entire canvas with rounded label hole
     ctx.beginPath();
     // Outer rectangle (clockwise)
     ctx.rect(0, 0, this.canvas.width, this.canvas.height);
-    // Inner rounded rectangle (counter-clockwise to create hole)
-    ctx.roundRect(this.labelOffsetX, this.labelOffsetY, this.labelWidth, this.labelHeight, 8);
+    // Inner rounded rectangle (counter-clockwise to create hole) - scale by zoom
+    ctx.roundRect(
+      this.labelOffsetX,
+      this.labelOffsetY,
+      this.labelWidth * zoom,
+      this.labelHeight * zoom,
+      8 * zoom
+    );
 
     // Fill using evenodd rule (fills area between outer and inner paths)
     ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
@@ -210,14 +259,14 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    // Magenta dashed line style
+    // Magenta dashed line style - divide by zoom to maintain consistent visual thickness
     ctx.strokeStyle = '#ff00ff';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1 / this.zoom;
+    ctx.setLineDash([4 / this.zoom, 4 / this.zoom]);
 
-    // Extend guides into overflow area (context is translated, so use negative offsets)
-    const extendX = this.labelOffsetX;
-    const extendY = this.labelOffsetY;
+    // Extend guides into overflow area (use base offset since context is scaled)
+    const extendX = this.baseLabelOffsetX;
+    const extendY = this.baseLabelOffsetY;
 
     for (const guide of guides) {
       ctx.beginPath();
@@ -1016,21 +1065,31 @@ export class CanvasRenderer {
 
   /**
    * Get canvas image data as raster format for printing
-   * Renders without selection handles
+   * Renders to a temporary off-screen canvas at base resolution (zoom=1)
    */
   getRasterData(elements) {
-    // Render elements without handles
-    this.clear();
+    // Create temporary canvas at base resolution for printing
+    const width = this.labelWidth;
+    const height = this.labelHeight;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Fill with white background
+    tempCtx.fillStyle = 'white';
+    tempCtx.fillRect(0, 0, width, height);
+
+    // Render elements to temp canvas (no offset needed - temp canvas is label-sized)
+    const originalCtx = this.ctx;
+    this.ctx = tempCtx;
     for (const element of elements) {
       this.renderElement(element);
     }
-
-    // Get dimensions
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    this.ctx = originalCtx;
 
     // Get image data
-    const imageData = this.ctx.getImageData(0, 0, width, height);
+    const imageData = tempCtx.getImageData(0, 0, width, height);
     const pixels = imageData.data;
 
     // Calculate bytes per row of canvas
@@ -1086,24 +1145,34 @@ export class CanvasRenderer {
    * Used for D-series printers that have different print widths
    */
   getRasterDataRaw(elements) {
-    // Render elements without handles
-    this.clear();
+    // Create temporary canvas at base resolution for printing
+    const width = this.labelWidth;
+    const height = this.labelHeight;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Fill with white background
+    tempCtx.fillStyle = 'white';
+    tempCtx.fillRect(0, 0, width, height);
+
+    // Render elements to temp canvas
+    const originalCtx = this.ctx;
+    this.ctx = tempCtx;
     for (const element of elements) {
       this.renderElement(element);
     }
-
-    // Get dimensions
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    this.ctx = originalCtx;
 
     // Get image data
-    const imageData = this.ctx.getImageData(0, 0, width, height);
+    const imageData = tempCtx.getImageData(0, 0, width, height);
     const pixels = imageData.data;
 
-    // Calculate bytes per row (actual canvas width, no padding)
+    // Calculate bytes per row (actual label width, no padding)
     const widthBytes = Math.ceil(width / 8);
 
-    // Output: actual canvas width x height
+    // Output: actual label width x height
     const output = new Uint8Array(widthBytes * height);
 
     // Convert pixels to bits

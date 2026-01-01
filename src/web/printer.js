@@ -127,7 +127,7 @@ export async function print(transport, rasterData, options = {}) {
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
   if (isDSeries && isBLE) {
-    await printDSeries(transport, data, widthBytes, heightLines, onProgress);
+    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
   } else if (isBLE) {
     await printBLE(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else {
@@ -138,7 +138,7 @@ export async function print(transport, rasterData, options = {}) {
 /**
  * Print via BLE for D-series printers (D30, D110)
  */
-async function printDSeries(transport, data, widthBytes, heightLines, onProgress) {
+async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6) {
   console.log('Using D-series protocol...');
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
@@ -146,11 +146,17 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
   console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
+  // Try to set heat/density before print (may help with thermal management)
+  const heatTime = densityToHeatTime(density);
+  console.log(`Setting density ${density} (heat time: ${heatTime})...`);
+  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
+  await transport.delay(30);
+
   // D-series header
   console.log('Sending D-series header...');
   await transport.send(D_CMD.HEADER(rotated.widthBytes, rotated.heightLines));
 
-  // Send data in 128-byte chunks
+  // Send data in chunks (D-series buffers all data before printing)
   console.log('Sending data...');
   const chunkSize = 128;
 

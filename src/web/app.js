@@ -3,10 +3,10 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=63';
+import { CanvasRenderer } from './canvas.js?v=64';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter } from './printer.js?v=7';
+import { print, printDensityTest, isDSeriesPrinter } from './printer.js?v=11';
 import {
   createTextElement,
   createImageElement,

@@ -1143,6 +1143,9 @@ export class CanvasRenderer {
   /**
    * Get canvas image data as raw raster (no padding/centering)
    * Used for D-series printers that have different print widths
+   *
+   * Note: D30 has thermal limits - high black content (>60%) may cause
+   * print failures. Use dithered grays instead of solid black for large fills.
    */
   getRasterDataRaw(elements) {
     // Create temporary canvas at base resolution for printing

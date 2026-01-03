@@ -8,8 +8,10 @@ import { drawHandles, drawGroupHandles } from './handles.js?v=5';
 // Pixels per mm (203 DPI ≈ 8 px/mm)
 const PX_PER_MM = 8;
 
-// Full printer width in bytes (72 bytes = 576 pixels)
-const PRINTER_WIDTH_BYTES = 72;
+// Default printer width in bytes (72 bytes = 576 pixels for M260)
+// M110/M200 use 48 bytes (384 pixels)
+const DEFAULT_PRINTER_WIDTH_BYTES = 72;
+const PRINTER_WIDTH_BYTES = DEFAULT_PRINTER_WIDTH_BYTES;
 const PRINTER_WIDTH_PIXELS = PRINTER_WIDTH_BYTES * 8;
 
 // Overflow area padding in pixels (visible area around label)
@@ -1066,8 +1068,10 @@ export class CanvasRenderer {
   /**
    * Get canvas image data as raster format for printing
    * Renders to a temporary off-screen canvas at base resolution (zoom=1)
+   * @param {Array} elements - Elements to render
+   * @param {number} printerWidthBytes - Printer width in bytes (48 for M110/M200, 72 for M260)
    */
-  getRasterData(elements) {
+  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES) {
     // Create temporary canvas at base resolution for printing
     const width = this.labelWidth;
     const height = this.labelHeight;
@@ -1095,11 +1099,11 @@ export class CanvasRenderer {
     // Calculate bytes per row of canvas
     const canvasBytesPerRow = Math.ceil(width / 8);
 
-    // Prepare output: full printer width (72 bytes) x canvas height
-    const output = new Uint8Array(PRINTER_WIDTH_BYTES * height);
+    // Prepare output: full printer width x canvas height
+    const output = new Uint8Array(printerWidthBytes * height);
 
     // Calculate centering offset
-    const offset = Math.floor((PRINTER_WIDTH_BYTES - canvasBytesPerRow) / 2);
+    const offset = Math.floor((printerWidthBytes - canvasBytesPerRow) / 2);
 
     // Convert pixels to bits
     for (let y = 0; y < height; y++) {
@@ -1126,7 +1130,7 @@ export class CanvasRenderer {
         }
 
         // Write byte at centered position
-        const outputPos = y * PRINTER_WIDTH_BYTES + offset + byteX;
+        const outputPos = y * printerWidthBytes + offset + byteX;
         if (outputPos >= 0 && outputPos < output.length) {
           output[outputPos] = byte;
         }
@@ -1135,7 +1139,7 @@ export class CanvasRenderer {
 
     return {
       data: output,
-      widthBytes: PRINTER_WIDTH_BYTES,
+      widthBytes: printerWidthBytes,
       heightLines: height,
     };
   }

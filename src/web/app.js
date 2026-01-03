@@ -3,10 +3,10 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=64';
+import { CanvasRenderer } from './canvas.js?v=65';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter } from './printer.js?v=11';
+import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes } from './printer.js?v=12';
 import {
   createTextElement,
   createImageElement,
@@ -1046,9 +1046,10 @@ async function handleBatchPrint() {
 
       // Render to raster (use raw format for D-series printers)
       const deviceName = state.transport.getDeviceName?.() || '';
+      const printerWidth = getPrinterWidthBytes(deviceName);
       const rasterData = isDSeriesPrinter(deviceName)
         ? state.renderer.getRasterDataRaw(mergedElements)
-        : state.renderer.getRasterData(mergedElements);
+        : state.renderer.getRasterData(mergedElements, printerWidth);
 
       // Print
       await print(state.transport, rasterData, {
@@ -1121,9 +1122,10 @@ async function handlePrintSinglePreview() {
 
     // Render to raster (use raw format for D-series printers)
     const deviceName = state.transport.getDeviceName?.() || '';
+    const printerWidth = getPrinterWidthBytes(deviceName);
     const rasterData = isDSeriesPrinter(deviceName)
       ? state.renderer.getRasterDataRaw(mergedElements)
-      : state.renderer.getRasterData(mergedElements);
+      : state.renderer.getRasterData(mergedElements, printerWidth);
 
     // Print
     await print(state.transport, rasterData, {
@@ -2144,9 +2146,10 @@ async function handlePrint() {
 
     // Render to raster (use raw format for D-series printers)
     const deviceName = state.transport.getDeviceName?.() || '';
+    const printerWidth = getPrinterWidthBytes(deviceName);
     const rasterData = isDSeriesPrinter(deviceName)
       ? state.renderer.getRasterDataRaw(state.elements)
-      : state.renderer.getRasterData(state.elements);
+      : state.renderer.getRasterData(state.elements, printerWidth);
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {

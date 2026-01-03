@@ -58,6 +58,29 @@ export function isDSeriesPrinter(deviceName) {
 }
 
 /**
+ * Detect if device is a narrow M-series printer (M110, M200)
+ * These have 48mm print width vs 60mm+ for M220/M260
+ */
+export function isNarrowMSeriesPrinter(deviceName) {
+  if (!deviceName) return false;
+  const name = deviceName.toUpperCase();
+  return name.startsWith('M110') || name.startsWith('M200');
+}
+
+/**
+ * Get the maximum print width in bytes for a given printer
+ * M110/M200: 48 bytes (384 pixels, ~48mm at 203 DPI)
+ * M220/M260: 72 bytes (576 pixels, ~72mm at 203 DPI)
+ * D-series: varies by label, handled separately
+ */
+export function getPrinterWidthBytes(deviceName) {
+  if (isNarrowMSeriesPrinter(deviceName)) {
+    return 48;  // 384 pixels = 48mm
+  }
+  return 72;  // 576 pixels = 72mm (M220, M260, etc.)
+}
+
+/**
  * Rotate raster data 90 degrees clockwise for D-series printers
  * D-series prints labels top-to-bottom, so we need to rotate the image
  *
@@ -122,8 +145,9 @@ export async function print(transport, rasterData, options = {}) {
   const { data, widthBytes, heightLines } = rasterData;
 
   const isDSeries = isDSeriesPrinter(deviceName);
+  const isNarrowM = isNarrowMSeriesPrinter(deviceName);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
-  console.log(`Device: ${deviceName}, Protocol: ${isDSeries ? 'D-series' : 'M-series'}`);
+  console.log(`Device: ${deviceName}, Protocol: ${isDSeries ? 'D-series' : isNarrowM ? 'M-series (narrow)' : 'M-series'}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
   if (isDSeries && isBLE) {

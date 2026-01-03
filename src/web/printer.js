@@ -99,18 +99,36 @@ const DEFAULT_CONFIG = { width: 72, protocol: 'm-series' };
 /**
  * Get printer configuration from device name
  * @param {string} deviceName - BLE device name
- * @returns {Object} { width, protocol }
+ * @returns {Object} { width, protocol, recognized, matchedPattern }
  */
 function detectPrinterConfig(deviceName) {
-  if (!deviceName) return DEFAULT_CONFIG;
+  if (!deviceName) return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
 
   const name = deviceName.toUpperCase();
   for (const { pattern, width, protocol } of DEVICE_PATTERNS) {
     if (name.startsWith(pattern)) {
-      return { width, protocol };
+      return { width, protocol, recognized: true, matchedPattern: pattern };
     }
   }
-  return DEFAULT_CONFIG;
+  return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
+}
+
+/**
+ * Check if a device name is recognized (matches a known pattern)
+ * @param {string} deviceName - BLE device name
+ * @returns {boolean} True if device matches a known pattern
+ */
+export function isDeviceRecognized(deviceName) {
+  return detectPrinterConfig(deviceName).recognized;
+}
+
+/**
+ * Get the matched pattern for a device name (e.g., "M110", "D30")
+ * @param {string} deviceName - BLE device name
+ * @returns {string|null} Matched pattern or null if not recognized
+ */
+export function getMatchedPattern(deviceName) {
+  return detectPrinterConfig(deviceName).matchedPattern;
 }
 
 /**

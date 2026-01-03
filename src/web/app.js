@@ -6,7 +6,7 @@
 import { CanvasRenderer } from './canvas.js?v=65';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes } from './printer.js?v=14';
+import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=15';
 import {
   createTextElement,
   createImageElement,
@@ -137,6 +137,50 @@ const GUIDE_THRESHOLD = 5;
 
 // Maximum history size
 const MAX_HISTORY = 50;
+
+// Device-to-model mapping storage key
+const DEVICE_MAPPING_KEY = 'phomymo_device_models';
+
+/**
+ * Get saved device-to-model mappings from localStorage
+ * @returns {Object} Map of deviceName -> printerModel
+ */
+function getDeviceMappings() {
+  try {
+    const saved = localStorage.getItem(DEVICE_MAPPING_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch (e) {
+    console.warn('Failed to load device mappings:', e);
+    return {};
+  }
+}
+
+/**
+ * Save a device-to-model mapping
+ * @param {string} deviceName - BLE device name
+ * @param {string} printerModel - Selected printer model
+ */
+function saveDeviceMapping(deviceName, printerModel) {
+  if (!deviceName) return;
+  try {
+    const mappings = getDeviceMappings();
+    mappings[deviceName] = printerModel;
+    localStorage.setItem(DEVICE_MAPPING_KEY, JSON.stringify(mappings));
+  } catch (e) {
+    console.warn('Failed to save device mapping:', e);
+  }
+}
+
+/**
+ * Get saved model for a device
+ * @param {string} deviceName - BLE device name
+ * @returns {string|null} Saved printer model or null
+ */
+function getSavedDeviceModel(deviceName) {
+  if (!deviceName) return null;
+  const mappings = getDeviceMappings();
+  return mappings[deviceName] || null;
+}
 
 /**
  * Update status message
@@ -2068,6 +2112,51 @@ function addShapeElement(shapeType = 'rectangle') {
 }
 
 /**
+ * Show printer model selection prompt for unrecognized devices
+ * @param {string} deviceName - The connected device name
+ */
+function showPrinterModelPrompt(deviceName) {
+  const dialog = $('#printer-model-prompt');
+  if (!dialog) return;
+
+  // Update dialog content
+  $('#prompt-device-name').textContent = deviceName;
+
+  // Show dialog
+  dialog.classList.remove('hidden');
+
+  // Handle model selection
+  const handleSelect = (model) => {
+    // Save the mapping for this device
+    saveDeviceMapping(deviceName, model);
+
+    // Update current print settings
+    state.printSettings.printerModel = model;
+
+    // Update status
+    const modelDesc = getPrinterDescription(deviceName, model);
+    setStatus(`Connected: ${deviceName} (${modelDesc})`);
+
+    // Update label sizes if D-series
+    updateLabelSizeDropdown(isDSeriesPrinter(deviceName, model));
+
+    // Close dialog
+    dialog.classList.add('hidden');
+
+    // Remove event listeners
+    dialog.querySelectorAll('[data-model]').forEach(btn => {
+      btn.removeEventListener('click', btn._handler);
+    });
+  };
+
+  // Attach handlers to buttons
+  dialog.querySelectorAll('[data-model]').forEach(btn => {
+    btn._handler = () => handleSelect(btn.dataset.model);
+    btn.addEventListener('click', btn._handler);
+  });
+}
+
+/**
  * Handle connect button click
  */
 async function handleConnect() {
@@ -2109,11 +2198,33 @@ async function handleConnect() {
     btn.textContent = 'Connected';
     btn.classList.remove('bg-white', 'hover:bg-gray-50');
     btn.classList.add('bg-green-100', 'text-green-800', 'border-green-300');
-    setStatus(`Connected to ${state.transport.getDeviceName()}`);
+
+    // Check device recognition and handle accordingly
+    const deviceName = state.transport.getDeviceName?.() || '';
+    const recognized = isDeviceRecognized(deviceName);
+    const savedModel = getSavedDeviceModel(deviceName);
+    const printerModel = state.printSettings.printerModel;
+
+    // Determine effective model: saved mapping > print settings > auto-detect
+    let effectiveModel = printerModel;
+    if (savedModel && printerModel === 'auto') {
+      // Use saved mapping and update print settings
+      state.printSettings.printerModel = savedModel;
+      effectiveModel = savedModel;
+    }
+
+    // Show detected/configured model in status
+    const modelDesc = getPrinterDescription(deviceName, effectiveModel);
+    if (recognized || savedModel || printerModel !== 'auto') {
+      setStatus(`Connected: ${deviceName} (${modelDesc})`);
+    } else {
+      // Device not recognized and no saved preference - prompt user
+      setStatus(`Connected: ${deviceName} - Please select printer model`);
+      showPrinterModelPrompt(deviceName);
+    }
 
     // Update label sizes based on connected printer type
-    const deviceName = state.transport.getDeviceName?.() || '';
-    updateLabelSizeDropdown(isDSeriesPrinter(deviceName));
+    updateLabelSizeDropdown(isDSeriesPrinter(deviceName, effectiveModel));
 
   } catch (error) {
     console.error('Connect error:', error);

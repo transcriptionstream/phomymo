@@ -896,6 +896,55 @@
     </div>
   </div>
 
+  <!-- Printer Model Prompt Dialog -->
+  <div id="printer-model-prompt" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96 shadow-xl">
+      <div class="text-center mb-4">
+        <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900">Select Your Printer</h3>
+        <p class="text-sm text-gray-500 mt-1">
+          We couldn't identify <span id="prompt-device-name" class="font-medium text-gray-700"></span>
+        </p>
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Narrow (48mm)</div>
+        <button data-model="narrow-48" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M110 / M120
+        </button>
+
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">Mini (53mm)</div>
+        <button data-model="mini-54" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M02 / M02S / M03 / T02
+        </button>
+
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">Wide</div>
+        <button data-model="wide-72" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M260 (72mm)
+        </button>
+        <button data-model="mid-76" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M200 (75mm)
+        </button>
+        <button data-model="wide-81" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M220 / M221 (80mm)
+        </button>
+
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">D-Series</div>
+        <button data-model="d-series" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          D30 / D35 / D50 / Q30
+        </button>
+      </div>
+
+      <p class="text-xs text-gray-400 text-center mt-4">
+        This choice will be remembered for this device
+      </p>
+    </div>
+  </div>
+
   <!-- Hidden file input for adding images -->
   <input type="file" id="image-file-input" accept="image/*" class="hidden">
 

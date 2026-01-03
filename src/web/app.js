@@ -4,7 +4,7 @@
  */
 
 import { CanvasRenderer } from './canvas.js?v=65';
-import { BLETransport } from './ble.js?v=10';
+import { BLETransport } from './ble.js?v=11';
 import { USBTransport } from './usb.js?v=3';
 import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=15';
 import {
@@ -377,8 +377,83 @@ function isPrintCancelled() {
  */
 function updateConnectionStatus(connected) {
   const dot = $('#status-dot');
+  const dotStandalone = $('#status-dot-standalone');
+  const printerInfoBtn = $('#printer-info-btn');
+
   dot.classList.toggle('bg-green-500', connected);
   dot.classList.toggle('bg-gray-400', !connected);
+
+  // Show/hide printer info button vs standalone dot
+  if (connected) {
+    printerInfoBtn.classList.remove('hidden');
+    dotStandalone.classList.add('hidden');
+  } else {
+    printerInfoBtn.classList.add('hidden');
+    dotStandalone.classList.remove('hidden');
+    // Hide popup if open
+    $('#printer-info-popup').classList.add('hidden');
+  }
+}
+
+/**
+ * Update printer info UI with current data
+ */
+function updatePrinterInfoUI(deviceName, printerModel) {
+  const effectiveModel = printerModel || state.printSettings.printerModel;
+  const isDSeries = isDSeriesPrinter(deviceName, effectiveModel);
+  const width = getPrinterWidthBytes(deviceName, effectiveModel);
+
+  // Update device info
+  $('#pi-device-name').textContent = deviceName || '--';
+  $('#pi-model').textContent = getMatchedPattern(deviceName) || effectiveModel || 'Unknown';
+  $('#pi-protocol').textContent = isDSeries ? 'D-series (rotated)' : 'M-series (ESC/POS)';
+  $('#pi-width').textContent = isDSeries ? 'Variable' : `${width * 8}px (${Math.round(width * 8 / 8)}mm)`;
+
+  // Update summary in button
+  const battery = state.transport?.printerInfo?.battery;
+  const summaryParts = [];
+  if (getMatchedPattern(deviceName)) {
+    summaryParts.push(getMatchedPattern(deviceName));
+  }
+  if (battery !== null && battery !== undefined) {
+    summaryParts.push(`${battery}%`);
+  }
+  $('#printer-info-summary').textContent = summaryParts.length ? summaryParts.join(' | ') : deviceName?.substring(0, 8) || '--';
+}
+
+/**
+ * Update printer info popup with live data from printer queries
+ */
+function updatePrinterInfoFromQuery(field, value, allInfo) {
+  switch (field) {
+    case 'battery':
+      $('#pi-battery-text').textContent = value !== null ? `${value}%` : '--';
+      // Update icon color based on level
+      const icon = $('#pi-battery-icon');
+      if (value !== null) {
+        if (value <= 10) icon.classList.replace('text-gray-400', 'text-red-500');
+        else if (value <= 30) icon.classList.replace('text-gray-400', 'text-yellow-500');
+        else icon.classList.replace('text-gray-400', 'text-green-500');
+      }
+      // Update summary
+      const deviceName = state.transport?.getDeviceName?.() || '';
+      updatePrinterInfoUI(deviceName, state.printSettings.printerModel);
+      break;
+    case 'paper':
+      $('#pi-paper').textContent = value === 'ok' ? 'OK' : (value === 'out' ? 'Out!' : '--');
+      if (value === 'out') {
+        $('#pi-paper').classList.add('text-red-600');
+      } else {
+        $('#pi-paper').classList.remove('text-red-600');
+      }
+      break;
+    case 'firmware':
+      $('#pi-firmware').textContent = value || '--';
+      break;
+    case 'serial':
+      $('#pi-serial').textContent = value || '--';
+      break;
+  }
 }
 
 /**
@@ -2226,6 +2301,23 @@ async function handleConnect() {
     // Update label sizes based on connected printer type
     updateLabelSizeDropdown(isDSeriesPrinter(deviceName, effectiveModel));
 
+    // Update printer info UI
+    updatePrinterInfoUI(deviceName, effectiveModel);
+
+    // Set up printer info callback and query status (BLE only)
+    if (isBLE && state.transport.onPrinterInfo !== undefined) {
+      state.transport.onPrinterInfo = updatePrinterInfoFromQuery;
+
+      // Query printer info after a short delay
+      setTimeout(async () => {
+        try {
+          await state.transport.queryAll();
+        } catch (e) {
+          console.warn('Failed to query printer info:', e.message);
+        }
+      }, 500);
+    }
+
   } catch (error) {
     console.error('Connect error:', error);
     setStatus(error.message || 'Connection failed');
@@ -3025,6 +3117,62 @@ function init() {
   // Connect and print
   $('#connect-btn').addEventListener('click', handleConnect);
   $('#print-btn').addEventListener('click', handlePrint);
+
+  // Printer info popup
+  const printerInfoPopup = $('#printer-info-popup');
+  const printerInfoBtn = $('#printer-info-btn');
+
+  printerInfoBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = printerInfoPopup.classList.contains('hidden');
+    if (isHidden) {
+      // Position popup below the button
+      const rect = printerInfoBtn.getBoundingClientRect();
+      printerInfoPopup.style.top = `${rect.bottom + 8}px`;
+      printerInfoPopup.style.right = `${window.innerWidth - rect.right}px`;
+      printerInfoPopup.classList.remove('hidden');
+    } else {
+      printerInfoPopup.classList.add('hidden');
+    }
+  });
+
+  $('#printer-info-refresh').addEventListener('click', async () => {
+    if (state.transport?.isConnected() && state.transport.queryAll) {
+      try {
+        setStatus('Querying printer...');
+        await state.transport.queryAll();
+        setStatus('Printer info updated');
+      } catch (e) {
+        console.warn('Failed to query printer:', e.message);
+        setStatus('Query failed');
+      }
+    }
+  });
+
+  $('#printer-info-disconnect').addEventListener('click', async () => {
+    printerInfoPopup.classList.add('hidden');
+    if (state.transport) {
+      try {
+        await state.transport.disconnect();
+      } catch (e) {
+        console.warn('Disconnect error:', e.message);
+      }
+      state.transport = null;
+    }
+    updateConnectionStatus(false);
+    const btn = $('#connect-btn');
+    btn.textContent = 'Connect';
+    btn.classList.remove('bg-green-100', 'text-green-800', 'border-green-300');
+    btn.classList.add('bg-white', 'hover:bg-gray-50');
+    setStatus('Disconnected');
+  });
+
+  // Close popup when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!printerInfoPopup.contains(e.target) && !printerInfoBtn.contains(e.target)) {
+      printerInfoPopup.classList.add('hidden');
+    }
+  });
 
   // Print settings dialog
   const printSettingsDialog = $('#print-settings-dialog');

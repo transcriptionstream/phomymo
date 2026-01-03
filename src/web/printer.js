@@ -59,6 +59,7 @@ const PRINTER_WIDTHS = {
   'wide-72': 72,      // M260 (72mm / 576px)
   'mid-76': 76,       // M200 (75mm / 608px)
   'wide-81': 81,      // M220, M221 (80mm / 648px)
+  'wide-110': 110,    // M04S 110mm (880px)
   'd-series': null,   // D-series uses raw label width
 };
 

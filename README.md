@@ -69,7 +69,7 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 | Model | Print Width | Notes |
 |-------|-------------|-------|
 | M02 / M02S / M02Pro / M03 | 53mm (432px) | Mini pocket printers |
-| M04S | 53-110mm | Multi-width support |
+| M04S | 53/80/110mm | Multi-width support (select paper size in settings) |
 | M110 / M120 | 48mm (384px) | Narrow label makers |
 | M200 | 75mm (608px) | Mid-size labels |
 | M220 / M221 | 80mm (648px) | Wide labels |

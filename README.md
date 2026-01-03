@@ -5,7 +5,7 @@ Phomymo is a toolkit for interfacing with Phomemo thermal label printers. It inc
 - **Web Label Designer** - A browser-based visual editor for creating and printing labels
 - **CLI Tool** - A command-line tool for batch printing images
 
-Supports Phomemo M110, M200, M220, M221, M260, D30, D110, and similar thermal printers.
+Supports Phomemo M-series (M02, M03, M04, M110, M120, M200, M220, M221, M260, T02) and D-series (D30, D35, D50, D110, Q30) thermal printers.
 
 ## Web Label Designer
 
@@ -56,16 +56,48 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 - **Export/Import** - Share designs as JSON files
 - **Print settings** - Density control, multiple copies, feed adjustment
 
+#### Printer Info Panel
+- **Live status** - View battery level, paper status, firmware version, and serial number
+- **Auto-query** - Status is automatically queried when connecting
+- **Visual indicators** - Battery level with color coding (green/yellow/red), paper-out warning
+- **Device memory** - App remembers your printer model for each device
+
 ### Supported Printers
 
-#### M-series (M110, M200, M220, M221, M260)
-Standard thermal label printers with print widths up to 60mm. These use the standard ESC/POS raster protocol over Bluetooth or USB.
+#### M-series (ESC/POS Raster Protocol)
 
-#### D-series (D30, D110)
-Compact label makers with 12-15mm print width. These use a different protocol and print labels rotated 90 degrees. The app automatically detects D-series printers and:
+| Model | Print Width | Notes |
+|-------|-------------|-------|
+| M02 / M02S / M02Pro / M03 | 53mm (432px) | Mini pocket printers |
+| M04S | 53-110mm | Multi-width support |
+| M110 / M120 | 48mm (384px) | Narrow label makers |
+| M200 | 75mm (608px) | Mid-size labels |
+| M220 / M221 | 80mm (648px) | Wide labels |
+| M260 | 72mm (576px) | Wide label maker |
+| T02 | 53mm (432px) | Mini sticker printer |
+
+#### D-series (Rotated Protocol)
+
+| Model | Label Width | Notes |
+|-------|-------------|-------|
+| D30 / D35 | 12-15mm | Smart mini label makers |
+| D50 | 16-24mm | Larger D-series |
+| D110 | 12-15mm | Similar to D30 |
+| Q30 / Q30S | 12-15mm | Similar to D30 |
+
+D-series printers use a different protocol and print labels rotated 90°. The app automatically detects D-series printers and:
 - Switches to D-series label size presets
 - Rotates image data for correct orientation
 - Uses the appropriate print protocol
+
+#### Auto-Detection
+
+The app automatically detects your printer model from the Bluetooth device name and configures the correct:
+- Print width (48-81 bytes depending on model)
+- Protocol (M-series ESC/POS or D-series rotated)
+- Label size presets
+
+If auto-detection fails (e.g., printer shows serial number instead of model), you can manually select your printer model in Print Settings, or the app will prompt you to choose on first connection.
 
 ### Quick Start
 
@@ -190,10 +222,11 @@ phomymo/
 
 ## Acknowledgments
 
-Thanks to these projects for inspiration:
+Thanks to these projects for protocol research and inspiration:
 
-- [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools)
-- [vrk/cli-phomemo-printer](https://github.com/vrk/cli-phomemo-printer)
+- [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools) - CUPS driver with reverse-engineered protocol
+- [yaddran/thermal-print](https://github.com/yaddran/thermal-print) - Printer status query commands
+- [vrk/cli-phomemo-printer](https://github.com/vrk/cli-phomemo-printer) - CLI printing implementation
 
 ## License
 

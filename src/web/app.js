@@ -3012,11 +3012,11 @@ function checkCompatibility() {
           <div class="grid grid-cols-2 gap-3">
             <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
-              <p class="text-sm text-gray-700">M110, M200, M220, M221, M260</p>
+              <p class="text-sm text-gray-700">M02, M03, M04, M110, M120, M200, M220, M221, M260, T02</p>
             </div>
             <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
-              <p class="text-sm text-gray-700">D30, D110</p>
+              <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30</p>
             </div>
           </div>
 
@@ -3032,19 +3032,19 @@ function checkCompatibility() {
             </a>
           </div>
 
-          <!-- Affordable Magic -->
-          <div class="flex items-center justify-center gap-2 pt-2 border-t border-gray-100">
-            <span class="text-xs text-gray-500">An</span>
-            <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="flex items-center gap-1 hover:opacity-80 transition-opacity">
-              <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
-            </a>
-            <span class="text-xs text-gray-500">product</span>
-          </div>
-
           <!-- Action Button -->
           <button id="dismiss-warning-btn" class="w-full px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium">
             Continue to Designer
           </button>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-gray-50 px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+          <p class="text-xs text-gray-400">Not affiliated with Phomemo</p>
+          <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all">
+            <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
+            <span class="text-xs font-medium text-gray-700">An Affordable Magic Product</span>
+          </a>
         </div>
       </div>
     `;

@@ -6,7 +6,7 @@
 import { CanvasRenderer } from './canvas.js?v=65';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes } from './printer.js?v=13';
+import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes } from './printer.js?v=14';
 import {
   createTextElement,
   createImageElement,
@@ -116,7 +116,7 @@ const state = {
     density: 6,       // 1-8 (darkness)
     copies: 1,        // Number of copies
     feed: 32,         // Feed after print in dots (8 dots = 1mm)
-    printerModel: 'auto',  // 'auto', 'narrow', 'wide', 'd-series'
+    printerModel: 'auto',  // 'auto', 'narrow-48', 'mini-54', 'wide-72', 'mid-76', 'wide-81', 'd-series'
   },
   // Template state
   templateFields: [],     // Detected field names from elements
@@ -2928,6 +2928,12 @@ function init() {
   if (savedPrintSettings) {
     try {
       const settings = JSON.parse(savedPrintSettings);
+      // Migrate old printerModel values to new format
+      if (settings.printerModel === 'narrow') {
+        settings.printerModel = 'narrow-48';
+      } else if (settings.printerModel === 'wide') {
+        settings.printerModel = 'wide-72';
+      }
       state.printSettings = { ...state.printSettings, ...settings };
       densitySlider.value = state.printSettings.density;
       densityValue.textContent = state.printSettings.density;

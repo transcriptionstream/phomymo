@@ -835,9 +835,20 @@
           <div class="prop-label">Printer Model</div>
           <select id="printer-model" class="prop-input">
             <option value="auto">Auto-detect</option>
-            <option value="narrow">M110 / M200 (narrow 48mm)</option>
-            <option value="wide">M220 / M260 (wide 72mm)</option>
-            <option value="d-series">D30 / D110</option>
+            <optgroup label="Narrow (48mm)">
+              <option value="narrow-48">M110 / M120</option>
+            </optgroup>
+            <optgroup label="Mini (53mm)">
+              <option value="mini-54">M02 / M02S / M03 / T02</option>
+            </optgroup>
+            <optgroup label="Wide">
+              <option value="wide-72">M260 (72mm)</option>
+              <option value="mid-76">M200 (75mm)</option>
+              <option value="wide-81">M220 / M221 (80mm)</option>
+            </optgroup>
+            <optgroup label="D-Series">
+              <option value="d-series">D30 / D35 / D50 / Q30</option>
+            </optgroup>
           </select>
           <div class="text-xs text-gray-400 mt-1">Override if auto-detect doesn't work</div>
         </div>

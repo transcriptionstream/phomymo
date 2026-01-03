@@ -49,51 +49,148 @@ const D_CMD = {
 };
 
 /**
- * Detect if device is D-series based on name
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection ('auto', 'narrow', 'wide', 'd-series')
+ * Printer width configurations
+ * Width in bytes (8 pixels per byte at 203 DPI)
  */
-export function isDSeriesPrinter(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'd-series') return true;
-  if (modelOverride === 'narrow' || modelOverride === 'wide') return false;
+const PRINTER_WIDTHS = {
+  // Manual override options (match dropdown values)
+  'narrow-48': 48,    // M110, M120 (48mm / 384px)
+  'mini-54': 54,      // M02, M02S, M02Pro, M03, T02 (53mm / 432px)
+  'wide-72': 72,      // M260 (72mm / 576px)
+  'mid-76': 76,       // M200 (75mm / 608px)
+  'wide-81': 81,      // M220, M221 (80mm / 648px)
+  'd-series': null,   // D-series uses raw label width
+};
 
-  // Auto-detect from device name
-  if (!deviceName) return false;
+/**
+ * Device name patterns for auto-detection
+ * Matched against start of device name (case-insensitive)
+ * More specific patterns should come first
+ */
+const DEVICE_PATTERNS = [
+  // M-series narrow (48mm)
+  { pattern: 'M110', width: 48, protocol: 'm-series' },
+  { pattern: 'M120', width: 48, protocol: 'm-series' },
+  // M-series mini (53mm)
+  { pattern: 'M02', width: 54, protocol: 'm-series' },
+  { pattern: 'M03', width: 54, protocol: 'm-series' },
+  { pattern: 'T02', width: 54, protocol: 'm-series' },
+  // M-series mid (75mm)
+  { pattern: 'M200', width: 76, protocol: 'm-series' },
+  // M-series wide (80mm)
+  { pattern: 'M220', width: 81, protocol: 'm-series' },
+  { pattern: 'M221', width: 81, protocol: 'm-series' },
+  // M-series wide (72mm) - M260 and catch-all for M2xx
+  { pattern: 'M260', width: 72, protocol: 'm-series' },
+  // M04 series (variable width, default to 54mm)
+  { pattern: 'M04', width: 54, protocol: 'm-series' },
+  // D-series (rotated protocol)
+  { pattern: 'D30', width: null, protocol: 'd-series' },
+  { pattern: 'D35', width: null, protocol: 'd-series' },
+  { pattern: 'D50', width: null, protocol: 'd-series' },
+  { pattern: 'Q30', width: null, protocol: 'd-series' },
+  // Generic D prefix last (catches D110, etc)
+  { pattern: 'D', width: null, protocol: 'd-series' },
+];
+
+// Default configuration when no pattern matches
+const DEFAULT_CONFIG = { width: 72, protocol: 'm-series' };
+
+/**
+ * Get printer configuration from device name
+ * @param {string} deviceName - BLE device name
+ * @returns {Object} { width, protocol }
+ */
+function detectPrinterConfig(deviceName) {
+  if (!deviceName) return DEFAULT_CONFIG;
+
   const name = deviceName.toUpperCase();
-  return name.startsWith('D30') || name.startsWith('D110') || name.startsWith('D');
+  for (const { pattern, width, protocol } of DEVICE_PATTERNS) {
+    if (name.startsWith(pattern)) {
+      return { width, protocol };
+    }
+  }
+  return DEFAULT_CONFIG;
 }
 
 /**
- * Detect if device is a narrow M-series printer (M110, M200)
- * These have 48mm print width vs 60mm+ for M220/M260
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection ('auto', 'narrow', 'wide', 'd-series')
+ * Get printer configuration from manual override
+ * @param {string} modelOverride - Manual model selection
+ * @returns {Object|null} { width, protocol } or null if auto
  */
-export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
+function getOverrideConfig(modelOverride) {
+  if (!modelOverride || modelOverride === 'auto') return null;
+
+  if (modelOverride === 'd-series') {
+    return { width: null, protocol: 'd-series' };
+  }
+
+  const width = PRINTER_WIDTHS[modelOverride];
+  if (width !== undefined) {
+    return { width, protocol: 'm-series' };
+  }
+
+  return null;
+}
+
+/**
+ * Detect if device is D-series based on name or override
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isDSeriesPrinter(deviceName, modelOverride = 'auto') {
   // Manual override takes precedence
-  if (modelOverride === 'narrow') return true;
-  if (modelOverride === 'wide' || modelOverride === 'd-series') return false;
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) {
+    return overrideConfig.protocol === 'd-series';
+  }
 
   // Auto-detect from device name
-  if (!deviceName) return false;
-  const name = deviceName.toUpperCase();
-  return name.startsWith('M110') || name.startsWith('M200');
+  const config = detectPrinterConfig(deviceName);
+  return config.protocol === 'd-series';
+}
+
+/**
+ * Detect if device is a narrow M-series printer (M110, M120)
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
+  const width = getPrinterWidthBytes(deviceName, modelOverride);
+  return width === 48;
 }
 
 /**
  * Get the maximum print width in bytes for a given printer
- * M110/M200: 48 bytes (384 pixels, ~48mm at 203 DPI)
- * M220/M260: 72 bytes (576 pixels, ~72mm at 203 DPI)
- * D-series: varies by label, handled separately
  * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection ('auto', 'narrow', 'wide', 'd-series')
+ * @param {string} modelOverride - Manual model selection
+ * @returns {number} Width in bytes (48, 54, 72, 76, or 81)
  */
 export function getPrinterWidthBytes(deviceName, modelOverride = 'auto') {
-  if (isNarrowMSeriesPrinter(deviceName, modelOverride)) {
-    return 48;  // 384 pixels = 48mm
+  // Manual override takes precedence
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig && overrideConfig.width !== null) {
+    return overrideConfig.width;
   }
-  return 72;  // 576 pixels = 72mm (M220, M260, etc.)
+
+  // Auto-detect from device name
+  const config = detectPrinterConfig(deviceName);
+  return config.width ?? DEFAULT_CONFIG.width;
+}
+
+/**
+ * Get a human-readable description of the detected printer type
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ * @returns {string} Description like "M-series (48mm)" or "D-series"
+ */
+export function getPrinterDescription(deviceName, modelOverride = 'auto') {
+  const isDSeries = isDSeriesPrinter(deviceName, modelOverride);
+  if (isDSeries) return 'D-series';
+
+  const width = getPrinterWidthBytes(deviceName, modelOverride);
+  const widthMm = Math.round(width * 8 / 8); // bytes * 8 pixels / 8 px per mm
+  return `M-series (${widthMm}mm)`;
 }
 
 /**
@@ -162,9 +259,9 @@ export async function print(transport, rasterData, options = {}) {
   const { data, widthBytes, heightLines } = rasterData;
 
   const isDSeries = isDSeriesPrinter(deviceName, printerModel);
-  const isNarrowM = isNarrowMSeriesPrinter(deviceName, printerModel);
+  const printerDesc = getPrinterDescription(deviceName, printerModel);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
-  console.log(`Device: ${deviceName}, Model: ${printerModel}, Protocol: ${isDSeries ? 'D-series' : isNarrowM ? 'M-series (narrow)' : 'M-series'}`);
+  console.log(`Device: ${deviceName}, Model: ${printerModel}, Detected: ${printerDesc}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
   if (isDSeries && isBLE) {

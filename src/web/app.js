@@ -6,7 +6,7 @@
 import { CanvasRenderer } from './canvas.js?v=65';
 import { BLETransport } from './ble.js?v=10';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes } from './printer.js?v=12';
+import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes } from './printer.js?v=13';
 import {
   createTextElement,
   createImageElement,
@@ -113,9 +113,10 @@ const state = {
   zoom: 1,
   // Print settings
   printSettings: {
-    density: 6,     // 1-8 (darkness)
-    copies: 1,      // Number of copies
-    feed: 32,       // Feed after print in dots (8 dots = 1mm)
+    density: 6,       // 1-8 (darkness)
+    copies: 1,        // Number of copies
+    feed: 32,         // Feed after print in dots (8 dots = 1mm)
+    printerModel: 'auto',  // 'auto', 'narrow', 'wide', 'd-series'
   },
   // Template state
   templateFields: [],     // Detected field names from elements
@@ -1007,7 +1008,7 @@ async function handleBatchPrint() {
 
   const btn = $('#template-print-btn');
   const originalText = btn.textContent;
-  const { density, feed } = state.printSettings;
+  const { density, feed, printerModel } = state.printSettings;
   const total = recordsToPrint.length;
 
   try {
@@ -1046,8 +1047,8 @@ async function handleBatchPrint() {
 
       // Render to raster (use raw format for D-series printers)
       const deviceName = state.transport.getDeviceName?.() || '';
-      const printerWidth = getPrinterWidthBytes(deviceName);
-      const rasterData = isDSeriesPrinter(deviceName)
+      const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+      const rasterData = isDSeriesPrinter(deviceName, printerModel)
         ? state.renderer.getRasterDataRaw(mergedElements)
         : state.renderer.getRasterData(mergedElements, printerWidth);
 
@@ -1055,6 +1056,7 @@ async function handleBatchPrint() {
       await print(state.transport, rasterData, {
         isBLE: state.connectionType === 'ble',
         deviceName,
+        printerModel,
         density,
         feed,
         onProgress: (progress) => {
@@ -1100,7 +1102,7 @@ async function handlePrintSinglePreview() {
 
   const btn = $('#full-preview-print');
   const originalText = btn.textContent;
-  const { density, feed } = state.printSettings;
+  const { density, feed, printerModel } = state.printSettings;
 
   try {
     btn.disabled = true;
@@ -1122,8 +1124,8 @@ async function handlePrintSinglePreview() {
 
     // Render to raster (use raw format for D-series printers)
     const deviceName = state.transport.getDeviceName?.() || '';
-    const printerWidth = getPrinterWidthBytes(deviceName);
-    const rasterData = isDSeriesPrinter(deviceName)
+    const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+    const rasterData = isDSeriesPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(mergedElements)
       : state.renderer.getRasterData(mergedElements, printerWidth);
 
@@ -1131,6 +1133,7 @@ async function handlePrintSinglePreview() {
     await print(state.transport, rasterData, {
       isBLE: state.connectionType === 'ble',
       deviceName,
+      printerModel,
       density,
       feed,
       onProgress: (progress) => {
@@ -2128,7 +2131,7 @@ async function handleConnect() {
 async function handlePrint() {
   const btn = $('#print-btn');
   const originalText = btn.textContent;
-  const { density, copies, feed } = state.printSettings;
+  const { density, copies, feed, printerModel } = state.printSettings;
 
   try {
     btn.disabled = true;
@@ -2146,8 +2149,8 @@ async function handlePrint() {
 
     // Render to raster (use raw format for D-series printers)
     const deviceName = state.transport.getDeviceName?.() || '';
-    const printerWidth = getPrinterWidthBytes(deviceName);
-    const rasterData = isDSeriesPrinter(deviceName)
+    const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+    const rasterData = isDSeriesPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(state.elements)
       : state.renderer.getRasterData(state.elements, printerWidth);
 
@@ -2159,6 +2162,7 @@ async function handlePrint() {
       await print(state.transport, rasterData, {
         isBLE: state.connectionType === 'ble',
         deviceName,
+        printerModel,
         density,
         feed,
         onProgress: (progress) => {
@@ -2917,6 +2921,7 @@ function init() {
   const densityValue = $('#print-density-value');
   const copiesInput = $('#print-copies');
   const feedSelect = $('#print-feed');
+  const printerModelSelect = $('#printer-model');
 
   // Load saved print settings from localStorage
   const savedPrintSettings = localStorage.getItem('phomymo_print_settings');
@@ -2928,6 +2933,7 @@ function init() {
       densityValue.textContent = state.printSettings.density;
       copiesInput.value = state.printSettings.copies;
       feedSelect.value = state.printSettings.feed;
+      printerModelSelect.value = state.printSettings.printerModel || 'auto';
     } catch (e) {
       console.warn('Failed to load print settings:', e);
     }
@@ -2939,6 +2945,7 @@ function init() {
     densityValue.textContent = state.printSettings.density;
     copiesInput.value = state.printSettings.copies;
     feedSelect.value = state.printSettings.feed;
+    printerModelSelect.value = state.printSettings.printerModel || 'auto';
     printSettingsDialog.classList.remove('hidden');
   });
 
@@ -2951,17 +2958,19 @@ function init() {
   });
 
   $('#print-settings-reset').addEventListener('click', () => {
-    state.printSettings = { density: 6, copies: 1, feed: 32 };
+    state.printSettings = { density: 6, copies: 1, feed: 32, printerModel: 'auto' };
     densitySlider.value = 6;
     densityValue.textContent = '6';
     copiesInput.value = 1;
     feedSelect.value = 32;
+    printerModelSelect.value = 'auto';
   });
 
   $('#print-settings-save').addEventListener('click', () => {
     state.printSettings.density = parseInt(densitySlider.value);
     state.printSettings.copies = Math.max(1, Math.min(99, parseInt(copiesInput.value) || 1));
     state.printSettings.feed = parseInt(feedSelect.value);
+    state.printSettings.printerModel = printerModelSelect.value;
 
     // Save to localStorage
     localStorage.setItem('phomymo_print_settings', JSON.stringify(state.printSettings));

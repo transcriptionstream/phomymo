@@ -830,6 +830,18 @@
       </div>
 
       <div class="space-y-4">
+        <!-- Printer Model -->
+        <div>
+          <div class="prop-label">Printer Model</div>
+          <select id="printer-model" class="prop-input">
+            <option value="auto">Auto-detect</option>
+            <option value="narrow">M110 / M200 (narrow 48mm)</option>
+            <option value="wide">M220 / M260 (wide 72mm)</option>
+            <option value="d-series">D30 / D110</option>
+          </select>
+          <div class="text-xs text-gray-400 mt-1">Override if auto-detect doesn't work</div>
+        </div>
+
         <!-- Density -->
         <div>
           <div class="prop-label">Print Density (Darkness)</div>

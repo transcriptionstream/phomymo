@@ -50,8 +50,15 @@ const D_CMD = {
 
 /**
  * Detect if device is D-series based on name
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection ('auto', 'narrow', 'wide', 'd-series')
  */
-export function isDSeriesPrinter(deviceName) {
+export function isDSeriesPrinter(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'd-series') return true;
+  if (modelOverride === 'narrow' || modelOverride === 'wide') return false;
+
+  // Auto-detect from device name
   if (!deviceName) return false;
   const name = deviceName.toUpperCase();
   return name.startsWith('D30') || name.startsWith('D110') || name.startsWith('D');
@@ -60,8 +67,15 @@ export function isDSeriesPrinter(deviceName) {
 /**
  * Detect if device is a narrow M-series printer (M110, M200)
  * These have 48mm print width vs 60mm+ for M220/M260
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection ('auto', 'narrow', 'wide', 'd-series')
  */
-export function isNarrowMSeriesPrinter(deviceName) {
+export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'narrow') return true;
+  if (modelOverride === 'wide' || modelOverride === 'd-series') return false;
+
+  // Auto-detect from device name
   if (!deviceName) return false;
   const name = deviceName.toUpperCase();
   return name.startsWith('M110') || name.startsWith('M200');
@@ -72,9 +86,11 @@ export function isNarrowMSeriesPrinter(deviceName) {
  * M110/M200: 48 bytes (384 pixels, ~48mm at 203 DPI)
  * M220/M260: 72 bytes (576 pixels, ~72mm at 203 DPI)
  * D-series: varies by label, handled separately
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection ('auto', 'narrow', 'wide', 'd-series')
  */
-export function getPrinterWidthBytes(deviceName) {
-  if (isNarrowMSeriesPrinter(deviceName)) {
+export function getPrinterWidthBytes(deviceName, modelOverride = 'auto') {
+  if (isNarrowMSeriesPrinter(deviceName, modelOverride)) {
     return 48;  // 384 pixels = 48mm
   }
   return 72;  // 576 pixels = 72mm (M220, M260, etc.)
@@ -136,18 +152,19 @@ function rotateRaster90CW(data, widthBytes, heightLines) {
  * @param {Object} options - Print options
  * @param {boolean} options.isBLE - Whether using BLE transport
  * @param {string} options.deviceName - Device name for protocol detection
+ * @param {string} options.printerModel - Manual model override ('auto', 'narrow', 'wide', 'd-series')
  * @param {number} options.density - Print density 1-8 (default 6)
  * @param {number} options.feed - Feed after print in dots (default 32)
  * @param {Function} options.onProgress - Progress callback (percent)
  */
 export async function print(transport, rasterData, options = {}) {
-  const { isBLE = false, deviceName = '', density = 6, feed = 32, onProgress = null } = options;
+  const { isBLE = false, deviceName = '', printerModel = 'auto', density = 6, feed = 32, onProgress = null } = options;
   const { data, widthBytes, heightLines } = rasterData;
 
-  const isDSeries = isDSeriesPrinter(deviceName);
-  const isNarrowM = isNarrowMSeriesPrinter(deviceName);
+  const isDSeries = isDSeriesPrinter(deviceName, printerModel);
+  const isNarrowM = isNarrowMSeriesPrinter(deviceName, printerModel);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
-  console.log(`Device: ${deviceName}, Protocol: ${isDSeries ? 'D-series' : isNarrowM ? 'M-series (narrow)' : 'M-series'}`);
+  console.log(`Device: ${deviceName}, Model: ${printerModel}, Protocol: ${isDSeries ? 'D-series' : isNarrowM ? 'M-series (narrow)' : 'M-series'}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
   if (isDSeries && isBLE) {

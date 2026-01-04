@@ -1,36 +1,29 @@
 # Phomymo
 
-Phomymo is a toolkit for interfacing with Phomemo thermal label printers. It includes:
-
-- **Web Label Designer** - A browser-based visual editor for creating and printing labels
-- **CLI Tool** - A command-line tool for batch printing images
-
-Supports Phomemo M-series (M02, M03, M04, M110, M120, M200, M220, M221, M260, T02) and D-series (D30, D35, D50, D110, Q30) thermal printers.
-
-## Web Label Designer
-
-A full-featured label designer that runs in your browser using Web Bluetooth (no drivers needed).
+A free, browser-based label designer for Phomemo thermal printers. No drivers needed - connects via Bluetooth.
 
 **Try it now: https://phomymo.affordablemagic.net**
 
 ![Phomymo Label Designer](screenshot.png)
 
-### Features
+Supports Phomemo M-series (M02, M03, M04S, M110, M120, M200, M220, M221, M260, T02) and D-series (D30, D35, D50, D110, Q30) thermal printers.
 
-#### Elements
+## Features
+
+### Elements
 - **Text** - Multiple fonts, sizes, bold, italic, underline, horizontal and vertical alignment, background colors
 - **Images** - Import with scale control and aspect ratio lock
 - **Barcodes** - Code128, EAN-13, UPC-A, Code39 formats
 - **QR Codes** - Automatic sizing and encoding
 - **Shapes** - Rectangle, ellipse, triangle, and line with fill options
 
-#### Shape Fills
+### Shape Fills
 - Solid black/white fills
 - 9 dithered grayscale levels (6%, 12%, 25%, 37%, 50%, 62%, 75%, 87%, 94%)
 - Stroke options with adjustable width
 - Rounded corners for rectangles
 
-#### Editing
+### Editing
 - **Visual editing** - Drag to move, resize handles on corners/edges, rotation handle
 - **Multi-select** - Shift+click to select multiple elements
 - **Grouping** - Group elements together (Ctrl/Cmd+G), ungroup (Ctrl/Cmd+Shift+G)
@@ -38,33 +31,33 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 - **Keyboard shortcuts** - Arrow keys to nudge, Delete to remove, Ctrl/Cmd+D to duplicate
 - **Layer ordering** - Raise/lower elements in z-order
 
-#### Templates & Batch Printing
+### Templates & Batch Printing
 - **Variable fields** - Use `{{FieldName}}` syntax in text, barcodes, and QR codes
 - **CSV import** - Load data from spreadsheet exports
 - **Manual data entry** - Add/edit records in a table interface
 - **Preview grid** - See all labels before printing with click-to-enlarge
 - **Batch printing** - Print multiple labels with progress indicator and cancel support
 
-#### Label Sizes
+### Label Sizes
 - **M-series presets**: 12x40, 15x30, 20x30, 25x50, 30x20, 30x40, 40x30, 40x60, 50x25, 50x30, 50x80, 60x40
 - **D-series presets**: 40x12, 30x12, 22x12, 12x12, 30x14, 22x14, 40x15, 30x15
 - Custom dimensions with live preview
 - **Auto-detection**: Label size options automatically switch when connecting to D-series printers
 
-#### File Operations
+### File Operations
 - **Save/Load** - Persist designs to browser localStorage
 - **Export/Import** - Share designs as JSON files
 - **Print settings** - Density control, multiple copies, feed adjustment
 
-#### Printer Info Panel
+### Printer Info Panel
 - **Live status** - View battery level, paper status, firmware version, and serial number
 - **Auto-query** - Status is automatically queried when connecting
 - **Visual indicators** - Battery level with color coding (green/yellow/red), paper-out warning
 - **Device memory** - App remembers your printer model for each device
 
-### Supported Printers
+## Supported Printers
 
-#### M-series (ESC/POS Raster Protocol)
+### M-series (ESC/POS Raster Protocol)
 
 | Model | Print Width | Notes |
 |-------|-------------|-------|
@@ -76,7 +69,7 @@ A full-featured label designer that runs in your browser using Web Bluetooth (no
 | M260 | 72mm (576px) | Wide label maker |
 | T02 | 53mm (432px) | Mini sticker printer |
 
-#### D-series (Rotated Protocol)
+### D-series (Rotated Protocol)
 
 | Model | Label Width | Notes |
 |-------|-------------|-------|
@@ -90,16 +83,16 @@ D-series printers use a different protocol and print labels rotated 90°. The ap
 - Rotates image data for correct orientation
 - Uses the appropriate print protocol
 
-#### Auto-Detection
+### Auto-Detection
 
 The app automatically detects your printer model from the Bluetooth device name and configures the correct:
-- Print width (48-81 bytes depending on model)
+- Print width (48-110 bytes depending on model)
 - Protocol (M-series ESC/POS or D-series rotated)
 - Label size presets
 
 If auto-detection fails (e.g., printer shows serial number instead of model), you can manually select your printer model in Print Settings, or the app will prompt you to choose on first connection.
 
-### Quick Start
+## Quick Start
 
 **Option 1: Use the live version**
 1. Open https://phomymo.affordablemagic.net in Chrome
@@ -115,7 +108,7 @@ If auto-detection fails (e.g., printer shows serial number instead of model), yo
 2. Open http://localhost:8080 in Chrome (or another Chromium-based browser)
 3. Connect, design, and print
 
-### Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -129,96 +122,45 @@ If auto-detection fails (e.g., printer shows serial number instead of model), yo
 | `Shift + Arrow keys` | Nudge by 10px |
 | `Shift + Click` | Add to selection |
 
-### Browser Requirements
+## Browser Requirements
 
 - Chrome, Edge, or another Chromium-based browser
 - Web Bluetooth API support (not available in Firefox or Safari)
 - HTTPS or localhost
 
-### Connection Tips
+## Connection Tips
 
 When the Bluetooth device picker appears, select the device showing a **signal strength indicator**. Devices listed without signal strength may be cached/ghost entries that won't connect properly.
-
-## CLI Tool
-
-A Node.js command-line tool for printing images via USB.
-
-### Installation
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/transcriptionstream/phomymo.git
-   cd phomymo
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-### Usage
-
-```bash
-node phomymo-cli.js --file ./image.png --label M260 --vendor 0x483 --product 0x5740
-```
-
-### CLI Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-f, --file <path>` | Image file to print | `./test.png` |
-| `-l, --label <type>` | Label type (M200, M260, 40x30, 60x40, custom) | `M260` |
-| `-w, --width <mm>` | Custom label width in mm | - |
-| `-h, --height <mm>` | Custom label height in mm | - |
-| `-v, --vendor <id>` | USB vendor ID | `0x483` |
-| `-p, --product <id>` | USB product ID | `0x5740` |
-| `-d, --density <1-8>` | Print density level | `6` |
-| `-m, --margin <mm>` | Margin in millimeters | `2` |
-| `-o, --offset <bytes>` | Horizontal offset in bytes | - |
-| `-y, --voffset <dots>` | Vertical offset in dots | - |
-| `-t, --test` | Print test alignment pattern | - |
-| `-i, --initial-feed <dots>` | Feed before printing | - |
-| `-n, --final-feed <dots>` | Feed after printing | - |
 
 ## How It Works
 
 1. **Label Size Configuration** - Sets pixel dimensions based on label size (203 DPI)
-2. **Image Processing** - Resizes image with margins and converts to 1-bit monochrome raster
-3. **Printing** - Sends ESC/POS commands and raster data to the printer
+2. **Image Processing** - Renders canvas to 1-bit monochrome raster
+3. **Printing** - Sends ESC/POS commands and raster data to the printer via Web Bluetooth
 
 ## Project Structure
 
 ```
 phomymo/
 ├── src/
-│   └── web/           # Web Label Designer
-│       ├── index.html # Main UI
-│       ├── app.js     # Application logic
-│       ├── canvas.js  # Canvas rendering
+│   └── web/            # Web Label Designer
+│       ├── index.html  # Main UI
+│       ├── app.js      # Application logic
+│       ├── canvas.js   # Canvas rendering
 │       ├── elements.js # Element management
-│       ├── handles.js # Selection handles
-│       ├── storage.js # localStorage persistence
+│       ├── handles.js  # Selection handles
+│       ├── storage.js  # localStorage persistence
 │       ├── templates.js # Variable substitution
-│       ├── ble.js     # Web Bluetooth transport
-│       ├── usb.js     # WebUSB transport
-│       └── printer.js # Print protocol
-├── phomymo-cli.js     # CLI tool
-├── package.json
+│       ├── ble.js      # Web Bluetooth transport
+│       ├── usb.js      # WebUSB transport
+│       └── printer.js  # Print protocol
 └── README.md
 ```
-
-## Platform Support
-
-- **Web Designer**: Any OS with Chrome/Chromium browser
-- **CLI Tool**: Tested on macOS (USB support may vary on other platforms)
 
 ## Known Limitations
 
 - **Density control**: Some printers (like M260) may not respond to runtime density commands. Print darkness may need to be adjusted via the printer's own settings.
 - **Web Bluetooth**: Only available in Chromium-based browsers, requires HTTPS or localhost.
-- **D-series USB**: D-series printers (D30, D110) are currently only supported via Bluetooth, not USB.
 
 ## Acknowledgments
 
@@ -226,7 +168,6 @@ Thanks to these projects for protocol research and inspiration:
 
 - [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools) - CUPS driver with reverse-engineered protocol
 - [yaddran/thermal-print](https://github.com/yaddran/thermal-print) - Printer status query commands
-- [vrk/cli-phomemo-printer](https://github.com/vrk/cli-phomemo-printer) - CLI printing implementation
 
 ## License
 

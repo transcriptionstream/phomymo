@@ -1244,6 +1244,43 @@
   <!-- Toast Container -->
   <div id="toast-container" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none"></div>
 
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcuts-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold">Keyboard Shortcuts</h2>
+        <button id="shortcuts-close" class="text-gray-400 hover:text-gray-600">&times;</button>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div class="font-medium text-gray-600">Undo</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+Z</kbd></div>
+        <div class="font-medium text-gray-600">Redo</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+Shift+Z</kbd></div>
+        <div class="font-medium text-gray-600">Duplicate</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+D</kbd></div>
+        <div class="font-medium text-gray-600">Copy</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+C</kbd></div>
+        <div class="font-medium text-gray-600">Paste</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+V</kbd></div>
+        <div class="font-medium text-gray-600">Delete</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Delete</kbd> / <kbd class="px-2 py-1 bg-gray-100 rounded">Backspace</kbd></div>
+        <div class="font-medium text-gray-600">Nudge 1px</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Arrow keys</kbd></div>
+        <div class="font-medium text-gray-600">Nudge 10px</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Shift+Arrow</kbd></div>
+        <div class="font-medium text-gray-600">Group</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+G</kbd></div>
+        <div class="font-medium text-gray-600">Ungroup</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Ctrl+Shift+G</kbd></div>
+        <div class="font-medium text-gray-600">Multi-select</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">Shift+Click</kbd></div>
+        <div class="font-medium text-gray-600">Show this help</div>
+        <div><kbd class="px-2 py-1 bg-gray-100 rounded">?</kbd></div>
+      </div>
+      <div class="mt-4 text-xs text-gray-400 text-center">Press Escape to close</div>
+    </div>
+  </div>
+
   <!-- Print Progress Modal -->
   <div id="print-progress-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
     <div class="bg-white rounded-xl shadow-xl p-6 w-80">

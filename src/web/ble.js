@@ -387,7 +387,7 @@ export class BLETransport {
 
     if (data.length < 2) return;
 
-    // Handle special result/printer type responses
+    // Handle special result/printer type responses (2-3 bytes)
     if (data.length === 2 && data[0] === 0x01) {
       console.log('Result:', data[1]);
       return;
@@ -399,6 +399,7 @@ export class BLETransport {
 
     // Standard response format: 0x1A, type, data...
     if (data[0] !== 0x1A) return;
+    if (data.length < 3) return; // Need at least 3 bytes for type + value
 
     const type = data[1];
     let value = null;

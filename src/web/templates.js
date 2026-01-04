@@ -107,6 +107,9 @@ export function validateRecord(fields, record) {
   };
 }
 
+// Maximum records to prevent browser memory issues
+const MAX_CSV_RECORDS = 10000;
+
 /**
  * Parse CSV string to array of records
  * Handles:
@@ -114,6 +117,7 @@ export function validateRecord(fields, record) {
  * - Quoted values with commas
  * - Escaped quotes ("" inside quoted values)
  * - Empty rows (skipped)
+ * - Max record limit (10,000) to prevent memory issues
  *
  * @param {string} csvString - CSV content
  * @returns {Object} - { headers: Array, records: Array, errors: Array }
@@ -135,6 +139,12 @@ export function parseCSV(csvString) {
 
   // Parse data rows
   for (let i = 1; i < lines.length; i++) {
+    // Check record limit
+    if (records.length >= MAX_CSV_RECORDS) {
+      errors.push(`CSV truncated: Maximum ${MAX_CSV_RECORDS} records allowed`);
+      break;
+    }
+
     const line = lines[i].trim();
     if (!line) continue; // Skip empty lines
 

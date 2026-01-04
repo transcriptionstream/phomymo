@@ -44,6 +44,8 @@ export class CanvasRenderer {
 
     // Image cache for elements
     this.imageCache = new Map();
+    // Track images currently loading to prevent race conditions
+    this.loadingImages = new Set();
 
     // Barcode/QR render cache
     this.renderCache = new Map();
@@ -611,13 +613,26 @@ export class CanvasRenderer {
 
     // Get or create cached image
     let img = this.imageCache.get(element.id);
+    const loadKey = `${element.id}_${imageData}`;
+
     if (!img || img.src !== imageData) {
+      // Skip if this exact image is already loading
+      if (this.loadingImages.has(loadKey)) {
+        return;
+      }
+
+      this.loadingImages.add(loadKey);
       img = new Image();
       img.onload = () => {
+        this.loadingImages.delete(loadKey);
         // Trigger re-render when image finishes loading
         if (this.onAsyncLoad) {
           this.onAsyncLoad();
         }
+      };
+      img.onerror = () => {
+        this.loadingImages.delete(loadKey);
+        console.error('Image load error for element:', element.id);
       };
       img.src = imageData;
       this.imageCache.set(element.id, img);
@@ -682,6 +697,10 @@ export class CanvasRenderer {
           if (this.onAsyncLoad) {
             this.onAsyncLoad();
           }
+        };
+        tempImg.onerror = () => {
+          URL.revokeObjectURL(url);
+          console.error('Barcode image load error');
         };
         tempImg.src = url;
       } catch (e) {
@@ -1066,93 +1085,10 @@ export class CanvasRenderer {
   }
 
   /**
-   * Get canvas image data as raster format for printing
-   * Renders to a temporary off-screen canvas at base resolution (zoom=1)
-   * @param {Array} elements - Elements to render
-   * @param {number} printerWidthBytes - Printer width in bytes (48 for M110/M200, 72 for M260)
+   * Render elements to a temporary canvas and return pixel data
+   * Shared helper for getRasterData and getRasterDataRaw
    */
-  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES) {
-    // Create temporary canvas at base resolution for printing
-    const width = this.labelWidth;
-    const height = this.labelHeight;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d');
-
-    // Fill with white background
-    tempCtx.fillStyle = 'white';
-    tempCtx.fillRect(0, 0, width, height);
-
-    // Render elements to temp canvas (no offset needed - temp canvas is label-sized)
-    const originalCtx = this.ctx;
-    this.ctx = tempCtx;
-    for (const element of elements) {
-      this.renderElement(element);
-    }
-    this.ctx = originalCtx;
-
-    // Get image data
-    const imageData = tempCtx.getImageData(0, 0, width, height);
-    const pixels = imageData.data;
-
-    // Calculate bytes per row of canvas
-    const canvasBytesPerRow = Math.ceil(width / 8);
-
-    // Prepare output: full printer width x canvas height
-    const output = new Uint8Array(printerWidthBytes * height);
-
-    // Calculate centering offset
-    const offset = Math.floor((printerWidthBytes - canvasBytesPerRow) / 2);
-
-    // Convert pixels to bits
-    for (let y = 0; y < height; y++) {
-      for (let byteX = 0; byteX < canvasBytesPerRow; byteX++) {
-        let byte = 0;
-
-        for (let bit = 0; bit < 8; bit++) {
-          const x = byteX * 8 + bit;
-          if (x >= width) continue;
-
-          // Get pixel value (RGBA)
-          const idx = (y * width + x) * 4;
-          const r = pixels[idx];
-          const g = pixels[idx + 1];
-          const b = pixels[idx + 2];
-
-          // Calculate brightness
-          const brightness = (r + g + b) / 3;
-
-          // Black pixel (brightness < 128) = set bit to 1
-          if (brightness < 128) {
-            byte |= (1 << (7 - bit));
-          }
-        }
-
-        // Write byte at centered position
-        const outputPos = y * printerWidthBytes + offset + byteX;
-        if (outputPos >= 0 && outputPos < output.length) {
-          output[outputPos] = byte;
-        }
-      }
-    }
-
-    return {
-      data: output,
-      widthBytes: printerWidthBytes,
-      heightLines: height,
-    };
-  }
-
-  /**
-   * Get canvas image data as raw raster (no padding/centering)
-   * Used for D-series printers that have different print widths
-   *
-   * Note: D30 has thermal limits - high black content (>60%) may cause
-   * print failures. Use dithered grays instead of solid black for large fills.
-   */
-  getRasterDataRaw(elements) {
-    // Create temporary canvas at base resolution for printing
+  _renderToPixels(elements) {
     const width = this.labelWidth;
     const height = this.labelHeight;
     const tempCanvas = document.createElement('canvas');
@@ -1174,45 +1110,83 @@ export class CanvasRenderer {
 
     // Get image data
     const imageData = tempCtx.getImageData(0, 0, width, height);
-    const pixels = imageData.data;
+    return { pixels: imageData.data, width, height };
+  }
 
-    // Calculate bytes per row (actual label width, no padding)
-    const widthBytes = Math.ceil(width / 8);
+  /**
+   * Convert pixel data to raster bytes
+   * @param {Uint8ClampedArray} pixels - RGBA pixel data
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @param {number} outputWidthBytes - Output width in bytes (for centering)
+   * @param {boolean} center - Whether to center output in outputWidthBytes
+   */
+  _pixelsToRaster(pixels, width, height, outputWidthBytes, center = false) {
+    const canvasBytesPerRow = Math.ceil(width / 8);
+    const output = new Uint8Array(outputWidthBytes * height);
+    const offset = center ? Math.floor((outputWidthBytes - canvasBytesPerRow) / 2) : 0;
 
-    // Output: actual label width x height
-    const output = new Uint8Array(widthBytes * height);
-
-    // Convert pixels to bits
     for (let y = 0; y < height; y++) {
-      for (let byteX = 0; byteX < widthBytes; byteX++) {
+      for (let byteX = 0; byteX < canvasBytesPerRow; byteX++) {
         let byte = 0;
 
         for (let bit = 0; bit < 8; bit++) {
           const x = byteX * 8 + bit;
           if (x >= width) continue;
 
-          // Get pixel value (RGBA)
           const idx = (y * width + x) * 4;
           const r = pixels[idx];
           const g = pixels[idx + 1];
           const b = pixels[idx + 2];
-
-          // Calculate brightness
           const brightness = (r + g + b) / 3;
 
-          // Black pixel (brightness < 128) = set bit to 1
           if (brightness < 128) {
             byte |= (1 << (7 - bit));
           }
         }
 
-        output[y * widthBytes + byteX] = byte;
+        const outputPos = y * outputWidthBytes + offset + byteX;
+        if (outputPos >= 0 && outputPos < output.length) {
+          output[outputPos] = byte;
+        }
       }
     }
 
+    return output;
+  }
+
+  /**
+   * Get canvas image data as raster format for printing
+   * Renders to a temporary off-screen canvas at base resolution (zoom=1)
+   * @param {Array} elements - Elements to render
+   * @param {number} printerWidthBytes - Printer width in bytes (48 for M110/M200, 72 for M260)
+   */
+  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES) {
+    const { pixels, width, height } = this._renderToPixels(elements);
+    const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, true);
+
     return {
-      data: output,
-      widthBytes: widthBytes,
+      data,
+      widthBytes: printerWidthBytes,
+      heightLines: height,
+    };
+  }
+
+  /**
+   * Get canvas image data as raw raster (no padding/centering)
+   * Used for D-series printers that have different print widths
+   *
+   * Note: D30 has thermal limits - high black content (>60%) may cause
+   * print failures. Use dithered grays instead of solid black for large fills.
+   */
+  getRasterDataRaw(elements) {
+    const { pixels, width, height } = this._renderToPixels(elements);
+    const widthBytes = Math.ceil(width / 8);
+    const data = this._pixelsToRaster(pixels, width, height, widthBytes, false);
+
+    return {
+      data,
+      widthBytes,
       heightLines: height,
     };
   }

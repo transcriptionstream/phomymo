@@ -1,10 +1,11 @@
+.*
+*.md
+!README.md
 node_modules/
-.DS_Store
 
 # Site-specific SEO files (contain domain-specific URLs)
 src/web/sitemap.xml
 src/web/robots.txt
 src/web/screenshot.png
-PRINTER_SUPPORT_PLAN.md
 src/web/google*.html
 archive/

@@ -130,6 +130,8 @@ const state = {
   historyIndex: -1,       // Current position in history (-1 = no history)
   // Alignment guides (populated during drag)
   alignmentGuides: [],    // Array of { type: 'h'|'v', pos: number, label?: string }
+  // Clipboard for copy/paste
+  clipboard: [],          // Array of copied elements
 };
 
 // Alignment guide threshold (pixels)
@@ -250,7 +252,9 @@ function redo() {
   if (state.historyIndex >= state.history.length - 2) return;
 
   state.historyIndex++;
-  state.elements = JSON.parse(JSON.stringify(state.history[state.historyIndex + 1]));
+  const nextState = state.history[state.historyIndex + 1];
+  if (!nextState) return; // Safety check
+  state.elements = JSON.parse(JSON.stringify(nextState));
 
   // Clear selection if selected elements no longer exist
   state.selectedIds = state.selectedIds.filter(id =>
@@ -440,11 +444,12 @@ function updatePrinterInfoFromQuery(field, value, allInfo) {
       updatePrinterInfoUI(deviceName, state.printSettings.printerModel);
       break;
     case 'paper':
-      $('#pi-paper').textContent = value === 'ok' ? 'OK' : (value === 'out' ? 'Out!' : '--');
+      // Use icon prefix for accessibility (not just color)
+      $('#pi-paper').textContent = value === 'ok' ? '✓ OK' : (value === 'out' ? '⚠ Out!' : '--');
       if (value === 'out') {
-        $('#pi-paper').classList.add('text-red-600');
+        $('#pi-paper').classList.add('text-red-600', 'font-semibold');
       } else {
-        $('#pi-paper').classList.remove('text-red-600');
+        $('#pi-paper').classList.remove('text-red-600', 'font-semibold');
       }
       break;
     case 'firmware':
@@ -596,7 +601,7 @@ function updateTemplateIndicator() {
 
     // Show field tags
     fieldTags.innerHTML = state.templateFields.map(f =>
-      `<span class="px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">{{${f}}}</span>`
+      `<span class="px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">{{${escapeHtml(f)}}}</span>`
     ).join('');
 
     // Show toolbar button
@@ -655,7 +660,7 @@ function updateFieldDropdowns() {
 
     if (state.templateFields.length > 0) {
       fieldList.innerHTML = state.templateFields.map(f =>
-        `<button class="field-option w-full text-left px-3 py-1.5 text-sm hover:bg-purple-50 text-gray-700" data-field="${f}" data-type="${type}">{{${f}}}</button>`
+        `<button class="field-option w-full text-left px-3 py-1.5 text-sm hover:bg-purple-50 text-gray-700" data-field="${escapeHtml(f)}" data-type="${type}">{{${escapeHtml(f)}}}</button>`
       ).join('');
     } else {
       fieldList.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400 italic">No fields yet</div>';
@@ -845,7 +850,7 @@ function updateTemplateDataTable() {
     </th>
     <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 w-8">#</th>
     ${state.templateFields.map(f => `
-      <th class="px-2 py-1 text-left text-xs font-medium text-gray-500">${f}</th>
+      <th class="px-2 py-1 text-left text-xs font-medium text-gray-500">${escapeHtml(f)}</th>
     `).join('')}
     <th class="px-2 py-1 text-right text-xs font-medium text-gray-500 w-16">Actions</th>
   `;
@@ -861,7 +866,7 @@ function updateTemplateDataTable() {
       ${state.templateFields.map(f => `
         <td class="px-2 py-1">
           <input type="text" class="template-field-input w-full text-sm border-0 bg-transparent p-0 focus:ring-1 focus:ring-blue-500 rounded"
-            data-index="${idx}" data-field="${f}" value="${escapeHtml(record[f] || '')}">
+            data-index="${idx}" data-field="${escapeHtml(f)}" value="${escapeHtml(record[f] || '')}">
         </td>
       `).join('')}
       <td class="px-2 py-1 text-right">
@@ -2840,9 +2845,11 @@ function handleKeyDown(e) {
     }
   }
 
-  // Escape to deselect
+  // Escape to deselect or close modals
   if (e.key === 'Escape') {
-    if ($('#info-dialog').classList.contains('hidden') === false) {
+    if ($('#shortcuts-modal').classList.contains('hidden') === false) {
+      hideShortcutsModal();
+    } else if ($('#info-dialog').classList.contains('hidden') === false) {
       hideInfoDialog();
     } else if ($('#save-dialog').classList.contains('hidden') === false) {
       hideSaveDialog();
@@ -2879,6 +2886,27 @@ function handleKeyDown(e) {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
     e.preventDefault();
     handleUngroup();
+  }
+
+  // Ctrl/Cmd + C to copy
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c' && hasSelection) {
+    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      copyElements();
+    }
+  }
+
+  // Ctrl/Cmd + V to paste
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      pasteElements();
+    }
+  }
+
+  // ? to show keyboard shortcuts
+  if (e.key === '?' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    showShortcutsModal();
   }
 }
 
@@ -2929,6 +2957,64 @@ function handleUngroup() {
   updateToolbarState();
   showToast('Elements ungrouped', 'success');
   setStatus('Elements ungrouped');
+}
+
+/**
+ * Copy selected elements to clipboard
+ */
+function copyElements() {
+  const selectedElements = getSelectedElements();
+  if (selectedElements.length === 0) return;
+
+  // Deep clone the elements
+  state.clipboard = JSON.parse(JSON.stringify(selectedElements));
+  showToast(`${selectedElements.length} element${selectedElements.length > 1 ? 's' : ''} copied`, 'success');
+}
+
+/**
+ * Paste elements from clipboard
+ */
+function pasteElements() {
+  if (state.clipboard.length === 0) {
+    showToast('Nothing to paste', 'warning');
+    return;
+  }
+
+  saveHistory();
+
+  // Offset pasted elements by 10px
+  const newElements = state.clipboard.map(el => {
+    const clone = JSON.parse(JSON.stringify(el));
+    clone.id = 'el_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    clone.x += 10;
+    clone.y += 10;
+    // Clear group id on paste
+    delete clone.groupId;
+    return clone;
+  });
+
+  state.elements.push(...newElements);
+  state.selectedIds = newElements.map(el => el.id);
+
+  render();
+  updatePropertiesPanel();
+  updateToolbarState();
+  showToast(`${newElements.length} element${newElements.length > 1 ? 's' : ''} pasted`, 'success');
+  setStatus('Elements pasted');
+}
+
+/**
+ * Show keyboard shortcuts modal
+ */
+function showShortcutsModal() {
+  $('#shortcuts-modal').classList.remove('hidden');
+}
+
+/**
+ * Hide keyboard shortcuts modal
+ */
+function hideShortcutsModal() {
+  $('#shortcuts-modal').classList.add('hidden');
 }
 
 /**
@@ -3112,6 +3198,12 @@ function init() {
   $('#info-close').addEventListener('click', hideInfoDialog);
   $('#info-dialog').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) hideInfoDialog();
+  });
+
+  // Keyboard shortcuts modal
+  $('#shortcuts-close').addEventListener('click', hideShortcutsModal);
+  $('#shortcuts-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hideShortcutsModal();
   });
 
   // Connect and print

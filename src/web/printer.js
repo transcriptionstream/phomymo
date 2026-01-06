@@ -68,8 +68,9 @@ const PRINTER_WIDTHS = {
   'm03': 54,
   // M260 (72mm / 576px)
   'm260': 72,
-  // M200 (75mm / 608px)
+  // M200/M250 (75mm / 608px)
   'm200': 76,
+  'm250': 76,
   // M220/M221 (80mm / 648px)
   'm220': 81,
   // M04S multi-width options
@@ -101,6 +102,7 @@ const DEVICE_PATTERNS = [
   { pattern: 'M120', width: 48, protocol: 'm-series' },
   // M-series mid (75mm)
   { pattern: 'M200', width: 76, protocol: 'm-series' },
+  { pattern: 'M250', width: 76, protocol: 'm-series' },
   // M-series wide (80mm)
   { pattern: 'M220', width: 81, protocol: 'm-series' },
   { pattern: 'M221', width: 81, protocol: 'm-series' },
@@ -112,6 +114,7 @@ const DEVICE_PATTERNS = [
   { pattern: 'D30', width: null, protocol: 'd-series' },
   { pattern: 'D35', width: null, protocol: 'd-series' },
   { pattern: 'D50', width: null, protocol: 'd-series' },
+  { pattern: 'Q30S', width: null, protocol: 'd-series' },
   { pattern: 'Q30', width: null, protocol: 'd-series' },
   // Generic D prefix last (catches D110, etc)
   { pattern: 'D', width: null, protocol: 'd-series' },

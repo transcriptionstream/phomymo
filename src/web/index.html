@@ -7,7 +7,7 @@
 
   <!-- SEO Meta Tags -->
   <meta name="description" content="Free browser-based label designer for Phomemo thermal printers. Create custom labels with text, barcodes, QR codes, and images. No drivers needed - connects via Bluetooth. Works with M02, M03, M110, M120, M200, M220, M260, D30, D35, D50, Q30 and more.">
-  <meta name="keywords" content="Phomemo, label printer, thermal printer, label designer, barcode generator, QR code, M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M260, D30, D35, D50, Q30, T02, bluetooth printer, label maker, free label software, Phomemo alternative, thermal label printer software">
+  <meta name="keywords" content="Phomemo, label printer, thermal printer, label designer, barcode generator, QR code, M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M250, M260, D30, D35, D50, Q30, Q30S, T02, bluetooth printer, label maker, free label software, Phomemo alternative, thermal label printer software">
   <meta name="author" content="Phomymo">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://phomymo.affordablemagic.net/">
@@ -921,11 +921,12 @@
             </optgroup>
             <optgroup label="M200 Series">
               <option value="m200">M200 (75mm)</option>
+              <option value="m250">M250 (75mm)</option>
               <option value="m220">M220 / M221 (80mm)</option>
               <option value="m260">M260 (72mm)</option>
             </optgroup>
             <optgroup label="D-Series">
-              <option value="d-series">D30 / D35 / D50 / Q30</option>
+              <option value="d-series">D30 / D35 / D50 / Q30 / Q30S</option>
             </optgroup>
           </select>
           <div class="text-xs text-gray-400 mt-1">Override if auto-detect doesn't work</div>
@@ -1020,6 +1021,9 @@
         <button data-model="m200" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
           M200 (75mm)
         </button>
+        <button data-model="m250" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M250 (75mm)
+        </button>
         <button data-model="m220" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
           M220 / M221 (80mm)
         </button>
@@ -1029,7 +1033,7 @@
 
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">D-Series</div>
         <button data-model="d-series" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          D30 / D35 / D50 / Q30
+          D30 / D35 / D50 / Q30 / Q30S
         </button>
       </div>
 
@@ -1089,12 +1093,12 @@
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
             <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
-            <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M260, T02</p>
+            <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02</p>
             <p class="text-xs text-gray-500">48-110mm print width</p>
           </div>
           <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
             <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
-            <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30</p>
+            <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30, Q30S</p>
             <p class="text-xs text-gray-500">Compact 12-24mm width</p>
           </div>
         </div>

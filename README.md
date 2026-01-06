@@ -6,7 +6,7 @@ A free, browser-based label designer for Phomemo thermal printers. No drivers ne
 
 ![Phomymo Label Designer](screenshot.png)
 
-Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M260, T02) and D-series (D30, D35, D50, D110, Q30) thermal printers.
+Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02) and D-series (D30, D35, D50, D110, Q30, Q30S) thermal printers.
 
 ## Features
 
@@ -70,7 +70,7 @@ Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M11
 | M03 / T02 | 53mm (432px) | Mini sticker printers |
 | M04S | 53/80/110mm | Multi-width support (select paper size in settings) |
 | M110 / M120 | 48mm (384px) | Narrow label makers |
-| M200 | 75mm (608px) | Mid-size labels |
+| M200 / M250 | 75mm (608px) | Mid-size labels |
 | M220 / M221 | 80mm (648px) | Wide labels |
 | M260 | 72mm (576px) | Wide label maker |
 

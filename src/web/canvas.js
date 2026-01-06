@@ -4,6 +4,7 @@
  */
 
 import { drawHandles, drawGroupHandles } from './handles.js?v=5';
+import { logError, ErrorLevel } from './utils/errors.js';
 
 // Pixels per mm (203 DPI ≈ 8 px/mm)
 const PX_PER_MM = 8;
@@ -16,6 +17,10 @@ const PRINTER_WIDTH_PIXELS = PRINTER_WIDTH_BYTES * 8;
 
 // Overflow area padding in pixels (visible area around label)
 const OVERFLOW_PADDING = 120;
+
+// Maximum cache entries to prevent memory leaks
+const MAX_RENDER_CACHE_SIZE = 100;
+const MAX_IMAGE_CACHE_SIZE = 50;
 
 /**
  * Canvas renderer class
@@ -611,8 +616,8 @@ export class CanvasRenderer {
 
     if (!imageData) return;
 
-    // Get or create cached image
-    let img = this.imageCache.get(element.id);
+    // Get or create cached image (using LRU getter)
+    let img = this._getFromImageCache(element.id);
     const loadKey = `${element.id}_${imageData}`;
 
     if (!img || img.src !== imageData) {
@@ -632,10 +637,10 @@ export class CanvasRenderer {
       };
       img.onerror = () => {
         this.loadingImages.delete(loadKey);
-        console.error('Image load error for element:', element.id);
+        logError(`Image load error for element: ${element.id}`, 'renderImage', ErrorLevel.WARNING);
       };
       img.src = imageData;
-      this.imageCache.set(element.id, img);
+      this._addToImageCache(element.id, img);
     }
 
     if (img.complete && img.naturalWidth > 0) {
@@ -652,7 +657,7 @@ export class CanvasRenderer {
     if (!barcodeData || !barcodeData.trim()) return;
 
     const cacheKey = `barcode_${element.id}_${barcodeData}_${barcodeFormat}_${width}_${height}`;
-    let cachedCanvas = this.renderCache.get(cacheKey);
+    let cachedCanvas = this._getFromRenderCache(cacheKey);
 
     if (!cachedCanvas) {
       try {
@@ -690,7 +695,7 @@ export class CanvasRenderer {
           tempCtx.fillRect(0, 0, width, height);
           tempCtx.drawImage(tempImg, dx, dy, scaledW, scaledH);
 
-          this.renderCache.set(cacheKey, cachedCanvas);
+          this._addToRenderCache(cacheKey, cachedCanvas);
           URL.revokeObjectURL(url);
 
           // Trigger re-render to show the loaded barcode
@@ -700,11 +705,11 @@ export class CanvasRenderer {
         };
         tempImg.onerror = () => {
           URL.revokeObjectURL(url);
-          console.error('Barcode image load error');
+          logError('Barcode image load error', 'renderBarcode', ErrorLevel.WARNING);
         };
         tempImg.src = url;
       } catch (e) {
-        console.error('Barcode render error:', e);
+        logError(e, 'renderBarcode');
       }
     }
 
@@ -732,7 +737,7 @@ export class CanvasRenderer {
 
     const size = Math.min(width, height);
     const cacheKey = `qr_${element.id}_${qrData}_${size}`;
-    let cachedCanvas = this.renderCache.get(cacheKey);
+    let cachedCanvas = this._getFromRenderCache(cacheKey);
 
     if (!cachedCanvas) {
       try {
@@ -743,10 +748,10 @@ export class CanvasRenderer {
           color: { dark: '#000000', light: '#ffffff' },
         }, (error) => {
           if (error) {
-            console.error('QR render error:', error);
+            logError(error, 'renderQR');
             this.renderCache.delete(cacheKey);
           } else {
-            this.renderCache.set(cacheKey, cachedCanvas);
+            this._addToRenderCache(cacheKey, cachedCanvas);
             // Trigger re-render to show the loaded QR code
             if (this.onAsyncLoad) {
               this.onAsyncLoad();
@@ -754,7 +759,7 @@ export class CanvasRenderer {
           }
         });
       } catch (e) {
-        console.error('QR error:', e);
+        logError(e, 'renderQR');
       }
     }
 
@@ -1078,9 +1083,99 @@ export class CanvasRenderer {
         }
       }
       this.imageCache.delete(elementId);
+      // Also clear any pending loads for this element to prevent race conditions
+      for (const loadKey of this.loadingImages) {
+        if (loadKey.startsWith(`${elementId}_`)) {
+          this.loadingImages.delete(loadKey);
+        }
+      }
     } else {
       this.renderCache.clear();
       this.imageCache.clear();
+      this.loadingImages.clear();
+    }
+  }
+
+  /**
+   * Evict least recently used cache entries if cache is too large
+   * Uses Map insertion order - oldest entries are first
+   * @param {Map} cache - Cache map to evict from
+   * @param {number} maxSize - Maximum size
+   */
+  _evictCache(cache, maxSize) {
+    if (cache.size <= maxSize) return;
+    // Delete oldest entries (first entries in Map iteration order = LRU)
+    const toDelete = cache.size - maxSize;
+    let deleted = 0;
+    for (const key of cache.keys()) {
+      if (deleted >= toDelete) break;
+      cache.delete(key);
+      deleted++;
+    }
+  }
+
+  /**
+   * Get from render cache and update LRU order
+   * @param {string} key - Cache key
+   * @returns {*} Cached value or undefined
+   */
+  _getFromRenderCache(key) {
+    const value = this.renderCache.get(key);
+    if (value !== undefined) {
+      // Move to end (most recently used) by re-inserting
+      this.renderCache.delete(key);
+      this.renderCache.set(key, value);
+    }
+    return value;
+  }
+
+  /**
+   * Get from image cache and update LRU order
+   * @param {string} key - Cache key
+   * @returns {*} Cached value or undefined
+   */
+  _getFromImageCache(key) {
+    const value = this.imageCache.get(key);
+    if (value !== undefined) {
+      // Move to end (most recently used) by re-inserting
+      this.imageCache.delete(key);
+      this.imageCache.set(key, value);
+    }
+    return value;
+  }
+
+  /**
+   * Add to render cache with size limit
+   */
+  _addToRenderCache(key, value) {
+    this._evictCache(this.renderCache, MAX_RENDER_CACHE_SIZE - 1);
+    this.renderCache.set(key, value);
+  }
+
+  /**
+   * Add to image cache with size limit
+   */
+  _addToImageCache(key, value) {
+    this._evictCache(this.imageCache, MAX_IMAGE_CACHE_SIZE - 1);
+    this.imageCache.set(key, value);
+  }
+
+  /**
+   * Destroy renderer and clean up resources
+   * Call when the application is closing or renderer is no longer needed
+   */
+  destroy() {
+    // Clear all caches
+    this.renderCache.clear();
+    this.imageCache.clear();
+    this.loadingImages.clear();
+
+    // Clear callback
+    this.onAsyncLoad = null;
+
+    // Clear canvas
+    if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
   }
 

@@ -8,14 +8,7 @@
  * - Handles timing issues common with BLE GATT connections
  */
 
-// Default UUIDs for Phomemo printers
-const DEFAULT_SERVICE_UUID = 0xff00;
-const DEFAULT_WRITE_CHAR_UUID = 0xff02;
-const DEFAULT_NOTIFY_CHAR_UUID = 0xff03;
-
-// BLE transfer settings
-const CHUNK_SIZE = 128;
-const CHUNK_DELAY = 20;
+import { BLE } from './constants.js';
 
 // Printer query commands (format: [0x1F, 0x11, X])
 const QUERY_COMMANDS = {
@@ -29,10 +22,6 @@ const QUERY_COMMANDS = {
   power: [0x1F, 0x11, 0x0E],
   label: [0x1F, 0x11, 0x19],
 };
-
-// Connection retry settings
-const MAX_RETRIES = 1;  // Reduced - we'll get a fresh device from picker if "Unsupported"
-const INITIAL_RETRY_DELAY = 300; // ms
 
 // Singleton instance
 let sharedInstance = null;
@@ -91,8 +80,8 @@ export class BLETransport {
         console.log('Reconnecting to', this.device.name);
         await this.retryWithBackoff(
           () => this.connectGATT(),
-          MAX_RETRIES,
-          INITIAL_RETRY_DELAY
+          BLE.MAX_RETRIES,
+          BLE.INITIAL_RETRY_DELAY_MS
         );
         return true;
       } catch (e) {
@@ -123,13 +112,13 @@ export class BLETransport {
             { namePrefix: 'D' },      // D30, D110, etc.
             { namePrefix: 'Phomemo' },
           ],
-          optionalServices: [DEFAULT_SERVICE_UUID],
+          optionalServices: [BLE.SERVICE_UUID],
         });
       } catch (filterError) {
         console.log('Name filter failed, trying acceptAllDevices:', filterError.message);
         this.device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: true,
-          optionalServices: [DEFAULT_SERVICE_UUID],
+          optionalServices: [BLE.SERVICE_UUID],
         });
       }
 
@@ -142,8 +131,8 @@ export class BLETransport {
         // Try to connect with retries
         await this.retryWithBackoff(
           () => this.connectGATT(),
-          MAX_RETRIES,
-          INITIAL_RETRY_DELAY,
+          BLE.MAX_RETRIES,
+          BLE.INITIAL_RETRY_DELAY_MS,
           (attempt, error) => console.log(`Connection attempt ${attempt} failed, retrying...`)
         );
         return true; // Success!
@@ -228,7 +217,12 @@ export class BLETransport {
         this.server = null;
         this.service = null;
         this.writeChar = null;
+        // Remove notification listener to prevent memory leaks
+        if (this.notifyChar && this._notificationHandler) {
+          this.notifyChar.removeEventListener('characteristicvaluechanged', this._notificationHandler);
+        }
         this.notifyChar = null;
+        this._notificationHandler = null;
         if (this.onDisconnect) this.onDisconnect();
       });
       this.device._hasDisconnectHandler = true;
@@ -249,19 +243,20 @@ export class BLETransport {
     await this.delay(100);
 
     console.log('Getting service...');
-    this.service = await this.server.getPrimaryService(DEFAULT_SERVICE_UUID);
+    this.service = await this.server.getPrimaryService(BLE.SERVICE_UUID);
 
     console.log('Getting characteristics...');
-    this.writeChar = await this.service.getCharacteristic(DEFAULT_WRITE_CHAR_UUID);
+    this.writeChar = await this.service.getCharacteristic(BLE.WRITE_CHAR_UUID);
 
     try {
-      this.notifyChar = await this.service.getCharacteristic(DEFAULT_NOTIFY_CHAR_UUID);
+      this.notifyChar = await this.service.getCharacteristic(BLE.NOTIFY_CHAR_UUID);
       await this.notifyChar.startNotifications();
 
-      // Set up notification handler
-      this.notifyChar.addEventListener('characteristicvaluechanged', (event) => {
+      // Set up notification handler (store reference for cleanup)
+      this._notificationHandler = (event) => {
         this.handleNotification(event);
-      });
+      };
+      this.notifyChar.addEventListener('characteristicvaluechanged', this._notificationHandler);
 
       console.log('Notifications enabled');
     } catch (e) {
@@ -276,7 +271,18 @@ export class BLETransport {
    * Disconnect from device
    */
   async disconnect() {
-    if (this.device && this.device.gatt.connected) {
+    // Stop notifications and remove listener before disconnecting
+    if (this.notifyChar) {
+      try {
+        if (this._notificationHandler) {
+          this.notifyChar.removeEventListener('characteristicvaluechanged', this._notificationHandler);
+        }
+        await this.notifyChar.stopNotifications();
+      } catch (e) {
+        // Ignore errors during cleanup (device may already be disconnected)
+      }
+    }
+    if (this.device && this.device.gatt?.connected) {
       this.device.gatt.disconnect();
     }
     this.connected = false;
@@ -285,6 +291,7 @@ export class BLETransport {
     this.service = null;
     this.writeChar = null;
     this.notifyChar = null;
+    this._notificationHandler = null;
   }
 
   /**
@@ -314,15 +321,15 @@ export class BLETransport {
    */
   async sendChunked(data, onProgress = null) {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const totalChunks = Math.ceil(bytes.length / CHUNK_SIZE);
+    const totalChunks = Math.ceil(bytes.length / BLE.CHUNK_SIZE);
 
-    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-      const chunk = bytes.slice(i, Math.min(i + CHUNK_SIZE, bytes.length));
+    for (let i = 0; i < bytes.length; i += BLE.CHUNK_SIZE) {
+      const chunk = bytes.slice(i, Math.min(i + BLE.CHUNK_SIZE, bytes.length));
       await this.send(chunk);
-      await this.delay(CHUNK_DELAY);
+      await this.delay(BLE.CHUNK_DELAY_MS);
 
       if (onProgress) {
-        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+        const chunkNum = Math.floor(i / BLE.CHUNK_SIZE) + 1;
         const progress = Math.round((i + chunk.length) / bytes.length * 100);
         onProgress(chunkNum, totalChunks, progress);
       }
@@ -343,7 +350,7 @@ export class BLETransport {
    * @param {number} delay - Initial delay in ms (doubles each retry)
    * @param {Function} onRetry - Optional callback on retry (receives attempt number, error)
    */
-  async retryWithBackoff(fn, maxRetries = MAX_RETRIES, delay = INITIAL_RETRY_DELAY, onRetry = null) {
+  async retryWithBackoff(fn, maxRetries = BLE.MAX_RETRIES, delay = BLE.INITIAL_RETRY_DELAY_MS, onRetry = null) {
     let lastError;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {

@@ -54,41 +54,70 @@ import {
   parseCSV,
   createEmptyRecord,
 } from './templates.js?v=1';
+import {
+  ZOOM,
+  TEXT,
+  IMAGE,
+  ELEMENT,
+  LABEL,
+  PRINT,
+  HISTORY,
+  GUIDES,
+  STORAGE_KEYS,
+  M_SERIES_LABEL_SIZES,
+  D_SERIES_LABEL_SIZES,
+} from './constants.js';
+import {
+  bindCheckbox,
+  bindToggleButton,
+  bindButtonGroup,
+  bindSelect,
+  bindNumericInput,
+  bindSlider,
+  bindPositionInputs,
+  bindAlignButtons,
+  createBindingContext,
+} from './utils/bindings.js';
+import {
+  configureErrorHandlers,
+  safeAsync,
+  trySafe,
+  safeJsonParse,
+  safeJsonStringify,
+  safeStorageGet,
+  safeStorageSet,
+  showError,
+  logError,
+  ErrorLevel,
+  ErrorCodes,
+  getErrorMessage,
+} from './utils/errors.js';
+import {
+  validateFontSize,
+  validateImageScale,
+  validateWidth,
+  validateHeight,
+  validateLabelWidth,
+  validateLabelHeight,
+  validateCopies,
+  validateRotation,
+  validateStrokeWidth,
+  validateCornerRadius,
+  validateBarcodeData,
+  validateQRData,
+  validateTextContent,
+  validateDesignName,
+  validateImageFile,
+  validateCSVFile,
+  validateJSONFile,
+  validatePosition,
+} from './utils/validation.js';
 
 // DOM helpers
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-// Label size presets for M-series (width x height in mm)
-const M_SERIES_LABEL_SIZES = {
-  '12x40': { width: 12, height: 40 },
-  '15x30': { width: 15, height: 30 },
-  '20x30': { width: 20, height: 30 },
-  '25x50': { width: 25, height: 50 },
-  '30x20': { width: 30, height: 20 },
-  '30x40': { width: 30, height: 40 },
-  '40x30': { width: 40, height: 30 },
-  '40x60': { width: 40, height: 60 },
-  '50x25': { width: 50, height: 25 },
-  '50x30': { width: 50, height: 30 },
-  '50x80': { width: 50, height: 80 },
-  '60x40': { width: 60, height: 40 },
-};
-
-// Label size presets for D-series (D30, D110) - max width is 12-15mm
-// Displayed as WxH but D30 prints rotated, so user designs in landscape
-const D_SERIES_LABEL_SIZES = {
-  '40x12': { width: 40, height: 12 },
-  '30x12': { width: 30, height: 12 },
-  '22x12': { width: 22, height: 12 },
-  '12x12': { width: 12, height: 12 },
-  '30x14': { width: 30, height: 14 },
-  '22x14': { width: 22, height: 14 },
-  '40x15': { width: 40, height: 15 },
-  '30x15': { width: 30, height: 15 },
-};
-
-// Default to M-series sizes
+// Default to M-series sizes (imported from constants.js)
 let LABEL_SIZES = { ...M_SERIES_LABEL_SIZES };
 
 // App state
@@ -134,27 +163,15 @@ const state = {
   clipboard: [],          // Array of copied elements
 };
 
-// Alignment guide threshold (pixels)
-const GUIDE_THRESHOLD = 5;
-
-// Maximum history size
-const MAX_HISTORY = 50;
-
-// Device-to-model mapping storage key
-const DEVICE_MAPPING_KEY = 'phomymo_device_models';
+// Note: GUIDES.SNAP_THRESHOLD, HISTORY.MAX_SIZE, and STORAGE_KEYS are imported from constants.js
 
 /**
  * Get saved device-to-model mappings from localStorage
  * @returns {Object} Map of deviceName -> printerModel
  */
 function getDeviceMappings() {
-  try {
-    const saved = localStorage.getItem(DEVICE_MAPPING_KEY);
-    return saved ? JSON.parse(saved) : {};
-  } catch (e) {
-    console.warn('Failed to load device mappings:', e);
-    return {};
-  }
+  const saved = safeStorageGet(STORAGE_KEYS.DEVICE_MAPPING);
+  return safeJsonParse(saved, {});
 }
 
 /**
@@ -164,13 +181,9 @@ function getDeviceMappings() {
  */
 function saveDeviceMapping(deviceName, printerModel) {
   if (!deviceName) return;
-  try {
-    const mappings = getDeviceMappings();
-    mappings[deviceName] = printerModel;
-    localStorage.setItem(DEVICE_MAPPING_KEY, JSON.stringify(mappings));
-  } catch (e) {
-    console.warn('Failed to save device mapping:', e);
-  }
+  const mappings = getDeviceMappings();
+  mappings[deviceName] = printerModel;
+  safeStorageSet(STORAGE_KEYS.DEVICE_MAPPING, safeJsonStringify(mappings));
 }
 
 /**
@@ -207,13 +220,58 @@ function saveHistory() {
   state.history.push(snapshot);
 
   // Limit history size
-  if (state.history.length > MAX_HISTORY) {
+  if (state.history.length > HISTORY.MAX_SIZE) {
     state.history.shift();
   } else {
     state.historyIndex++;
   }
 
   updateUndoRedoButtons();
+}
+
+// Track input values for change detection on blur
+const _inputHistoryTracking = new WeakMap();
+
+/**
+ * Set up an input element to save history only if value changed
+ * @param {string} selector - CSS selector for the input
+ * @param {Function} getElementValue - Function to get the current element's value for comparison
+ */
+function trackInputForHistory(selector, getElementValue) {
+  const el = $(selector);
+  if (!el) return;
+
+  el.addEventListener('focus', () => {
+    if (!state.selectedIds[0]) return;
+    // Store snapshot of current state when focus begins
+    const snapshot = JSON.parse(JSON.stringify(state.elements));
+    _inputHistoryTracking.set(el, { snapshot, elementId: state.selectedIds[0] });
+  });
+
+  el.addEventListener('blur', () => {
+    const tracking = _inputHistoryTracking.get(el);
+    if (!tracking) return;
+
+    // Compare current state to snapshot - only save if different
+    const currentState = JSON.stringify(state.elements);
+    const snapshotState = JSON.stringify(tracking.snapshot);
+
+    if (currentState !== snapshotState) {
+      // Value changed - push the old state to history
+      if (state.historyIndex < state.history.length - 1) {
+        state.history = state.history.slice(0, state.historyIndex + 1);
+      }
+      state.history.push(tracking.snapshot);
+      if (state.history.length > HISTORY.MAX_SIZE) {
+        state.history.shift();
+      } else {
+        state.historyIndex++;
+      }
+      updateUndoRedoButtons();
+    }
+
+    _inputHistoryTracking.delete(el);
+  });
 }
 
 /**
@@ -241,6 +299,7 @@ function undo() {
   render();
   updatePropertiesPanel();
   updateToolbarState();
+  updateUndoRedoButtons();
   detectTemplateFields();
   setStatus('Undo');
 }
@@ -265,6 +324,7 @@ function redo() {
   render();
   updatePropertiesPanel();
   updateToolbarState();
+  updateUndoRedoButtons();
   detectTemplateFields();
   setStatus('Redo');
 }
@@ -535,7 +595,7 @@ function updateZoom() {
  * Zoom in
  */
 function zoomIn() {
-  state.zoom = Math.min(state.zoom + 0.25, 3);
+  state.zoom = Math.min(state.zoom + ZOOM.STEP, ZOOM.MAX);
   updateZoom();
 }
 
@@ -543,7 +603,7 @@ function zoomIn() {
  * Zoom out
  */
 function zoomOut() {
-  state.zoom = Math.max(state.zoom - 0.25, 0.25);
+  state.zoom = Math.max(state.zoom - ZOOM.STEP, ZOOM.MIN);
   updateZoom();
 }
 
@@ -927,6 +987,28 @@ function bindTemplateTableEvents() {
 }
 
 /**
+ * Handle CSV file import with validation
+ * @param {File} file - CSV file to import
+ */
+function handleCSVFileImport(file) {
+  // Validate file at function boundary
+  const validation = validateCSVFile(file);
+  if (!validation.valid) {
+    setStatus(validation.error);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    importCSVData(evt.target.result);
+  };
+  reader.onerror = () => {
+    setStatus('Failed to read CSV file');
+  };
+  reader.readAsText(file);
+}
+
+/**
  * Import CSV data
  */
 function importCSVData(csvString) {
@@ -1202,8 +1284,7 @@ async function handleBatchPrint() {
     btn.textContent = originalText;
 
   } catch (error) {
-    console.error('Batch print error:', error);
-    showToast(error.message || 'Print failed', 'error');
+    logError(error, 'handleBatchPrint');
     setStatus(error.message || 'Print failed');
     btn.textContent = originalText;
   } finally {
@@ -1269,7 +1350,7 @@ async function handlePrintSinglePreview() {
     btn.textContent = originalText;
 
   } catch (error) {
-    console.error('Print error:', error);
+    logError(error, 'handlePrintSinglePreview');
     setStatus(error.message || 'Print failed');
     btn.textContent = originalText;
   } finally {
@@ -1392,6 +1473,9 @@ function modifyElement(id, changes) {
 function startInlineEdit(elementId) {
   const element = state.elements.find(e => e.id === elementId);
   if (!element || element.type !== 'text') return;
+
+  // Save history before editing starts (for undo)
+  saveHistory();
 
   // Save current text for potential cancel
   state.editingTextId = elementId;
@@ -1625,8 +1709,8 @@ function handleLabelSizeChange() {
 
   if (value === 'custom') {
     $('#custom-size').classList.remove('hidden');
-    const w = parseInt($('#custom-width').value) || 40;
-    const h = parseInt($('#custom-height').value) || 30;
+    const w = validateLabelWidth($('#custom-width').value);
+    const h = validateLabelHeight($('#custom-height').value);
     state.labelSize = { width: w, height: h };
   } else {
     $('#custom-size').classList.add('hidden');
@@ -1645,9 +1729,9 @@ function handleLabelSizeChange() {
  * Handle custom size input
  */
 function handleCustomSizeChange() {
-  const w = parseInt($('#custom-width').value) || 40;
-  const h = parseInt($('#custom-height').value) || 30;
-  state.labelSize = { width: Math.max(10, Math.min(100, w)), height: Math.max(10, Math.min(200, h)) };
+  const w = validateLabelWidth($('#custom-width').value);
+  const h = validateLabelHeight($('#custom-height').value);
+  state.labelSize = { width: w, height: h };
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
   updatePrintSize();
   render();
@@ -1698,9 +1782,9 @@ function detectAlignmentGuides(bounds, excludeIds = []) {
 
   // Track best snap for each axis (closest match)
   let snapX = null;
-  let snapXDist = GUIDE_THRESHOLD;
+  let snapXDist = GUIDES.SNAP_THRESHOLD;
   let snapY = null;
-  let snapYDist = GUIDE_THRESHOLD;
+  let snapYDist = GUIDES.SNAP_THRESHOLD;
 
   // Helper to check and record vertical snap (x position)
   const checkSnapX = (elementEdge, targetPos, edgeType) => {
@@ -1975,8 +2059,8 @@ function handleCanvasMouseMove(e) {
           const newCy = centerY + (elCy - centerY) * effectiveScaleY;
 
           // Scale size - for side handles, only change one dimension
-          const newWidth = Math.max(origEl.width * effectiveScaleX, 10);
-          const newHeight = Math.max(origEl.height * effectiveScaleY, 10);
+          const newWidth = Math.max(origEl.width * effectiveScaleX, ELEMENT.MIN_WIDTH);
+          const newHeight = Math.max(origEl.height * effectiveScaleY, ELEMENT.MIN_HEIGHT);
 
           return {
             ...origEl,
@@ -2103,6 +2187,13 @@ function addTextElement() {
  * Add a new image element
  */
 async function addImageElement(file) {
+  // Validate file at function boundary
+  const validation = validateImageFile(file);
+  if (!validation.valid) {
+    setStatus(validation.error);
+    return;
+  }
+
   try {
     const { dataUrl, width, height } = await state.renderer.loadImageFile(file);
 
@@ -2130,8 +2221,7 @@ async function addImageElement(file) {
     selectElement(element.id);
     setStatus(scale < 1 ? `Image scaled to ${Math.round(scale * 100)}%` : 'Image added');
   } catch (e) {
-    console.error('Failed to load image:', e);
-    showToast('Failed to load image', 'error');
+    logError(e, 'addImageElement');
     setStatus('Failed to load image');
   }
 }
@@ -2324,7 +2414,7 @@ async function handleConnect() {
     }
 
   } catch (error) {
-    console.error('Connect error:', error);
+    logError(error, 'handleConnect');
     setStatus(error.message || 'Connection failed');
     btn.textContent = originalText;
     updateConnectionStatus(false);
@@ -2389,7 +2479,7 @@ async function handlePrint() {
     btn.textContent = 'Print';
 
   } catch (error) {
-    console.error('Print error:', error);
+    logError(error, 'handlePrint');
     setStatus(error.message || 'Print failed');
     btn.textContent = originalText;
   } finally {
@@ -2409,22 +2499,14 @@ function showInfoDialog() {
  */
 function hideInfoDialog() {
   $('#info-dialog').classList.add('hidden');
-  try {
-    localStorage.setItem('phomymo_info_seen', 'true');
-  } catch (e) {
-    // localStorage not available
-  }
+  safeStorageSet('phomymo_info_seen', 'true');
 }
 
 /**
  * Check if info dialog should show on first visit
  */
 function shouldShowInfoOnLoad() {
-  try {
-    return !localStorage.getItem('phomymo_info_seen');
-  } catch (e) {
-    return false;
-  }
+  return !safeStorageGet('phomymo_info_seen');
 }
 
 /**
@@ -2447,11 +2529,12 @@ function hideSaveDialog() {
  * Save current design
  */
 function handleSave() {
-  const name = $('#save-name').value.trim();
-  if (!name) {
-    setStatus('Please enter a design name');
+  const nameValidation = validateDesignName($('#save-name').value);
+  if (!nameValidation.valid) {
+    setStatus(nameValidation.error);
     return;
   }
+  const name = nameValidation.sanitized;
 
   try {
     const designData = {
@@ -2593,6 +2676,13 @@ function handleExport() {
  * Import design from file
  */
 function handleImportFile(file) {
+  // Validate file at function boundary
+  const validation = validateJSONFile(file);
+  if (!validation.valid) {
+    setStatus(validation.error);
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -2647,8 +2737,7 @@ function handleImportFile(file) {
       const name = data.name || 'Imported design';
       setStatus(`Imported: ${name}`);
     } catch (err) {
-      console.error('Import error:', err);
-      showToast('Import failed', 'error');
+      logError(err, 'importDesign');
       setStatus(`Import failed: ${err.message}`);
     }
   };
@@ -2819,8 +2908,9 @@ function handleKeyDown(e) {
       e.preventDefault();
       saveHistory();
       const count = selectedElements.length;
-      // Delete all selected elements
+      // Delete all selected elements and clear their cache
       state.selectedIds.forEach(id => {
+        state.renderer.clearCache(id);
         state.elements = deleteElement(state.elements, id);
       });
       deselect();
@@ -3153,6 +3243,11 @@ function init() {
     return;
   }
 
+  // Configure error handlers
+  configureErrorHandlers({
+    setStatus: setStatus,
+  });
+
   // Create canvas renderer
   const canvas = $('#preview-canvas');
   state.renderer = new CanvasRenderer(canvas);
@@ -3275,10 +3370,10 @@ function init() {
   const printerModelSelect = $('#printer-model');
 
   // Load saved print settings from localStorage
-  const savedPrintSettings = localStorage.getItem('phomymo_print_settings');
+  const savedPrintSettings = safeStorageGet('phomymo_print_settings');
   if (savedPrintSettings) {
-    try {
-      const settings = JSON.parse(savedPrintSettings);
+    const settings = safeJsonParse(savedPrintSettings, null);
+    if (settings) {
       // Migrate old printerModel values to new format
       if (settings.printerModel === 'narrow') {
         settings.printerModel = 'narrow-48';
@@ -3291,8 +3386,6 @@ function init() {
       copiesInput.value = state.printSettings.copies;
       feedSelect.value = state.printSettings.feed;
       printerModelSelect.value = state.printSettings.printerModel || 'auto';
-    } catch (e) {
-      console.warn('Failed to load print settings:', e);
     }
   }
 
@@ -3325,12 +3418,12 @@ function init() {
 
   $('#print-settings-save').addEventListener('click', () => {
     state.printSettings.density = parseInt(densitySlider.value);
-    state.printSettings.copies = Math.max(1, Math.min(99, parseInt(copiesInput.value) || 1));
+    state.printSettings.copies = Math.max(PRINT.MIN_COPIES, Math.min(PRINT.MAX_COPIES, parseInt(copiesInput.value) || PRINT.DEFAULT_COPIES));
     state.printSettings.feed = parseInt(feedSelect.value);
     state.printSettings.printerModel = printerModelSelect.value;
 
     // Save to localStorage
-    localStorage.setItem('phomymo_print_settings', JSON.stringify(state.printSettings));
+    safeStorageSet('phomymo_print_settings', safeJsonStringify(state.printSettings));
 
     printSettingsDialog.classList.add('hidden');
     setStatus('Print settings saved');
@@ -3373,7 +3466,7 @@ function init() {
 
       setStatus('Density test complete! Compare the 8 strips (1=lightest, 8=darkest)');
     } catch (error) {
-      console.error('Density test error:', error);
+      logError(error, 'densityTest');
       setStatus(error.message || 'Density test failed');
     } finally {
       btn.disabled = false;
@@ -3386,7 +3479,7 @@ function init() {
   $('#add-image').addEventListener('click', () => $('#image-file-input').click());
   $('#image-file-input').addEventListener('change', (e) => {
     if (e.target.files[0]) {
-      addImageElement(e.target.files[0]);
+      addImageElement(e.target.files[0]);  // Validation inside function
       e.target.value = '';
     }
   });
@@ -3430,6 +3523,7 @@ function init() {
     const selected = getSelected();
     if (selected) {
       saveHistory();
+      state.renderer.clearCache(selected.id);
       state.elements = deleteElement(state.elements, selected.id);
       deselect();
       setStatus('Element deleted');
@@ -3481,7 +3575,7 @@ function init() {
   $('#import-file-btn').addEventListener('click', () => $('#import-file-input').click());
   $('#import-file-input').addEventListener('change', (e) => {
     if (e.target.files[0]) {
-      handleImportFile(e.target.files[0]);
+      handleImportFile(e.target.files[0]);  // Validation inside function
       e.target.value = '';
     }
   });
@@ -3540,41 +3634,34 @@ function init() {
     propsBackdrop.addEventListener('click', closePropsPanel);
   }
 
-  // Properties panel - common (only works for single selection)
-  $('#prop-x').addEventListener('change', (e) => {
-    const id = state.selectedIds[0];
-    if (id) modifyElement(id, { x: parseFloat(e.target.value) || 0 });
-  });
-  $('#prop-y').addEventListener('change', (e) => {
-    const id = state.selectedIds[0];
-    if (id) modifyElement(id, { y: parseFloat(e.target.value) || 0 });
-  });
-  $('#prop-width').addEventListener('change', (e) => {
-    const id = state.selectedIds[0];
-    if (id) modifyElement(id, { width: Math.max(10, parseFloat(e.target.value) || 10) });
-  });
-  $('#prop-height').addEventListener('change', (e) => {
-    const id = state.selectedIds[0];
-    if (id) modifyElement(id, { height: Math.max(10, parseFloat(e.target.value) || 10) });
-  });
-  $('#prop-rotation').addEventListener('change', (e) => {
-    const id = state.selectedIds[0];
-    if (id) modifyElement(id, { rotation: parseFloat(e.target.value) || 0 });
+  // Properties panel - common position/dimension inputs (only works for single selection)
+  bindPositionInputs({
+    x: '#prop-x',
+    y: '#prop-y',
+    width: '#prop-width',
+    height: '#prop-height',
+    rotation: '#prop-rotation',
+  }, createBindingContext(state, getSelected, modifyElement), {
+    minWidth: ELEMENT.MIN_WIDTH,
+    minHeight: ELEMENT.MIN_HEIGHT,
   });
 
   // Properties panel - text
+  // Track input changes for history (saves on blur only if value changed)
+  trackInputForHistory('#prop-text-content');
   $('#prop-text-content').addEventListener('input', (e) => {
     const id = state.selectedIds[0];
     if (id) modifyElement(id, { text: e.target.value });
   });
+  trackInputForHistory('#prop-font-family');
   $('#prop-font-family').addEventListener('change', (e) => {
     const id = state.selectedIds[0];
     if (id) modifyElement(id, { fontFamily: e.target.value });
   });
+  trackInputForHistory('#prop-font-size');
   $('#prop-font-size').addEventListener('input', (e) => {
     const id = state.selectedIds[0];
-    const size = Math.max(6, Math.min(200, parseInt(e.target.value) || 24));
-    if (id) modifyElement(id, { fontSize: size });
+    if (id) modifyElement(id, { fontSize: validateFontSize(e.target.value) });
   });
   $$('.align-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -3597,146 +3684,57 @@ function init() {
     });
   });
 
-  // No wrap checkbox
-  $('#prop-no-wrap').addEventListener('change', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'text') {
-      modifyElement(element.id, { noWrap: e.target.checked });
-    }
+  // Create binding context for property panel controls
+  const bindCtx = createBindingContext(state, getSelected, modifyElement);
+
+  // === TEXT ELEMENT BINDINGS ===
+  // Checkboxes
+  bindCheckbox('#prop-no-wrap', 'noWrap', 'text', bindCtx);
+  bindCheckbox('#prop-clip-overflow', 'clipOverflow', 'text', bindCtx);
+  bindCheckbox('#prop-auto-scale', 'autoScale', 'text', bindCtx);
+
+  // Font style toggle buttons
+  bindToggleButton('#style-bold', 'fontWeight', 'text', bindCtx);
+  bindToggleButton('#style-italic', 'fontStyle', 'text', bindCtx);
+  bindToggleButton('#style-underline', 'textDecoration', 'text', bindCtx);
+
+  // Button groups
+  bindButtonGroup('.bg-btn', 'background', 'bg', 'text', bindCtx);
+  bindButtonGroup('.color-btn', 'color', 'color', 'text', bindCtx);
+
+  // === SHAPE ELEMENT BINDINGS ===
+  // Shape type dropdown (with special handling for corner radius visibility)
+  bindSelect('#prop-shape-type', 'shapeType', 'shape', bindCtx, (value) => {
+    $('#prop-corner-radius-group').classList.toggle('hidden', value !== 'rectangle');
   });
 
-  // Clip overflow checkbox
-  $('#prop-clip-overflow').addEventListener('change', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'text') {
-      modifyElement(element.id, { clipOverflow: e.target.checked });
-    }
-  });
+  // Shape fill and stroke
+  bindSelect('#shape-fill', 'fill', 'shape', bindCtx);
+  bindButtonGroup('.stroke-btn', 'stroke', 'stroke', 'shape', bindCtx);
 
-  // Auto-scale checkbox
-  $('#prop-auto-scale').addEventListener('change', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'text') {
-      modifyElement(element.id, { autoScale: e.target.checked });
-    }
-  });
-
-  // Font style buttons (bold, italic, underline)
-  $('#style-bold').addEventListener('click', () => {
-    const element = getSelected();
-    if (element && element.type === 'text') {
-      const newWeight = element.fontWeight === 'bold' ? 'normal' : 'bold';
-      modifyElement(element.id, { fontWeight: newWeight });
-    }
-  });
-
-  $('#style-italic').addEventListener('click', () => {
-    const element = getSelected();
-    if (element && element.type === 'text') {
-      const newStyle = element.fontStyle === 'italic' ? 'normal' : 'italic';
-      modifyElement(element.id, { fontStyle: newStyle });
-    }
-  });
-
-  $('#style-underline').addEventListener('click', () => {
-    const element = getSelected();
-    if (element && element.type === 'text') {
-      const newDecoration = element.textDecoration === 'underline' ? 'none' : 'underline';
-      modifyElement(element.id, { textDecoration: newDecoration });
-    }
-  });
-
-  // Background buttons
-  $$('.bg-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const element = getSelected();
-      if (element && element.type === 'text') {
-        modifyElement(element.id, { background: btn.dataset.bg });
-        // Update button states
-        $$('.bg-btn').forEach(b => {
-          b.classList.toggle('bg-gray-100', b === btn);
-          b.classList.toggle('ring-2', b === btn);
-          b.classList.toggle('ring-blue-400', b === btn);
-        });
-      }
-    });
-  });
-
-  // Text color buttons
-  $$('.color-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const element = getSelected();
-      if (element && element.type === 'text') {
-        modifyElement(element.id, { color: btn.dataset.color });
-        // Update button states
-        $$('.color-btn').forEach(b => {
-          b.classList.toggle('bg-gray-100', b === btn);
-          b.classList.toggle('ring-2', b === btn);
-          b.classList.toggle('ring-blue-400', b === btn);
-        });
-      }
-    });
-  });
-
-  // Shape properties
-  $('#prop-shape-type').addEventListener('change', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'shape') {
-      modifyElement(element.id, { shapeType: e.target.value });
-      // Show/hide corner radius based on shape type
-      $('#prop-corner-radius-group').classList.toggle('hidden', e.target.value !== 'rectangle');
-    }
-  });
-
-  // Shape fill dropdown
-  $('#shape-fill').addEventListener('change', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'shape') {
-      modifyElement(element.id, { fill: e.target.value });
-    }
-  });
-
-  // Shape stroke buttons
-  $$('.stroke-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const element = getSelected();
-      if (element && element.type === 'shape') {
-        modifyElement(element.id, { stroke: btn.dataset.stroke });
-        $$('.stroke-btn').forEach(b => {
-          b.classList.toggle('bg-gray-100', b === btn);
-          b.classList.toggle('ring-2', b === btn);
-          b.classList.toggle('ring-blue-400', b === btn);
-        });
-      }
-    });
-  });
-
-  // Shape stroke width
-  $('#prop-stroke-width').addEventListener('input', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'shape') {
-      modifyElement(element.id, { strokeWidth: parseInt(e.target.value) || 2 });
-    }
-  });
-
-  // Shape corner radius
-  $('#prop-corner-radius').addEventListener('input', (e) => {
-    const element = getSelected();
-    if (element && element.type === 'shape') {
-      modifyElement(element.id, { cornerRadius: parseInt(e.target.value) || 0 });
-    }
-  });
+  // Shape numeric inputs
+  bindNumericInput('#prop-stroke-width', 'strokeWidth', 'shape', bindCtx, { min: 1, max: 20, defaultVal: 2 });
+  bindNumericInput('#prop-corner-radius', 'cornerRadius', 'shape', bindCtx, { min: 0, max: 50, defaultVal: 0 });
 
   // Properties panel - image
   $('#prop-replace-image').addEventListener('click', () => $('#prop-image-input').click());
   $('#prop-image-input').addEventListener('change', async (e) => {
     const id = state.selectedIds[0];
-    if (e.target.files[0] && id) {
+    const file = e.target.files[0];
+    if (file && id) {
+      // Validate file
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        setStatus(validation.error);
+        e.target.value = '';
+        return;
+      }
       try {
-        const { dataUrl } = await state.renderer.loadImageFile(e.target.files[0]);
+        const { dataUrl } = await state.renderer.loadImageFile(file);
         modifyElement(id, { imageData: dataUrl });
         setStatus('Image replaced');
       } catch (err) {
+        logError(err, 'replaceImage');
         setStatus('Failed to load image');
       }
       e.target.value = '';
@@ -3762,14 +3760,41 @@ function init() {
     }
   };
 
+  // Track slider: save snapshot on mousedown, push to history on mouseup if changed
+  let sliderSnapshot = null;
+  $('#prop-image-scale').addEventListener('mousedown', () => {
+    if (state.selectedIds[0]) {
+      sliderSnapshot = JSON.parse(JSON.stringify(state.elements));
+    }
+  });
   $('#prop-image-scale').addEventListener('input', (e) => {
     const scale = parseInt(e.target.value);
     $('#prop-image-scale-input').value = scale;
     applyImageScale(scale);
   });
+  $('#prop-image-scale').addEventListener('mouseup', () => {
+    if (sliderSnapshot) {
+      const currentState = JSON.stringify(state.elements);
+      if (currentState !== JSON.stringify(sliderSnapshot)) {
+        // Push old state to history
+        if (state.historyIndex < state.history.length - 1) {
+          state.history = state.history.slice(0, state.historyIndex + 1);
+        }
+        state.history.push(sliderSnapshot);
+        if (state.history.length > HISTORY.MAX_SIZE) {
+          state.history.shift();
+        } else {
+          state.historyIndex++;
+        }
+        updateUndoRedoButtons();
+      }
+      sliderSnapshot = null;
+    }
+  });
 
+  trackInputForHistory('#prop-image-scale-input');
   $('#prop-image-scale-input').addEventListener('change', (e) => {
-    const scale = Math.max(10, Math.min(200, parseInt(e.target.value) || 100));
+    const scale = Math.max(IMAGE.MIN_SCALE, Math.min(IMAGE.MAX_SCALE, parseInt(e.target.value) || IMAGE.DEFAULT_SCALE));
     $('#prop-image-scale').value = scale;
     $('#prop-image-scale-input').value = scale;
     applyImageScale(scale);
@@ -3779,6 +3804,7 @@ function init() {
   $('#prop-image-lock-ratio').addEventListener('change', (e) => {
     const element = getSelected();
     if (element && element.type === 'image') {
+      saveHistory();
       modifyElement(element.id, { lockAspectRatio: e.target.checked });
     }
   });
@@ -3787,6 +3813,7 @@ function init() {
   $('#prop-image-reset').addEventListener('click', () => {
     const element = getSelected();
     if (element && element.type === 'image') {
+      saveHistory();
       const cx = element.x + element.width / 2;
       const cy = element.y + element.height / 2;
       modifyElement(element.id, {
@@ -3800,19 +3827,50 @@ function init() {
   });
 
   // Properties panel - barcode
+  trackInputForHistory('#prop-barcode-data');
   $('#prop-barcode-data').addEventListener('input', (e) => {
     const id = state.selectedIds[0];
-    if (id) modifyElement(id, { barcodeData: e.target.value });
+    if (!id) return;
+    const selected = state.elements.find(el => el.id === id);
+    const format = selected?.barcodeFormat || 'CODE128';
+    const result = validateBarcodeData(e.target.value, format);
+    if (!result.valid && e.target.value.length > 0) {
+      e.target.classList.add('border-red-300');
+      setStatus(result.error);
+    } else {
+      e.target.classList.remove('border-red-300');
+    }
+    modifyElement(id, { barcodeData: e.target.value });
   });
+  trackInputForHistory('#prop-barcode-format');
   $('#prop-barcode-format').addEventListener('change', (e) => {
     const id = state.selectedIds[0];
-    if (id) modifyElement(id, { barcodeFormat: e.target.value });
+    if (!id) return;
+    modifyElement(id, { barcodeFormat: e.target.value });
+    // Re-validate data with new format
+    const dataInput = $('#prop-barcode-data');
+    const result = validateBarcodeData(dataInput.value, e.target.value);
+    if (!result.valid && dataInput.value.length > 0) {
+      dataInput.classList.add('border-red-300');
+      setStatus(result.error);
+    } else {
+      dataInput.classList.remove('border-red-300');
+    }
   });
 
   // Properties panel - QR
+  trackInputForHistory('#prop-qr-data');
   $('#prop-qr-data').addEventListener('input', (e) => {
     const id = state.selectedIds[0];
-    if (id) modifyElement(id, { qrData: e.target.value });
+    if (!id) return;
+    const result = validateQRData(e.target.value);
+    if (!result.valid && e.target.value.length > 0) {
+      e.target.classList.add('border-red-300');
+      setStatus(result.error);
+    } else {
+      e.target.classList.remove('border-red-300');
+    }
+    modifyElement(id, { qrData: e.target.value });
   });
 
   // Canvas mouse events
@@ -3895,11 +3953,7 @@ function init() {
   $('#template-import-csv').addEventListener('click', () => $('#template-csv-input').click());
   $('#template-csv-input').addEventListener('change', (e) => {
     if (e.target.files[0]) {
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        importCSVData(evt.target.result);
-      };
-      reader.readAsText(e.target.files[0]);
+      handleCSVFileImport(e.target.files[0]);  // Validation inside function
       e.target.value = '';
     }
   });
@@ -3990,6 +4044,18 @@ function init() {
   if (shouldShowInfoOnLoad()) {
     showInfoDialog();
   }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    // Destroy renderer to clean up caches
+    if (state.renderer) {
+      state.renderer.destroy();
+    }
+    // Disconnect BLE if connected
+    if (bleTransport && bleTransport.connected) {
+      bleTransport.disconnect();
+    }
+  });
 
   console.log('Phomymo Label Designer initialized');
 }

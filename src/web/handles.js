@@ -3,10 +3,12 @@
  * Provides resize corners/edges and rotation handle
  */
 
-// Handle configuration
-const HANDLE_SIZE = 8;
-const ROTATION_HANDLE_DISTANCE = 25;
-const ROTATION_HANDLE_RADIUS = 6;
+import { HANDLES } from './constants.js';
+
+// Use constants for handle configuration
+const HANDLE_SIZE = HANDLES.SIZE;
+const ROTATION_HANDLE_DISTANCE = HANDLES.ROTATION_DISTANCE;
+const ROTATION_HANDLE_RADIUS = HANDLES.ROTATION_RADIUS;
 
 // Handle types
 export const HandleType = {
@@ -85,7 +87,7 @@ export function getHandleAtPoint(px, py, element) {
   for (const type of resizeHandles) {
     const pos = positions[type];
     const dist = Math.hypot(px - pos.x, py - pos.y);
-    if (dist <= HANDLE_SIZE / 2 + 2) {
+    if (dist <= HANDLE_SIZE / 2 + HANDLES.HIT_AREA_PADDING) {
       return type;
     }
   }
@@ -449,7 +451,7 @@ export function getGroupHandleAtPoint(px, py, bounds) {
   for (const type of resizeHandles) {
     const pos = positions[type];
     const dist = Math.hypot(px - pos.x, py - pos.y);
-    if (dist <= HANDLE_SIZE / 2 + 2) {
+    if (dist <= HANDLE_SIZE / 2 + HANDLES.HIT_AREA_PADDING) {
       return type;
     }
   }

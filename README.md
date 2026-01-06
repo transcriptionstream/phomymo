@@ -6,7 +6,7 @@ A free, browser-based label designer for Phomemo thermal printers. No drivers ne
 
 ![Phomymo Label Designer](screenshot.png)
 
-Supports Phomemo M-series (M02, M03, M04S, M110, M120, M200, M220, M221, M260, T02) and D-series (D30, D35, D50, D110, Q30) thermal printers.
+Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M260, T02) and D-series (D30, D35, D50, D110, Q30) thermal printers.
 
 ## Features
 
@@ -57,17 +57,22 @@ Supports Phomemo M-series (M02, M03, M04S, M110, M120, M200, M220, M221, M260, T
 
 ## Supported Printers
 
+### M02-series (ESC/POS with Prefix)
+
+| Model | Print Width | Notes |
+|-------|-------------|-------|
+| M02 / M02S / M02X / M02 Pro | 48mm (384px) | Mini pocket printers (continuous paper) |
+
 ### M-series (ESC/POS Raster Protocol)
 
 | Model | Print Width | Notes |
 |-------|-------------|-------|
-| M02 / M02S / M02Pro / M03 | 53mm (432px) | Mini pocket printers |
+| M03 / T02 | 53mm (432px) | Mini sticker printers |
 | M04S | 53/80/110mm | Multi-width support (select paper size in settings) |
 | M110 / M120 | 48mm (384px) | Narrow label makers |
 | M200 | 75mm (608px) | Mid-size labels |
 | M220 / M221 | 80mm (648px) | Wide labels |
 | M260 | 72mm (576px) | Wide label maker |
-| T02 | 53mm (432px) | Mini sticker printer |
 
 ### D-series (Rotated Protocol)
 
@@ -87,7 +92,7 @@ D-series printers use a different protocol and print labels rotated 90°. The ap
 
 The app automatically detects your printer model from the Bluetooth device name and configures the correct:
 - Print width (48-110 bytes depending on model)
-- Protocol (M-series ESC/POS or D-series rotated)
+- Protocol (M02-series with prefix, M-series ESC/POS, or D-series rotated)
 - Label size presets
 
 If auto-detection fails (e.g., printer shows serial number instead of model), you can manually select your printer model in Print Settings, or the app will prompt you to choose on first connection.

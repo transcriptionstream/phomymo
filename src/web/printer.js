@@ -1,7 +1,7 @@
 /**
  * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
- * Supports M-series (M110, M200, M220, M260) and D-series (D30, D110)
+ * Supports M-series (M02, M110, M200, M220, M260) and D-series (D30, D110)
  */
 
 /**
@@ -34,6 +34,12 @@ const CMD = {
   ]),
 };
 
+// M02-series specific commands
+const M02_CMD = {
+  // M02 requires a special prefix before standard ESC/POS commands
+  PREFIX: new Uint8Array([0x10, 0xff, 0xfe, 0x01]),
+};
+
 // D-series (D30, D110) specific commands
 const D_CMD = {
   // D30 header includes init inline: ESC @ GS v 0 \0 widthLow widthHigh rowsLow rowsHigh
@@ -51,16 +57,27 @@ const D_CMD = {
 /**
  * Printer width configurations
  * Width in bytes (8 pixels per byte at 203 DPI)
+ * Keys match the dropdown values in index.html
  */
 const PRINTER_WIDTHS = {
-  // Manual override options (match dropdown values)
-  'narrow-48': 48,    // M110, M120 (48mm / 384px)
-  'mini-54': 54,      // M02, M02S, M02Pro, M03, T02 (53mm / 432px)
-  'wide-72': 72,      // M260 (72mm / 576px)
-  'mid-76': 76,       // M200 (75mm / 608px)
-  'wide-81': 81,      // M220, M221 (80mm / 648px)
-  'wide-110': 110,    // M04S 110mm (880px)
-  'd-series': null,   // D-series uses raw label width
+  // M02 series (48mm / 384px) - uses m02 protocol
+  'm02': 48,
+  // M110/M120 (48mm / 384px) - standard m-series protocol
+  'm110': 48,
+  // M03/T02 (53mm / 432px)
+  'm03': 54,
+  // M260 (72mm / 576px)
+  'm260': 72,
+  // M200 (75mm / 608px)
+  'm200': 76,
+  // M220/M221 (80mm / 648px)
+  'm220': 81,
+  // M04S multi-width options
+  'm04s-53': 54,
+  'm04s-80': 81,
+  'm04s-110': 110,
+  // D-series uses raw label width
+  'd-series': null,
 };
 
 /**
@@ -69,13 +86,19 @@ const PRINTER_WIDTHS = {
  * More specific patterns should come first
  */
 const DEVICE_PATTERNS = [
+  // M02 series (48mm / 384px) - must come before generic M0x patterns
+  // M02 Pro has 300 DPI but we scale to 203 DPI equivalent
+  { pattern: 'M02 PRO', width: 48, protocol: 'm02' },
+  { pattern: 'M02PRO', width: 48, protocol: 'm02' },
+  { pattern: 'M02X', width: 48, protocol: 'm02' },
+  { pattern: 'M02S', width: 48, protocol: 'm02' },
+  { pattern: 'M02', width: 48, protocol: 'm02' },
+  // M03 and T02 (53mm / 432px)
+  { pattern: 'M03', width: 54, protocol: 'm-series' },
+  { pattern: 'T02', width: 54, protocol: 'm-series' },
   // M-series narrow (48mm)
   { pattern: 'M110', width: 48, protocol: 'm-series' },
   { pattern: 'M120', width: 48, protocol: 'm-series' },
-  // M-series mini (53mm)
-  { pattern: 'M02', width: 54, protocol: 'm-series' },
-  { pattern: 'M03', width: 54, protocol: 'm-series' },
-  { pattern: 'T02', width: 54, protocol: 'm-series' },
   // M-series mid (75mm)
   { pattern: 'M200', width: 76, protocol: 'm-series' },
   // M-series wide (80mm)
@@ -144,6 +167,11 @@ function getOverrideConfig(modelOverride) {
     return { width: null, protocol: 'd-series' };
   }
 
+  // M02 uses special protocol
+  if (modelOverride === 'm02') {
+    return { width: PRINTER_WIDTHS['m02'], protocol: 'm02' };
+  }
+
   const width = PRINTER_WIDTHS[modelOverride];
   if (width !== undefined) {
     return { width, protocol: 'm-series' };
@@ -167,6 +195,29 @@ export function isDSeriesPrinter(deviceName, modelOverride = 'auto') {
   // Auto-detect from device name
   const config = detectPrinterConfig(deviceName);
   return config.protocol === 'd-series';
+}
+
+/**
+ * Detect if device is M02-series based on name or override
+ * M02 series uses a special prefix and different feed behavior
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isM02Printer(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'm02') {
+    return true;
+  }
+
+  // For other overrides, use the override's protocol
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) {
+    return overrideConfig.protocol === 'm02';
+  }
+
+  // Auto-detect from device name
+  const config = detectPrinterConfig(deviceName);
+  return config.protocol === 'm02';
 }
 
 /**
@@ -201,14 +252,17 @@ export function getPrinterWidthBytes(deviceName, modelOverride = 'auto') {
  * Get a human-readable description of the detected printer type
  * @param {string} deviceName - BLE device name
  * @param {string} modelOverride - Manual model selection
- * @returns {string} Description like "M-series (48mm)" or "D-series"
+ * @returns {string} Description like "M-series (48mm)" or "D-series" or "M02-series"
  */
 export function getPrinterDescription(deviceName, modelOverride = 'auto') {
   const isDSeries = isDSeriesPrinter(deviceName, modelOverride);
   if (isDSeries) return 'D-series';
 
+  const isM02 = isM02Printer(deviceName, modelOverride);
   const width = getPrinterWidthBytes(deviceName, modelOverride);
   const widthMm = Math.round(width * 8 / 8); // bytes * 8 pixels / 8 px per mm
+
+  if (isM02) return `M02-series (${widthMm}mm)`;
   return `M-series (${widthMm}mm)`;
 }
 
@@ -278,6 +332,7 @@ export async function print(transport, rasterData, options = {}) {
   const { data, widthBytes, heightLines } = rasterData;
 
   const isDSeries = isDSeriesPrinter(deviceName, printerModel);
+  const isM02 = isM02Printer(deviceName, printerModel);
   const printerDesc = getPrinterDescription(deviceName, printerModel);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
   console.log(`Device: ${deviceName}, Model: ${printerModel}, Detected: ${printerDesc}`);
@@ -285,6 +340,8 @@ export async function print(transport, rasterData, options = {}) {
 
   if (isDSeries && isBLE) {
     await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
+  } else if (isM02 && isBLE) {
+    await printM02(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isBLE) {
     await printBLE(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else {
@@ -332,6 +389,58 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
   await transport.delay(100);
   console.log('Sending D-series end command...');
   await transport.send(D_CMD.END);
+
+  console.log('Print complete!');
+}
+
+/**
+ * Print via BLE for M02-series printers
+ * M02 uses a special prefix and minimal/no feed (continuous paper)
+ */
+async function printM02(transport, data, widthBytes, heightLines, density, onProgress) {
+  console.log('Using M02-series protocol...');
+
+  // M02 requires a special prefix before commands
+  console.log('Sending M02 prefix...');
+  await transport.send(M02_CMD.PREFIX);
+  await transport.delay(50);
+
+  // Standard init
+  console.log('Sending init...');
+  await transport.send(CMD.INIT);
+  await transport.delay(100);
+
+  // Set density using ESC 7 heat command
+  const heatTime = densityToHeatTime(density);
+  console.log(`Setting density to ${density} (heat time: ${heatTime})...`);
+  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
+  await transport.delay(30);
+
+  // Raster header
+  console.log('Sending header...');
+  await transport.send(CMD.RASTER_HEADER(widthBytes, heightLines));
+
+  // Send data in 128-byte chunks
+  console.log('Sending data...');
+  const chunkSize = 128;
+
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
+    await transport.send(chunk);
+    await transport.delay(20);
+
+    if (onProgress) {
+      const progress = Math.round((i + chunk.length) / data.length * 100);
+      onProgress(progress);
+    }
+  }
+
+  // M02 uses continuous paper - minimal feed just to clear print head
+  // Too much feed wastes paper on continuous rolls
+  await transport.delay(300);
+  console.log('Sending minimal feed (8 dots for continuous paper)...');
+  await transport.send(CMD.FEED(8));
+  await transport.delay(500);
 
   console.log('Print complete!');
 }

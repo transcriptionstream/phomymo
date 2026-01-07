@@ -57,6 +57,17 @@ export class CanvasRenderer {
 
     // Callback for when async content (barcodes, QR) finishes loading
     this.onAsyncLoad = null;
+
+    // Multi-label configuration
+    this.multiLabel = {
+      enabled: false,
+      labelWidth: 0,       // Single label width in pixels
+      labelHeight: 0,      // Single label height in pixels
+      labelsAcross: 1,     // Number of labels
+      gapPx: 0,            // Gap between labels in pixels
+      zones: [],           // Array of zone boundaries { x, y, width, height }
+    };
+    this.activeZone = 0;   // Currently active zone for editing
   }
 
   /**
@@ -99,7 +110,141 @@ export class CanvasRenderer {
    * @param {number} zoom - Zoom level (1 = 100%, 2 = 200%, etc.)
    */
   setZoom(zoom) {
-    this.setDimensions(this.widthMm, this.heightMm, zoom);
+    if (this.multiLabel.enabled) {
+      this.setMultiLabelDimensions(
+        this.multiLabel.labelWidth / PX_PER_MM,
+        this.multiLabel.labelHeight / PX_PER_MM,
+        this.multiLabel.labelsAcross,
+        this.multiLabel.gapPx / PX_PER_MM,
+        zoom
+      );
+    } else {
+      this.setDimensions(this.widthMm, this.heightMm, zoom);
+    }
+  }
+
+  /**
+   * Set multi-label roll dimensions
+   * @param {number} labelWidthMm - Individual label width in mm
+   * @param {number} labelHeightMm - Individual label height in mm
+   * @param {number} labelsAcross - Number of labels across
+   * @param {number} gapMm - Gap between labels in mm
+   * @param {number} zoom - Zoom level
+   */
+  setMultiLabelDimensions(labelWidthMm, labelHeightMm, labelsAcross, gapMm, zoom = this.zoom) {
+    this.zoom = zoom;
+
+    // Individual label dimensions in pixels
+    const labelWidthPx = Math.round(labelWidthMm * PX_PER_MM);
+    const labelHeightPx = Math.round(labelHeightMm * PX_PER_MM);
+    const gapPx = Math.round(gapMm * PX_PER_MM);
+
+    // Total canvas dimensions
+    const totalWidth = (labelWidthPx * labelsAcross) + (gapPx * (labelsAcross - 1));
+    const totalHeight = labelHeightPx;
+
+    // Store for rendering
+    this.multiLabel = {
+      enabled: true,
+      labelWidth: labelWidthPx,
+      labelHeight: labelHeightPx,
+      labelsAcross: labelsAcross,
+      gapPx: gapPx,
+      zones: [],
+    };
+
+    // Calculate zone boundaries
+    for (let i = 0; i < labelsAcross; i++) {
+      this.multiLabel.zones.push({
+        x: i * (labelWidthPx + gapPx),
+        y: 0,
+        width: labelWidthPx,
+        height: labelHeightPx,
+      });
+    }
+
+    // Set overall label dimensions (used by parent canvas sizing)
+    this.widthMm = labelWidthMm * labelsAcross + gapMm * (labelsAcross - 1);
+    this.heightMm = labelHeightMm;
+    this.labelWidth = totalWidth;
+    this.labelHeight = totalHeight;
+
+    // Calculate base canvas size (without zoom)
+    const baseCanvasWidth = totalWidth + (OVERFLOW_PADDING * 2);
+    const baseCanvasHeight = totalHeight + (OVERFLOW_PADDING * 2);
+
+    // Scale canvas internal resolution by zoom for crisp rendering
+    this.canvas.width = Math.round(baseCanvasWidth * zoom);
+    this.canvas.height = Math.round(baseCanvasHeight * zoom);
+
+    // Scale CSS size by zoom so canvas appears larger when zoomed
+    this.canvas.style.width = `${baseCanvasWidth * zoom}px`;
+    this.canvas.style.height = `${baseCanvasHeight * zoom}px`;
+
+    // Scale label offset by zoom for rendering
+    this.labelOffsetX = Math.round(this.baseLabelOffsetX * zoom);
+    this.labelOffsetY = Math.round(this.baseLabelOffsetY * zoom);
+
+    // Return single label dimensions (what elements use for positioning)
+    return { width: labelWidthPx, height: labelHeightPx };
+  }
+
+  /**
+   * Disable multi-label mode and return to single label
+   */
+  disableMultiLabel() {
+    this.multiLabel = {
+      enabled: false,
+      labelWidth: 0,
+      labelHeight: 0,
+      labelsAcross: 1,
+      gapPx: 0,
+      zones: [],
+    };
+    this.activeZone = 0;
+  }
+
+  /**
+   * Set active zone for editing
+   * @param {number} zone - Zone index (0-based)
+   */
+  setActiveZone(zone) {
+    this.activeZone = Math.max(0, Math.min(zone, this.multiLabel.labelsAcross - 1));
+  }
+
+  /**
+   * Get zone at a point (in label coordinates, not canvas)
+   * @param {number} x - X coordinate in label space
+   * @param {number} y - Y coordinate in label space
+   * @returns {number|null} Zone index or null if not in any zone
+   */
+  getZoneAtPoint(x, y) {
+    if (!this.multiLabel.enabled) return 0;
+
+    for (let i = 0; i < this.multiLabel.zones.length; i++) {
+      const zone = this.multiLabel.zones[i];
+      if (x >= zone.x && x < zone.x + zone.width &&
+          y >= zone.y && y < zone.y + zone.height) {
+        return i;
+      }
+    }
+    return null; // In gap or outside
+  }
+
+  /**
+   * Get single label dimensions (for element positioning within a zone)
+   */
+  getSingleLabelDimensions() {
+    if (this.multiLabel.enabled) {
+      return {
+        width: this.multiLabel.labelWidth,
+        height: this.multiLabel.labelHeight,
+      };
+    }
+    return {
+      width: this.labelWidth,
+      height: this.labelHeight,
+    };
   }
 
   /**
@@ -115,7 +260,7 @@ export class CanvasRenderer {
   }
 
   /**
-   * Clear canvas - checkerboard overflow area with white label
+   * Clear canvas - checkerboard overflow area with white label(s)
    */
   clear() {
     const ctx = this.ctx;
@@ -124,18 +269,52 @@ export class CanvasRenderer {
     // Draw checkerboard pattern for entire canvas (overflow area)
     this.drawCheckerboard(ctx, 0, 0, this.canvas.width, this.canvas.height);
 
-    // Draw white label area with rounded corners (like physical labels)
-    // Scale dimensions by zoom
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.roundRect(
-      this.labelOffsetX,
-      this.labelOffsetY,
-      this.labelWidth * zoom,
-      this.labelHeight * zoom,
-      8 * zoom
-    );
-    ctx.fill();
+    if (this.multiLabel.enabled) {
+      // Draw each label zone as a white area
+      for (let i = 0; i < this.multiLabel.zones.length; i++) {
+        const zone = this.multiLabel.zones[i];
+        const isActive = (i === this.activeZone);
+
+        // Draw white label area
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.roundRect(
+          this.labelOffsetX + zone.x * zoom,
+          this.labelOffsetY + zone.y * zoom,
+          zone.width * zoom,
+          zone.height * zoom,
+          4 * zoom
+        );
+        ctx.fill();
+
+        // Draw zone border (highlight active zone)
+        ctx.strokeStyle = isActive ? '#3b82f6' : '#d1d5db';
+        ctx.lineWidth = isActive ? 2 * zoom : 1 * zoom;
+        ctx.stroke();
+
+        // Draw zone number label
+        ctx.fillStyle = isActive ? '#3b82f6' : '#9ca3af';
+        ctx.font = `${10 * zoom}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          `${i + 1}`,
+          this.labelOffsetX + (zone.x + zone.width / 2) * zoom,
+          this.labelOffsetY + zone.y * zoom - 4 * zoom
+        );
+      }
+    } else {
+      // Single label mode - draw one white area
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.roundRect(
+        this.labelOffsetX,
+        this.labelOffsetY,
+        this.labelWidth * zoom,
+        this.labelHeight * zoom,
+        8 * zoom
+      );
+      ctx.fill();
+    }
   }
 
   /**
@@ -190,8 +369,25 @@ export class CanvasRenderer {
     ctx.scale(zoom, zoom);
 
     // Render elements in z-order (first = bottom)
-    for (const element of elements) {
-      this.renderElement(element);
+    if (this.multiLabel.enabled) {
+      // Multi-label mode: render elements with zone offsets
+      for (const element of elements) {
+        const zone = this.multiLabel.zones[element.zone ?? 0];
+        if (zone) {
+          // Create offset element for rendering
+          const offsetElement = {
+            ...element,
+            x: element.x + zone.x,
+            y: element.y + zone.y,
+          };
+          this.renderElement(offsetElement);
+        }
+      }
+    } else {
+      // Single label mode
+      for (const element of elements) {
+        this.renderElement(element);
+      }
     }
 
     // Draw alignment guides (after elements, before handles)
@@ -202,22 +398,33 @@ export class CanvasRenderer {
       // Single selection - check if it's part of a group
       const selected = elements.find(e => e.id === selectedArray[0]);
       if (selected) {
+        // Get offset element for handle drawing in multi-label mode
+        const handleElement = this.multiLabel.enabled
+          ? this.getOffsetElement(selected)
+          : selected;
+
         if (selected.groupId) {
           // Element is part of a group - draw group handles
           const groupMembers = elements.filter(e => e.groupId === selected.groupId);
-          const bounds = this.getMultiElementBounds(groupMembers);
+          const offsetMembers = this.multiLabel.enabled
+            ? groupMembers.map(e => this.getOffsetElement(e))
+            : groupMembers;
+          const bounds = this.getMultiElementBounds(offsetMembers);
           if (bounds) {
             drawGroupHandles(ctx, bounds);
           }
         } else {
           // Single ungrouped element
-          drawHandles(ctx, selected);
+          drawHandles(ctx, handleElement);
         }
       }
     } else if (selectedArray.length > 1) {
       // Multi-selection - draw group bounding box
       const selectedElements = elements.filter(e => selectedArray.includes(e.id));
-      const bounds = this.getMultiElementBounds(selectedElements);
+      const offsetElements = this.multiLabel.enabled
+        ? selectedElements.map(e => this.getOffsetElement(e))
+        : selectedElements;
+      const bounds = this.getMultiElementBounds(offsetElements);
       if (bounds) {
         drawGroupHandles(ctx, bounds);
       }
@@ -230,6 +437,24 @@ export class CanvasRenderer {
   }
 
   /**
+   * Get element with zone offset applied (for multi-label mode)
+   * @param {Object} element - Original element
+   * @returns {Object} Element with zone offset applied
+   */
+  getOffsetElement(element) {
+    if (!this.multiLabel.enabled) return element;
+
+    const zone = this.multiLabel.zones[element.zone ?? 0];
+    if (!zone) return element;
+
+    return {
+      ...element,
+      x: element.x + zone.x,
+      y: element.y + zone.y,
+    };
+  }
+
+  /**
    * Dim content that extends outside the label area
    * Uses semi-transparent overlay with rounded label cutout
    */
@@ -238,18 +463,32 @@ export class CanvasRenderer {
     const zoom = this.zoom;
     ctx.save();
 
-    // Create path covering entire canvas with rounded label hole
+    // Create path covering entire canvas with label holes
     ctx.beginPath();
     // Outer rectangle (clockwise)
     ctx.rect(0, 0, this.canvas.width, this.canvas.height);
-    // Inner rounded rectangle (counter-clockwise to create hole) - scale by zoom
-    ctx.roundRect(
-      this.labelOffsetX,
-      this.labelOffsetY,
-      this.labelWidth * zoom,
-      this.labelHeight * zoom,
-      8 * zoom
-    );
+
+    if (this.multiLabel.enabled) {
+      // Create cutout for each label zone
+      for (const zone of this.multiLabel.zones) {
+        ctx.roundRect(
+          this.labelOffsetX + zone.x * zoom,
+          this.labelOffsetY + zone.y * zoom,
+          zone.width * zoom,
+          zone.height * zoom,
+          4 * zoom
+        );
+      }
+    } else {
+      // Single label cutout
+      ctx.roundRect(
+        this.labelOffsetX,
+        this.labelOffsetY,
+        this.labelWidth * zoom,
+        this.labelHeight * zoom,
+        8 * zoom
+      );
+    }
 
     // Fill using evenodd rule (fills area between outer and inner paths)
     ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
@@ -307,9 +546,23 @@ export class CanvasRenderer {
     // Temporarily use the provided context
     this.ctx = ctx;
 
-    // Render elements without handles
-    for (const element of elements) {
-      this.renderElement(element);
+    // Render elements (with zone offsets if multi-label mode)
+    if (this.multiLabel.enabled) {
+      for (const element of elements) {
+        const zone = this.multiLabel.zones[element.zone ?? 0];
+        if (zone) {
+          const offsetElement = {
+            ...element,
+            x: element.x + zone.x,
+            y: element.y + zone.y,
+          };
+          this.renderElement(offsetElement);
+        }
+      }
+    } else {
+      for (const element of elements) {
+        this.renderElement(element);
+      }
     }
 
     // Restore original context
@@ -1023,24 +1276,38 @@ export class CanvasRenderer {
     const weight = fontWeight === 'bold' ? 'bold' : '';
     const style = fontStyle === 'italic' ? 'italic' : '';
     this.ctx.font = `${style} ${weight} ${fontSize}px ${fontFamily}`.trim();
-    const words = text.split(/\s+/);
+
     const lines = [];
-    let currentLine = '';
 
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const metrics = this.ctx.measureText(testLine);
+    // First split by explicit newlines to preserve them
+    const paragraphs = text.split('\n');
 
-      if (metrics.width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
+    for (const paragraph of paragraphs) {
+      if (!paragraph.trim()) {
+        // Empty line - preserve it
+        lines.push('');
+        continue;
       }
-    }
 
-    if (currentLine) {
-      lines.push(currentLine);
+      // Word wrap within each paragraph
+      const words = paragraph.split(/[ \t]+/); // Split by spaces/tabs only, not newlines
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = this.ctx.measureText(testLine);
+
+        if (metrics.width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+      }
     }
 
     return lines.length ? lines : [''];
@@ -1195,11 +1462,25 @@ export class CanvasRenderer {
     tempCtx.fillStyle = 'white';
     tempCtx.fillRect(0, 0, width, height);
 
-    // Render elements to temp canvas
+    // Render elements to temp canvas (with zone offsets if multi-label mode)
     const originalCtx = this.ctx;
     this.ctx = tempCtx;
-    for (const element of elements) {
-      this.renderElement(element);
+    if (this.multiLabel.enabled) {
+      for (const element of elements) {
+        const zone = this.multiLabel.zones[element.zone ?? 0];
+        if (zone) {
+          const offsetElement = {
+            ...element,
+            x: element.x + zone.x,
+            y: element.y + zone.y,
+          };
+          this.renderElement(offsetElement);
+        }
+      }
+    } else {
+      for (const element of elements) {
+        this.renderElement(element);
+      }
     }
     this.ctx = originalCtx;
 

@@ -270,6 +270,40 @@ export function createEmptyRecord(fields) {
 }
 
 /**
+ * Substitute fields in elements by zone, using different records per zone
+ * Used for multi-label mode with clone mode OFF
+ * @param {Array} elements - Array of label elements with zone property
+ * @param {Array} records - Array of records, one per zone (can be sparse)
+ * @param {number} numZones - Total number of zones
+ * @returns {Array} - New array of elements with substituted values
+ */
+export function substituteFieldsByZone(elements, records, numZones) {
+  return elements.map(el => {
+    const zone = el.zone || 0;
+    const record = records[zone];
+
+    // If no record for this zone, return element unchanged
+    if (!record) {
+      return { ...el };
+    }
+
+    const clone = { ...el };
+
+    if (clone.text) {
+      clone.text = substituteString(clone.text, record);
+    }
+    if (clone.barcodeData) {
+      clone.barcodeData = substituteString(clone.barcodeData, record);
+    }
+    if (clone.qrData) {
+      clone.qrData = substituteString(clone.qrData, record);
+    }
+
+    return clone;
+  });
+}
+
+/**
  * Generate sample data for preview/testing
  * @param {Array} fields - Array of field names
  * @param {number} count - Number of records to generate

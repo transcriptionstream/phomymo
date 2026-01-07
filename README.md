@@ -44,6 +44,17 @@ Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M11
 - Custom dimensions with live preview
 - **Auto-detection**: Label size options automatically switch when connecting to D-series printers
 
+### Multi-Label Rolls
+- **Configure multi-up layouts** - Define individual label width, height, number across, and gap between labels
+- **Two design modes**:
+  - **Clone mode** - Design one label, automatically replicate to all positions
+  - **Individual mode** - Design each label zone separately with unique content
+- **Zone editing** - Click zones to switch, visual highlighting shows active zone
+- **Save presets** - Save and reuse common multi-label configurations
+- **Smart batch printing**:
+  - Clone mode: Each CSV record prints to one full row (all zones identical)
+  - Individual mode: Records fill zones sequentially (4 zones + 8 records = 2 rows)
+
 ### File Operations
 - **Save/Load** - Persist designs to browser localStorage
 - **Export/Import** - Share designs as JSON files

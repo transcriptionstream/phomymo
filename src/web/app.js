@@ -3,7 +3,7 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=65';
+import { CanvasRenderer } from './canvas.js?v=68';
 import { BLETransport } from './ble.js?v=11';
 import { USBTransport } from './usb.js?v=3';
 import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=15';
@@ -28,7 +28,14 @@ import {
   moveElements,
   scaleElements,
   rotateElements,
-} from './elements.js?v=8';
+  // Multi-label zone functions
+  getElementsInZone,
+  cloneElementsToZone,
+  cloneElementsToAllZones,
+  collapseToSingleZone,
+  hasElementsInHigherZones,
+  removeElementsInHigherZones,
+} from './elements.js?v=9';
 import {
   HandleType,
   getHandleAtPoint,
@@ -46,20 +53,22 @@ import {
   loadDesign,
   listDesigns,
   deleteDesign,
-} from './storage.js?v=4';
+} from './storage.js?v=5';
 import {
   extractFields,
   hasTemplateFields,
   substituteFields,
+  substituteFieldsByZone,
   parseCSV,
   createEmptyRecord,
-} from './templates.js?v=1';
+} from './templates.js?v=2';
 import {
   ZOOM,
   TEXT,
   IMAGE,
   ELEMENT,
   LABEL,
+  MULTI_LABEL,
   PRINT,
   HISTORY,
   GUIDES,
@@ -161,6 +170,16 @@ const state = {
   alignmentGuides: [],    // Array of { type: 'h'|'v', pos: number, label?: string }
   // Clipboard for copy/paste
   clipboard: [],          // Array of copied elements
+  // Multi-label roll configuration
+  multiLabel: {
+    enabled: false,
+    labelWidth: 10,       // Individual label width in mm
+    labelHeight: 20,      // Individual label height in mm
+    labelsAcross: 4,      // Number of labels across
+    gapMm: 2,             // Gap between labels in mm
+    cloneMode: true,      // true = all zones identical, false = design individually
+  },
+  activeZone: 0,          // Currently selected zone for editing (0-based)
 };
 
 // Note: GUIDES.SNAP_THRESHOLD, HISTORY.MAX_SIZE, and STORAGE_KEYS are imported from constants.js
@@ -1215,7 +1234,18 @@ async function handleBatchPrint() {
   const btn = $('#template-print-btn');
   const originalText = btn.textContent;
   const { density, feed, printerModel } = state.printSettings;
-  const total = recordsToPrint.length;
+
+  // Calculate total prints based on multi-label mode
+  const isMultiLabel = state.multiLabel.enabled;
+  const cloneMode = state.multiLabel.cloneMode;
+  const labelsAcross = state.multiLabel.labelsAcross;
+
+  // In multi-label mode with clone mode OFF, records fill zones sequentially
+  // So N records with M zones = ceil(N/M) rows to print
+  const totalRecords = recordsToPrint.length;
+  const totalRows = isMultiLabel && !cloneMode
+    ? Math.ceil(totalRecords / labelsAcross)
+    : totalRecords;
 
   try {
     btn.disabled = true;
@@ -1233,23 +1263,45 @@ async function handleBatchPrint() {
     }
 
     // Show progress modal
-    showPrintProgress(`Printing ${total} Label${total !== 1 ? 's' : ''}`, total);
+    const labelText = isMultiLabel && !cloneMode
+      ? `Printing ${totalRows} Row${totalRows !== 1 ? 's' : ''} (${totalRecords} labels)`
+      : `Printing ${totalRecords} Label${totalRecords !== 1 ? 's' : ''}`;
+    showPrintProgress(labelText, totalRows);
 
-    for (let i = 0; i < total; i++) {
+    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
       // Check for cancellation
       if (isPrintCancelled()) {
-        showToast(`Printing cancelled after ${i} label${i !== 1 ? 's' : ''}`, 'warning');
+        showToast(`Printing cancelled after ${rowIndex} row${rowIndex !== 1 ? 's' : ''}`, 'warning');
         break;
       }
 
-      const recordIndex = recordsToPrint[i];
-      const record = state.templateData[recordIndex];
+      let mergedElements;
 
-      updatePrintProgress(i + 1, total, `Printing label ${i + 1}...`);
-      btn.textContent = `Printing ${i + 1}/${total}...`;
+      if (isMultiLabel && !cloneMode) {
+        // Clone mode OFF: Different record per zone
+        // Get records for this row (up to labelsAcross records)
+        const startIdx = rowIndex * labelsAcross;
+        const rowRecords = [];
+        for (let z = 0; z < labelsAcross; z++) {
+          const recordIdx = startIdx + z;
+          if (recordIdx < recordsToPrint.length) {
+            rowRecords[z] = state.templateData[recordsToPrint[recordIdx]];
+          }
+          // If no more records, zone will be empty (no substitution)
+        }
+        mergedElements = substituteFieldsByZone(state.elements, rowRecords, labelsAcross);
 
-      // Substitute fields
-      const mergedElements = substituteFields(state.elements, record);
+        updatePrintProgress(rowIndex + 1, totalRows, `Printing row ${rowIndex + 1}...`);
+        btn.textContent = `Printing row ${rowIndex + 1}/${totalRows}...`;
+      } else {
+        // Clone mode ON or single-label: Same data for all zones
+        const recordIndex = recordsToPrint[rowIndex];
+        const record = state.templateData[recordIndex];
+        mergedElements = substituteFields(state.elements, record);
+
+        updatePrintProgress(rowIndex + 1, totalRows, `Printing label ${rowIndex + 1}...`);
+        btn.textContent = `Printing ${rowIndex + 1}/${totalRows}...`;
+      }
 
       // Render to raster (use raw format for D-series printers)
       const deviceName = state.transport.getDeviceName?.() || '';
@@ -1266,20 +1318,23 @@ async function handleBatchPrint() {
         density,
         feed,
         onProgress: (progress) => {
-          updatePrintProgress(i + 1, total, `Sending data... ${progress}%`);
+          updatePrintProgress(rowIndex + 1, totalRows, `Sending data... ${progress}%`);
         },
       });
 
       // Delay between prints
-      if (i < total - 1 && !isPrintCancelled()) {
-        updatePrintProgress(i + 1, total, 'Waiting...');
+      if (rowIndex < totalRows - 1 && !isPrintCancelled()) {
+        updatePrintProgress(rowIndex + 1, totalRows, 'Waiting...');
         await new Promise(r => setTimeout(r, 500));
       }
     }
 
     if (!isPrintCancelled()) {
-      showToast(`Printed ${total} label${total !== 1 ? 's' : ''}!`, 'success');
-      setStatus(`Printed ${total} label${total !== 1 ? 's' : ''}!`);
+      const successMsg = isMultiLabel && !cloneMode
+        ? `Printed ${totalRows} row${totalRows !== 1 ? 's' : ''} (${totalRecords} labels)!`
+        : `Printed ${totalRecords} label${totalRecords !== 1 ? 's' : ''}!`;
+      showToast(successMsg, 'success');
+      setStatus(successMsg);
     }
     btn.textContent = originalText;
 
@@ -1461,6 +1516,9 @@ function modifyElement(id, changes) {
   if (Object.keys(changes).some(key => templateKeys.includes(key))) {
     detectTemplateFields();
   }
+
+  // Auto-clone after property changes
+  autoCloneIfEnabled();
 
   render();
   updatePropertiesPanel();
@@ -1707,7 +1765,12 @@ function handleLabelSizeChange() {
   const select = $('#label-size');
   const value = select.value;
 
-  if (value === 'custom') {
+  if (value === 'multi-label') {
+    // Show multi-label configuration modal
+    $('#custom-size').classList.add('hidden');
+    showMultiLabelModal();
+    return;
+  } else if (value === 'custom') {
     $('#custom-size').classList.remove('hidden');
     const w = validateLabelWidth($('#custom-width').value);
     const h = validateLabelHeight($('#custom-height').value);
@@ -1718,6 +1781,11 @@ function handleLabelSizeChange() {
     if (preset) {
       state.labelSize = { ...preset };
     }
+  }
+
+  // Disable multi-label mode if switching to a single-label preset
+  if (state.multiLabel.enabled) {
+    exitMultiLabelMode();
   }
 
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
@@ -1737,6 +1805,280 @@ function handleCustomSizeChange() {
   render();
 }
 
+// =============================================================================
+// MULTI-LABEL FUNCTIONS
+// =============================================================================
+
+/**
+ * Show multi-label configuration modal
+ */
+function showMultiLabelModal() {
+  const modal = $('#multi-label-modal');
+
+  // Populate with current values if already in multi-label mode
+  if (state.multiLabel.enabled) {
+    $('#multi-label-width').value = state.multiLabel.labelWidth;
+    $('#multi-label-height').value = state.multiLabel.labelHeight;
+    $('#multi-label-count').value = state.multiLabel.labelsAcross;
+    $('#multi-label-gap').value = state.multiLabel.gapMm;
+    $('#multi-label-clone-mode').checked = state.multiLabel.cloneMode;
+  }
+
+  updateMultiLabelPreview();
+  loadMultiLabelPresets();
+  modal.classList.remove('hidden');
+}
+
+/**
+ * Hide multi-label modal
+ */
+function hideMultiLabelModal() {
+  $('#multi-label-modal').classList.add('hidden');
+
+  // Reset label size dropdown if not applied
+  if (!state.multiLabel.enabled) {
+    $('#label-size').value = '40x30';
+  }
+}
+
+/**
+ * Update multi-label total width preview
+ */
+function updateMultiLabelPreview() {
+  const width = parseFloat($('#multi-label-width').value) || 10;
+  const count = parseInt($('#multi-label-count').value) || 1;
+  const gap = parseFloat($('#multi-label-gap').value) || 0;
+
+  const totalWidth = (width * count) + (gap * (count - 1));
+  $('#multi-label-total-width').textContent = `${totalWidth.toFixed(1)}mm`;
+}
+
+/**
+ * Apply multi-label configuration
+ */
+function applyMultiLabelConfig() {
+  const labelWidth = Math.max(5, Math.min(50, parseFloat($('#multi-label-width').value) || 10));
+  const labelHeight = Math.max(5, Math.min(100, parseFloat($('#multi-label-height').value) || 20));
+  const labelsAcross = Math.max(1, Math.min(8, parseInt($('#multi-label-count').value) || 4));
+  const gapMm = Math.max(0, Math.min(10, parseFloat($('#multi-label-gap').value) || 2));
+  const cloneMode = $('#multi-label-clone-mode').checked;
+
+  // Update state
+  state.multiLabel = {
+    enabled: true,
+    labelWidth: labelWidth,
+    labelHeight: labelHeight,
+    labelsAcross: labelsAcross,
+    gapMm: gapMm,
+    cloneMode: cloneMode,
+  };
+  state.activeZone = 0;
+
+  // Update renderer
+  state.renderer.setMultiLabelDimensions(labelWidth, labelHeight, labelsAcross, gapMm);
+  state.renderer.setActiveZone(0);
+
+  // Update label size for single label operations
+  state.labelSize = { width: labelWidth, height: labelHeight };
+
+  // Show zone toolbar
+  updateZoneToolbar();
+  $('#zone-toolbar').classList.remove('hidden');
+
+  // Update dropdown to show multi-label is active
+  $('#label-size').value = 'multi-label';
+
+  hideMultiLabelModal();
+  updatePrintSize();
+  render();
+
+  showToast(`Multi-label: ${labelsAcross} × ${labelWidth}×${labelHeight}mm`, 'success');
+}
+
+/**
+ * Exit multi-label mode
+ */
+function exitMultiLabelMode() {
+  // Collapse all elements to zone 0
+  state.elements = collapseToSingleZone(state.elements);
+
+  state.multiLabel = {
+    enabled: false,
+    labelWidth: 10,
+    labelHeight: 20,
+    labelsAcross: 4,
+    gapMm: 2,
+    cloneMode: true,
+  };
+  state.activeZone = 0;
+
+  // Disable multi-label in renderer
+  state.renderer.disableMultiLabel();
+
+  // Hide zone toolbar
+  $('#zone-toolbar').classList.add('hidden');
+
+  // Reset to default label size
+  $('#label-size').value = '40x30';
+  state.labelSize = { width: 40, height: 30 };
+  state.renderer.setDimensions(40, 30);
+
+  updatePrintSize();
+  render();
+}
+
+/**
+ * Update zone toolbar with current configuration
+ */
+function updateZoneToolbar() {
+  const { labelWidth, labelHeight, labelsAcross, cloneMode } = state.multiLabel;
+
+  // Update config summary
+  $('#zone-config-summary').textContent = `${labelsAcross} × ${labelWidth}×${labelHeight}mm`;
+
+  // Update clone mode checkbox
+  $('#zone-clone-mode').checked = cloneMode;
+
+  // Create zone buttons
+  const container = $('#zone-buttons');
+  container.innerHTML = '';
+
+  for (let i = 0; i < labelsAcross; i++) {
+    const btn = document.createElement('button');
+    btn.className = `px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+      i === state.activeZone
+        ? 'bg-blue-600 text-white'
+        : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-100'
+    }`;
+    btn.textContent = `${i + 1}`;
+    btn.addEventListener('click', () => setActiveZone(i));
+    container.appendChild(btn);
+  }
+}
+
+/**
+ * Set active zone for editing
+ */
+function setActiveZone(zone) {
+  state.activeZone = zone;
+  state.renderer.setActiveZone(zone);
+  updateZoneToolbar();
+  render();
+}
+
+/**
+ * Clone current zone elements to all other zones
+ */
+function cloneToAllZones() {
+  if (!state.multiLabel.enabled) return;
+
+  saveHistory();
+  state.elements = cloneElementsToAllZones(
+    state.elements,
+    state.activeZone,
+    state.multiLabel.labelsAcross
+  );
+  render();
+  showToast('Cloned to all zones', 'success');
+}
+
+/**
+ * Auto-clone elements if clone mode is enabled
+ * Called after element additions/modifications
+ */
+function autoCloneIfEnabled() {
+  if (!state.multiLabel.enabled || !state.multiLabel.cloneMode) return;
+
+  // Clone elements from active zone to all other zones (silently)
+  state.elements = cloneElementsToAllZones(
+    state.elements,
+    state.activeZone,
+    state.multiLabel.labelsAcross
+  );
+}
+
+/**
+ * Load multi-label presets from localStorage
+ */
+function loadMultiLabelPresets() {
+  const presets = safeJsonParse(safeStorageGet(STORAGE_KEYS.MULTI_LABEL_PRESETS), {});
+  const select = $('#multi-label-preset');
+
+  // Clear existing options (except first)
+  while (select.options.length > 1) {
+    select.remove(1);
+  }
+
+  // Add preset options
+  for (const name of Object.keys(presets)) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  }
+}
+
+/**
+ * Save current multi-label config as a preset
+ */
+function saveMultiLabelPreset() {
+  const name = prompt('Enter preset name:');
+  if (!name || !name.trim()) return;
+
+  const presets = safeJsonParse(safeStorageGet(STORAGE_KEYS.MULTI_LABEL_PRESETS), {});
+
+  presets[name.trim()] = {
+    labelWidth: parseFloat($('#multi-label-width').value) || 10,
+    labelHeight: parseFloat($('#multi-label-height').value) || 20,
+    labelsAcross: parseInt($('#multi-label-count').value) || 4,
+    gapMm: parseFloat($('#multi-label-gap').value) || 2,
+  };
+
+  safeStorageSet(STORAGE_KEYS.MULTI_LABEL_PRESETS, safeJsonStringify(presets));
+  loadMultiLabelPresets();
+  showToast(`Preset "${name.trim()}" saved`, 'success');
+}
+
+/**
+ * Load a multi-label preset
+ */
+function loadMultiLabelPreset(name) {
+  const presets = safeJsonParse(safeStorageGet(STORAGE_KEYS.MULTI_LABEL_PRESETS), {});
+  const preset = presets[name];
+
+  if (preset) {
+    $('#multi-label-width').value = preset.labelWidth;
+    $('#multi-label-height').value = preset.labelHeight;
+    $('#multi-label-count').value = preset.labelsAcross;
+    $('#multi-label-gap').value = preset.gapMm;
+    updateMultiLabelPreview();
+
+    // Show delete button
+    $('#multi-label-delete-preset').classList.remove('hidden');
+  }
+}
+
+/**
+ * Delete current multi-label preset
+ */
+function deleteMultiLabelPreset() {
+  const select = $('#multi-label-preset');
+  const name = select.value;
+
+  if (!name) return;
+
+  if (!confirm(`Delete preset "${name}"?`)) return;
+
+  const presets = safeJsonParse(safeStorageGet(STORAGE_KEYS.MULTI_LABEL_PRESETS), {});
+  delete presets[name];
+  safeStorageSet(STORAGE_KEYS.MULTI_LABEL_PRESETS, safeJsonStringify(presets));
+
+  loadMultiLabelPresets();
+  select.value = '';
+  $('#multi-label-delete-preset').classList.add('hidden');
+  showToast(`Preset "${name}" deleted`, 'success');
+}
+
 /**
  * Get mouse position relative to label (accounting for zoom and label offset)
  */
@@ -1753,6 +2095,61 @@ function getCanvasPos(e) {
     x: (e.clientX - rect.left) / zoom - baseLabelOffsetX,
     y: (e.clientY - rect.top) / zoom - baseLabelOffsetY,
   };
+}
+
+/**
+ * Convert canvas position to zone-relative position
+ * Returns { zoneIndex, x, y } where x,y are relative to the zone
+ */
+function getZoneRelativePos(canvasX, canvasY) {
+  if (!state.multiLabel.enabled) {
+    return { zoneIndex: 0, x: canvasX, y: canvasY };
+  }
+
+  const zoneIndex = state.renderer.getZoneAtPoint(canvasX, canvasY);
+  if (zoneIndex === null) {
+    // Clicked in gap or outside zones
+    return { zoneIndex: null, x: canvasX, y: canvasY };
+  }
+
+  const zone = state.renderer.multiLabel.zones[zoneIndex];
+  return {
+    zoneIndex,
+    x: canvasX - zone.x,
+    y: canvasY - zone.y,
+  };
+}
+
+/**
+ * Convert zone-relative position to canvas position
+ */
+function getCanvasPosFromZone(zoneIndex, zoneX, zoneY) {
+  if (!state.multiLabel.enabled || zoneIndex === 0) {
+    return { x: zoneX, y: zoneY };
+  }
+
+  const zone = state.renderer.multiLabel.zones[zoneIndex];
+  return {
+    x: zone.x + zoneX,
+    y: zone.y + zoneY,
+  };
+}
+
+/**
+ * Get element at point, accounting for multi-label zones
+ */
+function getElementAtCanvasPoint(canvasX, canvasY) {
+  if (!state.multiLabel.enabled) {
+    return getElementAtPoint(canvasX, canvasY, state.elements);
+  }
+
+  // In multi-label mode, check elements in the clicked zone
+  const { zoneIndex, x, y } = getZoneRelativePos(canvasX, canvasY);
+  if (zoneIndex === null) return null;
+
+  // Filter to elements in this zone and check hit
+  const zoneElements = state.elements.filter(el => (el.zone || 0) === zoneIndex);
+  return getElementAtPoint(x, y, zoneElements);
 }
 
 /**
@@ -1864,6 +2261,41 @@ function detectAlignmentGuides(bounds, excludeIds = []) {
 }
 
 /**
+ * Get element with canvas-adjusted position for multi-label mode
+ */
+function getElementWithCanvasPos(element) {
+  if (!state.multiLabel.enabled || !element) return element;
+
+  const zoneIndex = element.zone || 0;
+  const zone = state.renderer.multiLabel.zones[zoneIndex];
+  if (!zone) return element;
+
+  return {
+    ...element,
+    x: element.x + zone.x,
+    y: element.y + zone.y,
+  };
+}
+
+/**
+ * Get bounds with canvas-adjusted position for multi-label mode
+ */
+function getBoundsWithCanvasPos(bounds, zoneIndex) {
+  if (!state.multiLabel.enabled || !bounds) return bounds;
+
+  const zone = state.renderer.multiLabel.zones[zoneIndex];
+  if (!zone) return bounds;
+
+  return {
+    ...bounds,
+    x: bounds.x + zone.x,
+    y: bounds.y + zone.y,
+    cx: bounds.cx + zone.x,
+    cy: bounds.cy + zone.y,
+  };
+}
+
+/**
  * Handle canvas mouse down
  */
 function handleCanvasMouseDown(e) {
@@ -1875,13 +2307,27 @@ function handleCanvasMouseDown(e) {
     return;
   }
 
-  const clickedElement = getElementAtPoint(pos.x, pos.y, state.elements);
+  // In multi-label mode, check which zone was clicked and switch if needed
+  if (state.multiLabel.enabled) {
+    const { zoneIndex } = getZoneRelativePos(pos.x, pos.y);
+    if (zoneIndex !== null && zoneIndex !== state.activeZone) {
+      // Switch to clicked zone
+      setActiveZone(zoneIndex);
+    }
+  }
+
+  // Use zone-aware element detection
+  const clickedElement = getElementAtCanvasPoint(pos.x, pos.y);
   const selectedElements = getSelectedElements();
   const isMultiSelect = state.selectedIds.length > 1;
 
   // For multi-selection or groups, check group bounding box handles first
   if (isMultiSelect || (selectedElements.length === 1 && selectedElements[0].groupId)) {
-    const bounds = getMultiElementBounds(selectedElements);
+    const rawBounds = getMultiElementBounds(selectedElements);
+    // Adjust bounds for canvas position in multi-label mode
+    const bounds = selectedElements.length > 0
+      ? getBoundsWithCanvasPos(rawBounds, selectedElements[0].zone || 0)
+      : rawBounds;
     if (bounds) {
       const handle = getGroupHandleAtPoint(pos.x, pos.y, bounds);
       if (handle) {
@@ -1890,11 +2336,11 @@ function handleCanvasMouseDown(e) {
         state.dragStartX = pos.x;
         state.dragStartY = pos.y;
         state.dragStartElements = selectedElements.map(el => ({ ...el }));
-        state.dragStartBounds = { ...bounds };
+        state.dragStartBounds = { ...rawBounds }; // Store raw bounds for calculations
 
         if (handle === HandleType.ROTATE) {
           state.dragType = 'group-rotate';
-          // Calculate starting angle
+          // Calculate starting angle using canvas-adjusted center
           const angle = Math.atan2(pos.y - bounds.cy, pos.x - bounds.cx);
           state.dragStartAngle = (angle * 180) / Math.PI + 90;
         } else {
@@ -1910,13 +2356,15 @@ function handleCanvasMouseDown(e) {
   if (state.selectedIds.length === 1) {
     const selected = selectedElements[0];
     if (selected) {
-      const handle = getHandleAtPoint(pos.x, pos.y, selected);
+      // Get element with canvas-adjusted position for handle detection
+      const adjustedElement = getElementWithCanvasPos(selected);
+      const handle = getHandleAtPoint(pos.x, pos.y, adjustedElement);
       if (handle) {
         saveHistory();
         state.isDragging = true;
         state.dragStartX = pos.x;
         state.dragStartY = pos.y;
-        state.dragStartElements = [{ ...selected }];
+        state.dragStartElements = [{ ...selected }]; // Store original element
 
         if (handle === HandleType.ROTATE) {
           state.dragType = 'rotate';
@@ -1954,7 +2402,16 @@ function handleCanvasMouseDown(e) {
     return;
   }
 
-  // Clicked on empty area
+  // Clicked on empty area - but still in a valid zone in multi-label mode
+  if (state.multiLabel.enabled) {
+    const { zoneIndex } = getZoneRelativePos(pos.x, pos.y);
+    if (zoneIndex === null) {
+      // Clicked in gap, just deselect
+      deselect();
+      return;
+    }
+  }
+
   deselect();
 }
 
@@ -2083,9 +2540,10 @@ function handleCanvasMouseMove(e) {
         break;
 
       case 'rotate':
-        // Single element rotation
+        // Single element rotation - use canvas-adjusted position for calculation
         const rotEl = state.dragStartElements[0];
-        let rotation = calculateRotation(rotEl, pos.x, pos.y);
+        const adjustedRotEl = getElementWithCanvasPos(rotEl);
+        let rotation = calculateRotation(adjustedRotEl, pos.x, pos.y);
         if (!e.shiftKey) {
           rotation = snapRotation(rotation);
         }
@@ -2093,8 +2551,9 @@ function handleCanvasMouseMove(e) {
         break;
 
       case 'group-rotate':
-        // Multi-element rotation around group center
-        const currentAngle = Math.atan2(pos.y - state.dragStartBounds.cy, pos.x - state.dragStartBounds.cx);
+        // Multi-element rotation around group center - adjust bounds for canvas position
+        const adjustedBounds = getBoundsWithCanvasPos(state.dragStartBounds, state.dragStartElements[0]?.zone || 0);
+        const currentAngle = Math.atan2(pos.y - adjustedBounds.cy, pos.x - adjustedBounds.cx);
         let angleDelta = ((currentAngle * 180) / Math.PI + 90) - state.dragStartAngle;
         if (!e.shiftKey) {
           angleDelta = snapRotation(angleDelta);
@@ -2120,7 +2579,10 @@ function handleCanvasMouseMove(e) {
 
   // Check group handles for multi-selection
   if (isMultiSelect || (selectedElements.length === 1 && selectedElements[0].groupId)) {
-    const bounds = getMultiElementBounds(selectedElements);
+    const rawBounds = getMultiElementBounds(selectedElements);
+    const bounds = selectedElements.length > 0
+      ? getBoundsWithCanvasPos(rawBounds, selectedElements[0].zone || 0)
+      : rawBounds;
     if (bounds) {
       const handle = getGroupHandleAtPoint(pos.x, pos.y, bounds);
       if (handle) {
@@ -2134,7 +2596,8 @@ function handleCanvasMouseMove(e) {
   if (state.selectedIds.length === 1) {
     const selected = selectedElements[0];
     if (selected) {
-      const handle = getHandleAtPoint(pos.x, pos.y, selected);
+      const adjustedElement = getElementWithCanvasPos(selected);
+      const handle = getHandleAtPoint(pos.x, pos.y, adjustedElement);
       if (handle) {
         canvas.style.cursor = getCursorForHandle(handle, selected.rotation);
         return;
@@ -2142,7 +2605,7 @@ function handleCanvasMouseMove(e) {
     }
   }
 
-  const hovered = getElementAtPoint(pos.x, pos.y, state.elements);
+  const hovered = getElementAtCanvasPoint(pos.x, pos.y);
   canvas.style.cursor = hovered ? 'move' : 'crosshair';
 }
 
@@ -2150,6 +2613,7 @@ function handleCanvasMouseMove(e) {
  * Handle canvas mouse up
  */
 function handleCanvasMouseUp() {
+  const wasDragging = state.isDragging;
   state.isDragging = false;
   state.dragType = null;
   state.dragHandle = null;
@@ -2161,6 +2625,11 @@ function handleCanvasMouseUp() {
     state.alignmentGuides = [];
     render();
   }
+  // Auto-clone after drag/resize operations
+  if (wasDragging) {
+    autoCloneIfEnabled();
+    render();
+  }
 }
 
 /**
@@ -2168,14 +2637,16 @@ function handleCanvasMouseUp() {
  */
 function addTextElement() {
   saveHistory();
-  const dims = state.renderer.getDimensions();
+  const dims = state.renderer.getSingleLabelDimensions();
   const element = createTextElement('New Text', {
     x: dims.width / 2 - 75,
     y: dims.height / 2 - 20,
     width: 150,
     height: 40,
+    zone: state.activeZone,
   });
   state.elements.push(element);
+  autoCloneIfEnabled();
   selectElement(element.id);
   setStatus('Text added');
 
@@ -2198,7 +2669,7 @@ async function addImageElement(file) {
     const { dataUrl, width, height } = await state.renderer.loadImageFile(file);
 
     // Use native size if it fits, otherwise scale down to fit
-    const dims = state.renderer.getDimensions();
+    const dims = state.renderer.getSingleLabelDimensions();
     const maxWidth = dims.width * 0.95;   // Leave small margin
     const maxHeight = dims.height * 0.95;
 
@@ -2214,10 +2685,12 @@ async function addImageElement(file) {
       height: scaledH,
       naturalWidth: width,
       naturalHeight: height,
+      zone: state.activeZone,
     });
 
     saveHistory();
     state.elements.push(element);
+    autoCloneIfEnabled();
     selectElement(element.id);
     setStatus(scale < 1 ? `Image scaled to ${Math.round(scale * 100)}%` : 'Image added');
   } catch (e) {
@@ -2231,14 +2704,16 @@ async function addImageElement(file) {
  */
 function addBarcodeElement() {
   saveHistory();
-  const dims = state.renderer.getDimensions();
+  const dims = state.renderer.getSingleLabelDimensions();
   const element = createBarcodeElement('123456789012', {
     x: dims.width / 2 - 90,
     y: dims.height / 2 - 40,
     width: 180,
     height: 80,
+    zone: state.activeZone,
   });
   state.elements.push(element);
+  autoCloneIfEnabled();
   selectElement(element.id);
   setStatus('Barcode added');
 }
@@ -2248,15 +2723,17 @@ function addBarcodeElement() {
  */
 function addQRElement() {
   saveHistory();
-  const dims = state.renderer.getDimensions();
+  const dims = state.renderer.getSingleLabelDimensions();
   const size = Math.min(dims.width, dims.height) * 0.5;
   const element = createQRElement('https://example.com', {
     x: (dims.width - size) / 2,
     y: (dims.height - size) / 2,
     width: size,
     height: size,
+    zone: state.activeZone,
   });
   state.elements.push(element);
+  autoCloneIfEnabled();
   selectElement(element.id);
   setStatus('QR code added');
 }
@@ -2266,7 +2743,7 @@ function addQRElement() {
  */
 function addShapeElement(shapeType = 'rectangle') {
   saveHistory();
-  const dims = state.renderer.getDimensions();
+  const dims = state.renderer.getSingleLabelDimensions();
   const width = shapeType === 'line' ? 100 : 80;
   const height = shapeType === 'line' ? 4 : 60;
   const element = createShapeElement(shapeType, {
@@ -2275,8 +2752,10 @@ function addShapeElement(shapeType = 'rectangle') {
     width: width,
     height: height,
     strokeWidth: shapeType === 'line' ? 3 : 2,
+    zone: state.activeZone,
   });
   state.elements.push(element);
+  autoCloneIfEnabled();
   selectElement(element.id);
   setStatus(`${shapeType.charAt(0).toUpperCase() + shapeType.slice(1)} added`);
 }
@@ -2551,6 +3030,11 @@ function handleSave() {
       designData.templateData = state.templateData;
     }
 
+    // Include multi-label config if enabled
+    if (state.multiLabel.enabled) {
+      designData.multiLabel = { ...state.multiLabel };
+    }
+
     saveDesign(name, designData);
     hideSaveDialog();
 
@@ -2585,6 +3069,9 @@ function showLoadDialog() {
       }
       if (d.templateDataCount > 0) {
         badges.push(`<span class="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded">${d.templateDataCount} records</span>`);
+      }
+      if (d.isMultiLabel) {
+        badges.push(`<span class="px-1.5 py-0.5 text-xs bg-orange-100 text-orange-700 rounded">${d.multiLabel.labelsAcross}-up</span>`);
       }
 
       const badgeHtml = badges.length > 0 ? `<div class="flex gap-1 mt-1">${badges.join('')}</div>` : '';
@@ -2641,7 +3128,7 @@ function handleExport() {
   // Build export data
   const exportData = {
     name: 'Untitled Design',
-    version: 2,
+    version: 3, // Version 3 includes multi-label support
     elements: state.elements,
     labelSize: state.labelSize,
     exportedAt: new Date().toISOString(),
@@ -2654,6 +3141,11 @@ function handleExport() {
   }
   if (state.templateData.length > 0) {
     exportData.templateData = state.templateData;
+  }
+
+  // Include multi-label config if enabled
+  if (state.multiLabel.enabled) {
+    exportData.multiLabel = { ...state.multiLabel };
   }
 
   // Create and download file
@@ -2838,20 +3330,55 @@ function handleLoad(name) {
   state.templateData = design.templateData || [];
   state.selectedRecords = state.templateData.map((_, i) => i); // Select all by default
 
-  // Update label size dropdown
-  const sizeKey = `${state.labelSize.width}x${state.labelSize.height}`;
-  const select = $('#label-size');
-  if (LABEL_SIZES[sizeKey]) {
-    select.value = sizeKey;
+  // Restore multi-label config if present
+  if (design.multiLabel && design.multiLabel.enabled) {
+    state.multiLabel = { ...design.multiLabel };
+    state.activeZone = 0;
+
+    // Update label size dropdown to show multi-label
+    const select = $('#label-size');
+    select.value = 'multi-label';
     $('#custom-size').classList.add('hidden');
+
+    // Apply multi-label dimensions
+    state.renderer.setMultiLabelDimensions(
+      state.multiLabel.labelWidth,
+      state.multiLabel.labelHeight,
+      state.multiLabel.labelsAcross,
+      state.multiLabel.gapMm
+    );
+    state.renderer.setActiveZone(state.activeZone);
+    updateZoneToolbar();
   } else {
-    select.value = 'custom';
-    $('#custom-size').classList.remove('hidden');
-    $('#custom-width').value = state.labelSize.width;
-    $('#custom-height').value = state.labelSize.height;
+    // Reset multi-label state
+    state.multiLabel = {
+      enabled: false,
+      labelWidth: 10,
+      labelHeight: 20,
+      labelsAcross: 4,
+      gapMm: 2,
+      cloneMode: true,
+    };
+    state.activeZone = 0;
+    state.renderer.disableMultiLabel();
+    $('#zone-toolbar').classList.add('hidden');
+
+    // Update label size dropdown
+    const sizeKey = `${state.labelSize.width}x${state.labelSize.height}`;
+    const select = $('#label-size');
+    if (LABEL_SIZES[sizeKey]) {
+      select.value = sizeKey;
+      $('#custom-size').classList.add('hidden');
+    } else {
+      select.value = 'custom';
+      $('#custom-size').classList.remove('hidden');
+      $('#custom-width').value = state.labelSize.width;
+      $('#custom-height').value = state.labelSize.height;
+    }
+
+    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
   }
 
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
   state.renderer.clearCache();
   resetHistory();
   updatePrintSize();
@@ -2869,7 +3396,10 @@ function handleLoad(name) {
   const templateInfo = state.templateData.length > 0
     ? ` (${state.templateData.length} data records)`
     : '';
-  setStatus(`Loaded "${name}"${templateInfo}`);
+  const multiLabelInfo = state.multiLabel.enabled
+    ? ` [${state.multiLabel.labelsAcross}-up]`
+    : '';
+  setStatus(`Loaded "${name}"${templateInfo}${multiLabelInfo}`);
 }
 
 /**
@@ -2913,6 +3443,7 @@ function handleKeyDown(e) {
         state.renderer.clearCache(id);
         state.elements = deleteElement(state.elements, id);
       });
+      autoCloneIfEnabled();
       deselect();
       setStatus(count > 1 ? `${count} elements deleted` : 'Element deleted');
     }
@@ -2931,6 +3462,7 @@ function handleKeyDown(e) {
         case 'ArrowRight': dx = step; break;
       }
       state.elements = moveElements(state.elements, state.selectedIds, dx, dy);
+      autoCloneIfEnabled();
       render();
     }
   }
@@ -2960,6 +3492,7 @@ function handleKeyDown(e) {
       state.elements = duplicateElement(state.elements, el.id);
       newIds.push(state.elements[state.elements.length - 1].id);
     });
+    autoCloneIfEnabled();
     state.selectedIds = newIds;
     updateToolbarState();
     render();
@@ -3072,18 +3605,20 @@ function pasteElements() {
 
   saveHistory();
 
-  // Offset pasted elements by 10px
+  // Offset pasted elements by 10px and set to active zone
   const newElements = state.clipboard.map(el => {
     const clone = JSON.parse(JSON.stringify(el));
     clone.id = 'el_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
     clone.x += 10;
     clone.y += 10;
+    clone.zone = state.activeZone; // Paste to active zone
     // Clear group id on paste
     delete clone.groupId;
     return clone;
   });
 
   state.elements.push(...newElements);
+  autoCloneIfEnabled();
   state.selectedIds = newElements.map(el => el.id);
 
   render();
@@ -3301,6 +3836,35 @@ function init() {
     if (e.target === e.currentTarget) hideShortcutsModal();
   });
 
+  // Multi-label modal
+  $('#multi-label-close').addEventListener('click', hideMultiLabelModal);
+  $('#multi-label-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) hideMultiLabelModal();
+  });
+  $('#multi-label-apply').addEventListener('click', applyMultiLabelConfig);
+  $('#multi-label-save-preset').addEventListener('click', saveMultiLabelPreset);
+  $('#multi-label-delete-preset').addEventListener('click', deleteMultiLabelPreset);
+  $('#multi-label-preset').addEventListener('change', (e) => {
+    if (e.target.value) {
+      loadMultiLabelPreset(e.target.value);
+    } else {
+      $('#multi-label-delete-preset').classList.add('hidden');
+    }
+  });
+
+  // Multi-label input updates
+  $('#multi-label-width').addEventListener('input', updateMultiLabelPreview);
+  $('#multi-label-height').addEventListener('input', updateMultiLabelPreview);
+  $('#multi-label-count').addEventListener('input', updateMultiLabelPreview);
+  $('#multi-label-gap').addEventListener('input', updateMultiLabelPreview);
+
+  // Zone toolbar controls
+  $('#clone-to-all-btn').addEventListener('click', cloneToAllZones);
+  $('#zone-clone-mode').addEventListener('change', (e) => {
+    state.multiLabel.cloneMode = e.target.checked;
+  });
+  $('#exit-multi-label-btn').addEventListener('click', exitMultiLabelMode);
+
   // Connect and print
   $('#connect-btn').addEventListener('click', handleConnect);
   $('#print-btn').addEventListener('click', handlePrint);
@@ -3514,6 +4078,7 @@ function init() {
     if (selected) {
       saveHistory();
       state.elements = duplicateElement(state.elements, selected.id);
+      autoCloneIfEnabled();
       selectElement(state.elements[state.elements.length - 1].id);
       setStatus('Element duplicated');
     }
@@ -3525,6 +4090,7 @@ function init() {
       saveHistory();
       state.renderer.clearCache(selected.id);
       state.elements = deleteElement(state.elements, selected.id);
+      autoCloneIfEnabled();
       deselect();
       setStatus('Element deleted');
     }
@@ -3882,7 +4448,7 @@ function init() {
   // Native double-click for inline text editing
   canvas.addEventListener('dblclick', (e) => {
     const pos = getCanvasPos(e);
-    const clickedElement = getElementAtPoint(pos.x, pos.y, state.elements);
+    const clickedElement = getElementAtCanvasPoint(pos.x, pos.y);
     if (clickedElement?.type === 'text') {
       e.preventDefault();
       e.stopPropagation();

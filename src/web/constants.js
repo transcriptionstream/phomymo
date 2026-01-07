@@ -50,6 +50,18 @@ export const LABEL = {
 };
 
 // =============================================================================
+// MULTI-LABEL ROLL CONFIGURATION
+// =============================================================================
+export const MULTI_LABEL = {
+  MIN_LABELS_ACROSS: 1,
+  MAX_LABELS_ACROSS: 8,
+  DEFAULT_LABELS_ACROSS: 4,
+  MIN_GAP: 0,
+  MAX_GAP: 10,
+  DEFAULT_GAP: 2,
+};
+
+// =============================================================================
 // PRINT SETTINGS
 // =============================================================================
 export const PRINT = {
@@ -104,6 +116,7 @@ export const STORAGE_KEYS = {
   DEVICE_MAPPING: 'phomymo_device_models',
   DESIGNS: 'phomymo_designs',
   SETTINGS: 'phomymo_settings',
+  MULTI_LABEL_PRESETS: 'phomymo_multi_label_presets',
 };
 
 // =============================================================================

@@ -6,7 +6,7 @@
 /**
  * Generate unique ID
  */
-function generateId() {
+export function generateId() {
   return 'el_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
@@ -17,6 +17,7 @@ export function createTextElement(text = 'Text', options = {}) {
   return {
     id: generateId(),
     type: 'text',
+    zone: options.zone ?? 0,
     x: options.x ?? 50,
     y: options.y ?? 50,
     width: options.width ?? 150,
@@ -46,6 +47,7 @@ export function createImageElement(imageData, options = {}) {
   return {
     id: generateId(),
     type: 'image',
+    zone: options.zone ?? 0,
     x: options.x ?? 50,
     y: options.y ?? 50,
     width: options.width ?? 100,
@@ -66,6 +68,7 @@ export function createBarcodeElement(data = '123456789012', options = {}) {
   return {
     id: generateId(),
     type: 'barcode',
+    zone: options.zone ?? 0,
     x: options.x ?? 50,
     y: options.y ?? 50,
     width: options.width ?? 180,
@@ -84,6 +87,7 @@ export function createQRElement(data = 'https://example.com', options = {}) {
   return {
     id: generateId(),
     type: 'qr',
+    zone: options.zone ?? 0,
     x: options.x ?? 50,
     y: options.y ?? 50,
     width: options.width ?? 100,
@@ -103,6 +107,7 @@ export function createShapeElement(shapeType = 'rectangle', options = {}) {
   return {
     id: generateId(),
     type: 'shape',
+    zone: options.zone ?? 0,
     x: options.x ?? 50,
     y: options.y ?? 50,
     width: options.width ?? 80,
@@ -510,4 +515,98 @@ export function rotateElements(elements, ids, angleDelta, center) {
       rotation: newRotation,
     };
   });
+}
+
+// =============================================================================
+// MULTI-LABEL ZONE FUNCTIONS
+// =============================================================================
+
+/**
+ * Get all elements in a specific zone
+ * @param {Array} elements - All elements
+ * @param {number} zone - Zone index (0-based)
+ * @returns {Array} Elements in the specified zone
+ */
+export function getElementsInZone(elements, zone) {
+  return elements.filter(el => (el.zone ?? 0) === zone);
+}
+
+/**
+ * Clone elements from one zone to another
+ * @param {Array} elements - All elements
+ * @param {number} sourceZone - Source zone index
+ * @param {number} targetZone - Target zone index
+ * @param {boolean} replaceExisting - If true, remove existing elements in target zone
+ * @returns {Array} Updated elements array
+ */
+export function cloneElementsToZone(elements, sourceZone, targetZone, replaceExisting = true) {
+  if (sourceZone === targetZone) return elements;
+
+  const sourceElements = getElementsInZone(elements, sourceZone);
+  if (sourceElements.length === 0) return elements;
+
+  // Optionally remove existing elements in target zone
+  let result = replaceExisting
+    ? elements.filter(el => (el.zone ?? 0) !== targetZone)
+    : elements;
+
+  // Clone source elements to target zone
+  const clonedElements = sourceElements.map(el => ({
+    ...el,
+    id: generateId(),
+    zone: targetZone,
+  }));
+
+  return [...result, ...clonedElements];
+}
+
+/**
+ * Clone elements from one zone to all other zones
+ * @param {Array} elements - All elements
+ * @param {number} sourceZone - Source zone index
+ * @param {number} numZones - Total number of zones
+ * @returns {Array} Updated elements array with cloned elements
+ */
+export function cloneElementsToAllZones(elements, sourceZone, numZones) {
+  let result = elements;
+
+  for (let targetZone = 0; targetZone < numZones; targetZone++) {
+    if (targetZone !== sourceZone) {
+      result = cloneElementsToZone(result, sourceZone, targetZone, true);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Move all elements from all zones to zone 0 (for switching from multi-label to single)
+ * @param {Array} elements - All elements
+ * @returns {Array} Elements with all zone properties set to 0
+ */
+export function collapseToSingleZone(elements) {
+  return elements.map(el => ({
+    ...el,
+    zone: 0,
+  }));
+}
+
+/**
+ * Check if any elements exist in zones beyond the specified count
+ * @param {Array} elements - All elements
+ * @param {number} maxZone - Maximum zone index (exclusive)
+ * @returns {boolean} True if elements exist in zones >= maxZone
+ */
+export function hasElementsInHigherZones(elements, maxZone) {
+  return elements.some(el => (el.zone ?? 0) >= maxZone);
+}
+
+/**
+ * Remove elements in zones beyond the specified count
+ * @param {Array} elements - All elements
+ * @param {number} maxZone - Maximum zone index (exclusive)
+ * @returns {Array} Elements with high-zone elements removed
+ */
+export function removeElementsInHigherZones(elements, maxZone) {
+  return elements.filter(el => (el.zone ?? 0) < maxZone);
 }

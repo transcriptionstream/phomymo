@@ -158,7 +158,12 @@ phomymo/
 │       ├── templates.js # Variable substitution
 │       ├── ble.js      # Web Bluetooth transport
 │       ├── usb.js      # WebUSB transport
-│       └── printer.js  # Print protocol
+│       ├── printer.js  # Print protocol
+│       ├── constants.js # Shared constants
+│       └── utils/
+│           ├── bindings.js   # Event binding helpers
+│           ├── errors.js     # Error handling utilities
+│           └── validation.js # Input validation
 └── README.md
 ```
 

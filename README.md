@@ -179,6 +179,11 @@ Thanks to these projects for protocol research and inspiration:
 - [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools) - CUPS driver with reverse-engineered protocol
 - [yaddran/thermal-print](https://github.com/yaddran/thermal-print) - Printer status query commands
 
+Libraries used:
+
+- [JsBarcode](https://github.com/lindell/JsBarcode) - Barcode generation
+- [QRCode.js](https://github.com/davidshimjs/qrcodejs) - QR code generation
+
 ## License
 
 This project is licensed under the MIT License – see the LICENSE file for details.

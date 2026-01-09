@@ -41,7 +41,8 @@ Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M11
 ### Label Sizes
 - **M-series presets**: 12x40, 15x30, 20x30, 25x50, 30x20, 30x40, 40x30, 40x60, 50x25, 50x30, 50x80, 60x40
 - **D-series presets**: 40x12, 30x12, 22x12, 12x12, 30x14, 22x14, 40x15, 30x15
-- Custom dimensions with live preview
+- **Round labels**: 20mm, 30mm, 40mm, 50mm (M-series), 14mm (D-series) - circular design boundary with clipped print output
+- Custom dimensions with live preview (includes round option)
 - **Auto-detection**: Label size options automatically switch when connecting to D-series printers
 
 ### Multi-Label Rolls

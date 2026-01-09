@@ -139,6 +139,14 @@ export const M_SERIES_LABEL_SIZES = {
   '60x40': { width: 60, height: 40 },
 };
 
+// Round/circle labels for M-series printers - diameter in mm
+export const M_SERIES_ROUND_LABELS = {
+  '20mm Round': { width: 20, height: 20, round: true },
+  '30mm Round': { width: 30, height: 30, round: true },
+  '40mm Round': { width: 40, height: 40, round: true },
+  '50mm Round': { width: 50, height: 50, round: true },
+};
+
 // D-series printers (D30, D110) - max width is 12-15mm
 // User designs in landscape, printer rotates output
 export const D_SERIES_LABEL_SIZES = {
@@ -150,6 +158,11 @@ export const D_SERIES_LABEL_SIZES = {
   '22x14': { width: 22, height: 14 },
   '40x15': { width: 40, height: 15 },
   '30x15': { width: 30, height: 15 },
+};
+
+// Round/circle labels for D-series printers - diameter in mm
+export const D_SERIES_ROUND_LABELS = {
+  '14mm Round': { width: 14, height: 14, round: true },
 };
 
 // =============================================================================

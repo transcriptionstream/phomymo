@@ -36,6 +36,9 @@ export class CanvasRenderer {
     this.labelWidth = 0;
     this.labelHeight = 0;
 
+    // Round label flag (circular instead of rectangular)
+    this.isRound = false;
+
     // Base offset where label starts (without zoom)
     this.baseLabelOffsetX = OVERFLOW_PADDING;
     this.baseLabelOffsetY = OVERFLOW_PADDING;
@@ -75,11 +78,13 @@ export class CanvasRenderer {
    * @param {number} widthMm - Label width in mm
    * @param {number} heightMm - Label height in mm
    * @param {number} zoom - Zoom level (1 = 100%, 2 = 200%, etc.)
+   * @param {boolean} round - Whether the label is circular
    */
-  setDimensions(widthMm, heightMm, zoom = this.zoom) {
+  setDimensions(widthMm, heightMm, zoom = this.zoom, round = false) {
     this.widthMm = widthMm;
     this.heightMm = heightMm;
     this.zoom = zoom;
+    this.isRound = round;
 
     // Label dimensions in pixels (base resolution, used for element coordinates)
     this.labelWidth = Math.round(widthMm * PX_PER_MM);
@@ -306,14 +311,30 @@ export class CanvasRenderer {
       // Single label mode - draw one white area
       ctx.fillStyle = 'white';
       ctx.beginPath();
-      ctx.roundRect(
-        this.labelOffsetX,
-        this.labelOffsetY,
-        this.labelWidth * zoom,
-        this.labelHeight * zoom,
-        8 * zoom
-      );
+      if (this.isRound) {
+        // Round label - draw a circle
+        const centerX = this.labelOffsetX + (this.labelWidth * zoom) / 2;
+        const centerY = this.labelOffsetY + (this.labelHeight * zoom) / 2;
+        const radius = Math.min(this.labelWidth, this.labelHeight) * zoom / 2;
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      } else {
+        // Rectangular label - draw rounded rectangle
+        ctx.roundRect(
+          this.labelOffsetX,
+          this.labelOffsetY,
+          this.labelWidth * zoom,
+          this.labelHeight * zoom,
+          8 * zoom
+        );
+      }
       ctx.fill();
+
+      // Draw border for round labels to make the boundary visible
+      if (this.isRound) {
+        ctx.strokeStyle = '#d1d5db';
+        ctx.lineWidth = 1 * zoom;
+        ctx.stroke();
+      }
     }
   }
 
@@ -1462,6 +1483,17 @@ export class CanvasRenderer {
     tempCtx.fillStyle = 'white';
     tempCtx.fillRect(0, 0, width, height);
 
+    // For round labels, set up circular clipping
+    if (this.isRound) {
+      tempCtx.save();
+      tempCtx.beginPath();
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(width, height) / 2;
+      tempCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      tempCtx.clip();
+    }
+
     // Render elements to temp canvas (with zone offsets if multi-label mode)
     const originalCtx = this.ctx;
     this.ctx = tempCtx;
@@ -1483,6 +1515,11 @@ export class CanvasRenderer {
       }
     }
     this.ctx = originalCtx;
+
+    // Restore context if we applied circular clipping
+    if (this.isRound) {
+      tempCtx.restore();
+    }
 
     // Get image data
     const imageData = tempCtx.getImageData(0, 0, width, height);

@@ -165,15 +165,24 @@
             <option value="50x30">50x30mm</option>
             <option value="50x80">50x80mm</option>
             <option value="60x40">60x40mm</option>
+            <option disabled>── Round Labels ──</option>
+            <option value="20mm Round">20mm Round</option>
+            <option value="30mm Round">30mm Round</option>
+            <option value="40mm Round">40mm Round</option>
+            <option value="50mm Round">50mm Round</option>
             <option value="custom">Custom...</option>
             <option value="multi-label">Multi-Label Roll...</option>
           </select>
           <!-- Custom size inputs (hidden by default) -->
           <div id="custom-size" class="hidden flex items-center gap-1">
             <input type="number" id="custom-width" class="w-12 sm:w-14 px-1.5 sm:px-2 py-1 sm:py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg" placeholder="W" min="10" max="100">
-            <span class="text-gray-400 text-xs">x</span>
+            <span id="custom-size-x" class="text-gray-400 text-xs">x</span>
             <input type="number" id="custom-height" class="w-12 sm:w-14 px-1.5 sm:px-2 py-1 sm:py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg" placeholder="H" min="10" max="200">
             <span class="text-xs text-gray-400">mm</span>
+            <label class="flex items-center gap-1 ml-1 cursor-pointer">
+              <input type="checkbox" id="custom-round" class="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+              <span class="text-xs text-gray-500">Round</span>
+            </label>
           </div>
         </div>
       </div>

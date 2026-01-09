@@ -74,7 +74,9 @@ import {
   GUIDES,
   STORAGE_KEYS,
   M_SERIES_LABEL_SIZES,
+  M_SERIES_ROUND_LABELS,
   D_SERIES_LABEL_SIZES,
+  D_SERIES_ROUND_LABELS,
 } from './constants.js';
 import {
   bindCheckbox,
@@ -127,7 +129,7 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
 // Default to M-series sizes (imported from constants.js)
-let LABEL_SIZES = { ...M_SERIES_LABEL_SIZES };
+let LABEL_SIZES = { ...M_SERIES_LABEL_SIZES, ...M_SERIES_ROUND_LABELS };
 
 // App state
 const state = {
@@ -549,20 +551,37 @@ function updateLabelSizeDropdown(isDSeries) {
   const currentValue = select.value;
   const currentSize = state.labelSize;
 
-  // Update the active label sizes
-  LABEL_SIZES = isDSeries ? { ...D_SERIES_LABEL_SIZES } : { ...M_SERIES_LABEL_SIZES };
+  // Update the active label sizes (combine rectangular and round labels)
+  const rectSizes = isDSeries ? D_SERIES_LABEL_SIZES : M_SERIES_LABEL_SIZES;
+  const roundSizes = isDSeries ? D_SERIES_ROUND_LABELS : M_SERIES_ROUND_LABELS;
+  LABEL_SIZES = { ...rectSizes, ...roundSizes };
 
   // Clear existing options (except custom)
   while (select.options.length > 0) {
     select.remove(0);
   }
 
-  // Add new options
-  for (const [key, size] of Object.entries(LABEL_SIZES)) {
+  // Add rectangular label options
+  for (const [key, size] of Object.entries(rectSizes)) {
     const option = document.createElement('option');
     option.value = key;
     option.textContent = `${size.width}x${size.height}mm`;
     select.appendChild(option);
+  }
+
+  // Add separator and round label options if available
+  if (Object.keys(roundSizes).length > 0) {
+    const separator = document.createElement('option');
+    separator.disabled = true;
+    separator.textContent = '── Round Labels ──';
+    select.appendChild(separator);
+
+    for (const [key, size] of Object.entries(roundSizes)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = key; // e.g., "20mm Round"
+      select.appendChild(option);
+    }
   }
 
   // Add custom option
@@ -572,7 +591,9 @@ function updateLabelSizeDropdown(isDSeries) {
   select.appendChild(customOption);
 
   // Try to restore current size or pick a sensible default
-  const currentKey = `${currentSize.width}x${currentSize.height}`;
+  const currentKey = currentSize.round
+    ? `${currentSize.width}mm Round`
+    : `${currentSize.width}x${currentSize.height}`;
   if (LABEL_SIZES[currentKey]) {
     select.value = currentKey;
     $('#custom-size').classList.add('hidden');
@@ -584,7 +605,7 @@ function updateLabelSizeDropdown(isDSeries) {
     const defaultKey = isDSeries ? '40x12' : '40x30';
     select.value = defaultKey;
     state.labelSize = { ...LABEL_SIZES[defaultKey] };
-    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
     state.renderer.clearCache();
     updatePrintSize();
     render();
@@ -596,8 +617,12 @@ function updateLabelSizeDropdown(isDSeries) {
  * Update print size display
  */
 function updatePrintSize() {
-  const { width, height } = state.labelSize;
-  $('#print-size').textContent = `${width} x ${height} mm`;
+  const { width, height, round } = state.labelSize;
+  if (round) {
+    $('#print-size').textContent = `${width}mm round`;
+  } else {
+    $('#print-size').textContent = `${width} x ${height} mm`;
+  }
 }
 
 /**
@@ -1772,9 +1797,14 @@ function handleLabelSizeChange() {
     return;
   } else if (value === 'custom') {
     $('#custom-size').classList.remove('hidden');
+    // Reset round checkbox to unchecked when switching to custom
+    $('#custom-round').checked = false;
+    $('#custom-height').disabled = false;
+    $('#custom-size-x').classList.remove('hidden');
+    $('#custom-height').classList.remove('hidden');
     const w = validateLabelWidth($('#custom-width').value);
     const h = validateLabelHeight($('#custom-height').value);
-    state.labelSize = { width: w, height: h };
+    state.labelSize = { width: w, height: h, round: false };
   } else {
     $('#custom-size').classList.add('hidden');
     const preset = LABEL_SIZES[value];
@@ -1788,7 +1818,7 @@ function handleLabelSizeChange() {
     exitMultiLabelMode();
   }
 
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
   updatePrintSize();
   render();
 }
@@ -1798,9 +1828,23 @@ function handleLabelSizeChange() {
  */
 function handleCustomSizeChange() {
   const w = validateLabelWidth($('#custom-width').value);
-  const h = validateLabelHeight($('#custom-height').value);
-  state.labelSize = { width: w, height: h };
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+  const isRound = $('#custom-round').checked;
+  const h = isRound ? w : validateLabelHeight($('#custom-height').value);
+
+  // Sync height input when round is checked
+  if (isRound) {
+    $('#custom-height').value = w;
+    $('#custom-height').disabled = true;
+    $('#custom-size-x').classList.add('hidden');
+    $('#custom-height').classList.add('hidden');
+  } else {
+    $('#custom-height').disabled = false;
+    $('#custom-size-x').classList.remove('hidden');
+    $('#custom-height').classList.remove('hidden');
+  }
+
+  state.labelSize = { width: w, height: h, round: isRound };
+  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, isRound);
   updatePrintSize();
   render();
 }
@@ -1920,8 +1964,8 @@ function exitMultiLabelMode() {
 
   // Reset to default label size
   $('#label-size').value = '40x30';
-  state.labelSize = { width: 40, height: 30 };
-  state.renderer.setDimensions(40, 30);
+  state.labelSize = { width: 40, height: 30, round: false };
+  state.renderer.setDimensions(40, 30, state.zoom, false);
 
   updatePrintSize();
   render();
@@ -3192,7 +3236,9 @@ function handleImportFile(file) {
       if (data.labelSize) {
         state.labelSize = data.labelSize;
         // Update the label size dropdown
-        const sizeKey = `${data.labelSize.width}x${data.labelSize.height}`;
+        const sizeKey = data.labelSize.round
+          ? `${data.labelSize.width}mm Round`
+          : `${data.labelSize.width}x${data.labelSize.height}`;
         const select = $('#label-size');
         if (LABEL_SIZES[sizeKey]) {
           select.value = sizeKey;
@@ -3213,7 +3259,7 @@ function handleImportFile(file) {
 
       // Clear selection and update renderer
       state.selectedIds = [];
-      state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+      state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
       state.renderer.clearCache();
       resetHistory();
       updatePrintSize();
@@ -3364,7 +3410,9 @@ function handleLoad(name) {
     $('#zone-toolbar').classList.add('hidden');
 
     // Update label size dropdown
-    const sizeKey = `${state.labelSize.width}x${state.labelSize.height}`;
+    const sizeKey = state.labelSize.round
+      ? `${state.labelSize.width}mm Round`
+      : `${state.labelSize.width}x${state.labelSize.height}`;
     const select = $('#label-size');
     if (LABEL_SIZES[sizeKey]) {
       select.value = sizeKey;
@@ -3376,7 +3424,7 @@ function handleLoad(name) {
       $('#custom-height').value = state.labelSize.height;
     }
 
-    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+    state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
   }
 
   state.renderer.clearCache();
@@ -3786,7 +3834,7 @@ function init() {
   // Create canvas renderer
   const canvas = $('#preview-canvas');
   state.renderer = new CanvasRenderer(canvas);
-  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height);
+  state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
   // Re-render when async content (barcodes, QR codes) finishes loading
   // Use requestAnimationFrame to batch multiple async loads
   let asyncRenderPending = false;
@@ -3805,6 +3853,7 @@ function init() {
   $('#label-size').addEventListener('change', handleLabelSizeChange);
   $('#custom-width').addEventListener('change', handleCustomSizeChange);
   $('#custom-height').addEventListener('change', handleCustomSizeChange);
+  $('#custom-round').addEventListener('change', handleCustomSizeChange);
 
   // Connection type
   const connType = $('#conn-type');

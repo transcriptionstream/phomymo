@@ -408,7 +408,7 @@
     <!-- Canvas Area -->
     <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto relative">
       <div id="canvas-container" class="rounded-lg shadow-inner transition-transform origin-center">
-        <canvas id="preview-canvas" class="cursor-crosshair rounded-lg"></canvas>
+        <canvas id="preview-canvas" class="cursor-crosshair rounded-lg" style="touch-action: none; -webkit-user-select: none; user-select: none;"></canvas>
       </div>
 
       <!-- Inline Text Editor Overlay -->
@@ -1468,6 +1468,13 @@
       </button>
     </div>
   </div>
+
+  <!-- Eruda mobile console (debug only) -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>
+    eruda.init();
+    eruda.position({x: window.innerWidth - 50, y: window.innerHeight - 50});
+  </script>
 
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>

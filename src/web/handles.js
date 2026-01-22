@@ -66,14 +66,24 @@ export function getHandlePositions(element) {
 /**
  * Check if point is on a handle
  * Returns the handle type or null
+ * @param {number} px - Point X
+ * @param {number} py - Point Y
+ * @param {object} element - Element to check handles for
+ * @param {boolean} isTouch - Whether this is a touch interaction (larger hit areas)
  */
-export function getHandleAtPoint(px, py, element) {
+export function getHandleAtPoint(px, py, element, isTouch = false) {
   const positions = getHandlePositions(element);
+
+  // Increase hit area for touch input
+  const hitPadding = isTouch
+    ? HANDLES.HIT_AREA_PADDING * 2.5
+    : HANDLES.HIT_AREA_PADDING;
 
   // Check rotation handle first (it's further away)
   const rotatePos = positions[HandleType.ROTATE];
   const rotDist = Math.hypot(px - rotatePos.x, py - rotatePos.y);
-  if (rotDist <= ROTATION_HANDLE_RADIUS + 2) {
+  const rotHitRadius = isTouch ? ROTATION_HANDLE_RADIUS + 8 : ROTATION_HANDLE_RADIUS + 2;
+  if (rotDist <= rotHitRadius) {
     return HandleType.ROTATE;
   }
 
@@ -87,7 +97,7 @@ export function getHandleAtPoint(px, py, element) {
   for (const type of resizeHandles) {
     const pos = positions[type];
     const dist = Math.hypot(px - pos.x, py - pos.y);
-    if (dist <= HANDLE_SIZE / 2 + HANDLES.HIT_AREA_PADDING) {
+    if (dist <= HANDLE_SIZE / 2 + hitPadding) {
       return type;
     }
   }
@@ -430,14 +440,21 @@ export function getGroupHandlePositions(bounds) {
  * @param {number} px - Point X
  * @param {number} py - Point Y
  * @param {Object} bounds - Group bounding box
+ * @param {boolean} isTouch - Whether this is a touch interaction (larger hit areas)
  */
-export function getGroupHandleAtPoint(px, py, bounds) {
+export function getGroupHandleAtPoint(px, py, bounds, isTouch = false) {
   const positions = getGroupHandlePositions(bounds);
+
+  // Increase hit area for touch input
+  const hitPadding = isTouch
+    ? HANDLES.HIT_AREA_PADDING * 2.5
+    : HANDLES.HIT_AREA_PADDING;
 
   // Check rotation handle first
   const rotatePos = positions[HandleType.ROTATE];
   const rotDist = Math.hypot(px - rotatePos.x, py - rotatePos.y);
-  if (rotDist <= ROTATION_HANDLE_RADIUS + 2) {
+  const rotHitRadius = isTouch ? ROTATION_HANDLE_RADIUS + 8 : ROTATION_HANDLE_RADIUS + 2;
+  if (rotDist <= rotHitRadius) {
     return HandleType.ROTATE;
   }
 
@@ -451,7 +468,7 @@ export function getGroupHandleAtPoint(px, py, bounds) {
   for (const type of resizeHandles) {
     const pos = positions[type];
     const dist = Math.hypot(px - pos.x, py - pos.y);
-    if (dist <= HANDLE_SIZE / 2 + HANDLES.HIT_AREA_PADDING) {
+    if (dist <= HANDLE_SIZE / 2 + hitPadding) {
       return type;
     }
   }

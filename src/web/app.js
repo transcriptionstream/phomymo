@@ -72,6 +72,7 @@ import {
   PRINT,
   HISTORY,
   GUIDES,
+  TOUCH,
   STORAGE_KEYS,
   M_SERIES_LABEL_SIZES,
   M_SERIES_ROUND_LABELS,
@@ -182,6 +183,18 @@ const state = {
     cloneMode: true,      // true = all zones identical, false = design individually
   },
   activeZone: 0,          // Currently selected zone for editing (0-based)
+  // Pointer/touch state
+  pointer: {
+    pointers: new Map(),        // Track active pointers by pointerId
+    longPressTimer: null,       // Timer for long-press detection
+    longPressTriggered: false,  // Whether long-press was triggered
+    longPressTarget: null,      // Element under long-press
+    isPinching: false,          // Whether pinch gesture is active
+    pinchStartDistance: 0,      // Initial distance between two fingers
+    pinchStartZoom: 1,          // Zoom level when pinch started
+    lastTapTime: 0,             // Timestamp of last tap (for double-tap detection)
+    lastTapPos: { x: 0, y: 0 }, // Position of last tap
+  },
 };
 
 // Note: GUIDES.SNAP_THRESHOLD, HISTORY.MAX_SIZE, and STORAGE_KEYS are imported from constants.js
@@ -2676,6 +2689,597 @@ function handleCanvasMouseUp() {
   }
 }
 
+// =============================================================================
+// POINTER EVENT HANDLERS (Touch + Mouse unified)
+// =============================================================================
+
+/**
+ * Calculate distance between two pointers (for pinch gesture)
+ */
+function getPointerDistance(pointers) {
+  const pts = Array.from(pointers.values());
+  if (pts.length < 2) return 0;
+  const dx = pts[1].x - pts[0].x;
+  const dy = pts[1].y - pts[0].y;
+  return Math.hypot(dx, dy);
+}
+
+/**
+ * Get the midpoint between two pointers (for pinch gesture)
+ */
+function getPointerMidpoint(pointers) {
+  const pts = Array.from(pointers.values());
+  if (pts.length < 2) return { x: 0, y: 0 };
+  return {
+    x: (pts[0].x + pts[1].x) / 2,
+    y: (pts[0].y + pts[1].y) / 2,
+  };
+}
+
+/**
+ * Start long-press timer
+ */
+function startLongPressTimer(element, pos) {
+  cancelLongPress();
+  state.pointer.longPressTarget = element;
+  state.pointer.longPressTriggered = false;
+  state.pointer.longPressTimer = setTimeout(() => {
+    state.pointer.longPressTriggered = true;
+    handleLongPress(element, pos);
+  }, TOUCH.LONG_PRESS_DURATION_MS);
+}
+
+/**
+ * Cancel long-press timer
+ */
+function cancelLongPress() {
+  if (state.pointer.longPressTimer) {
+    clearTimeout(state.pointer.longPressTimer);
+    state.pointer.longPressTimer = null;
+  }
+  state.pointer.longPressTarget = null;
+}
+
+/**
+ * Handle long-press gesture
+ * - On text element: trigger inline editing
+ * - On other elements: open properties panel (mobile)
+ */
+function handleLongPress(element, pos) {
+  if (!element) {
+    // Long-press on empty area - no action
+    return;
+  }
+
+  if (element.type === 'text') {
+    // Start inline editing for text elements
+    startInlineEdit(element.id);
+  } else {
+    // For other elements, ensure it's selected and show properties panel on mobile
+    selectElement(element.id);
+    // On mobile, the properties panel toggle is handled by the props-toggle button
+    // but we can show it automatically on long-press
+    const propsPanel = $('#props-panel');
+    if (propsPanel && window.innerWidth < 768) {
+      propsPanel.classList.remove('hidden');
+    }
+  }
+}
+
+/**
+ * Check for double-tap gesture
+ * Returns true if this is a double-tap
+ */
+function checkDoubleTap(pos) {
+  const now = Date.now();
+  const timeDelta = now - state.pointer.lastTapTime;
+  const dx = pos.x - state.pointer.lastTapPos.x;
+  const dy = pos.y - state.pointer.lastTapPos.y;
+  const distance = Math.hypot(dx, dy);
+
+  // Update last tap info
+  state.pointer.lastTapTime = now;
+  state.pointer.lastTapPos = { x: pos.x, y: pos.y };
+
+  // Check if this qualifies as a double-tap
+  return timeDelta < TOUCH.DOUBLE_TAP_DELAY_MS && distance < TOUCH.LONG_PRESS_MOVE_TOLERANCE;
+}
+
+/**
+ * Start pinch gesture
+ */
+function startPinchGesture() {
+  state.pointer.isPinching = true;
+  state.pointer.pinchStartDistance = getPointerDistance(state.pointer.pointers);
+  state.pointer.pinchStartZoom = state.zoom;
+}
+
+/**
+ * Handle pinch move - update zoom based on finger distance
+ */
+function handlePinchMove() {
+  const currentDistance = getPointerDistance(state.pointer.pointers);
+  if (state.pointer.pinchStartDistance < TOUCH.PINCH_MIN_DISTANCE) {
+    return;
+  }
+
+  const scale = currentDistance / state.pointer.pinchStartDistance;
+  let newZoom = state.pointer.pinchStartZoom * scale;
+
+  // Clamp zoom to valid range
+  newZoom = Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, newZoom));
+
+  // Round to nearest 0.05 for smoother feel
+  newZoom = Math.round(newZoom * 20) / 20;
+
+  if (newZoom !== state.zoom) {
+    state.zoom = newZoom;
+    updateZoom();
+  }
+}
+
+/**
+ * End pinch gesture
+ */
+function endPinchGesture() {
+  state.pointer.isPinching = false;
+  state.pointer.pinchStartDistance = 0;
+  state.pointer.pinchStartZoom = 1;
+}
+
+/**
+ * Handle canvas pointer down (unified touch/mouse)
+ */
+function handleCanvasPointerDown(e) {
+  const canvas = state.renderer.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  // Track this pointer
+  const pointerInfo = {
+    x: (e.clientX - rect.left) * scaleX / state.zoom,
+    y: (e.clientY - rect.top) * scaleY / state.zoom,
+    clientX: e.clientX,
+    clientY: e.clientY,
+  };
+  state.pointer.pointers.set(e.pointerId, pointerInfo);
+
+  // Check for pinch gesture (two fingers)
+  if (state.pointer.pointers.size === 2) {
+    cancelLongPress();
+    startPinchGesture();
+    return;
+  }
+
+  // For single pointer, continue with normal handling
+  if (state.pointer.pointers.size > 2) {
+    return; // Ignore 3+ finger gestures
+  }
+
+  const pos = { x: pointerInfo.x, y: pointerInfo.y };
+
+  // If inline editing is active, clicking on canvas closes it
+  if (state.editingTextId) {
+    return;
+  }
+
+  // In multi-label mode, check which zone was clicked and switch if needed
+  if (state.multiLabel.enabled) {
+    const { zoneIndex } = getZoneRelativePos(pos.x, pos.y);
+    if (zoneIndex !== null && zoneIndex !== state.activeZone) {
+      setActiveZone(zoneIndex);
+    }
+  }
+
+  // Get element at click position for long-press handling
+  const clickedElement = getElementAtCanvasPoint(pos.x, pos.y);
+
+  // Start long-press timer for touch input
+  if (e.pointerType === 'touch') {
+    startLongPressTimer(clickedElement, pos);
+  }
+
+  // Continue with standard mouse-like handling
+  const selectedElements = getSelectedElements();
+  const isMultiSelect = state.selectedIds.length > 1;
+
+  // For multi-selection or groups, check group bounding box handles first
+  if (isMultiSelect || (selectedElements.length === 1 && selectedElements[0].groupId)) {
+    const rawBounds = getMultiElementBounds(selectedElements);
+    const bounds = selectedElements.length > 0
+      ? getBoundsWithCanvasPos(rawBounds, selectedElements[0].zone || 0)
+      : rawBounds;
+    if (bounds) {
+      const handle = getGroupHandleAtPoint(pos.x, pos.y, bounds, e.pointerType === 'touch');
+      if (handle) {
+        cancelLongPress();
+        saveHistory();
+        state.isDragging = true;
+        state.dragStartX = pos.x;
+        state.dragStartY = pos.y;
+        state.dragStartElements = selectedElements.map(el => ({ ...el }));
+        state.dragStartBounds = { ...rawBounds };
+
+        if (handle === HandleType.ROTATE) {
+          state.dragType = 'group-rotate';
+          const angle = Math.atan2(pos.y - bounds.cy, pos.x - bounds.cx);
+          state.dragStartAngle = (angle * 180) / Math.PI + 90;
+        } else {
+          state.dragType = 'group-resize';
+          state.dragHandle = handle;
+        }
+        return;
+      }
+    }
+  }
+
+  // Single element: check individual handles
+  if (state.selectedIds.length === 1) {
+    const selected = selectedElements[0];
+    if (selected) {
+      const adjustedElement = getElementWithCanvasPos(selected);
+      const handle = getHandleAtPoint(pos.x, pos.y, adjustedElement, e.pointerType === 'touch');
+      if (handle) {
+        cancelLongPress();
+        saveHistory();
+        state.isDragging = true;
+        state.dragStartX = pos.x;
+        state.dragStartY = pos.y;
+        state.dragStartElements = [{ ...selected }];
+
+        if (handle === HandleType.ROTATE) {
+          state.dragType = 'rotate';
+        } else {
+          state.dragType = 'resize';
+          state.dragHandle = handle;
+        }
+        return;
+      }
+    }
+  }
+
+  // Check if clicking on an element
+  if (clickedElement) {
+    // Shift+click toggles selection (not applicable to touch)
+    if (e.shiftKey) {
+      toggleElementSelection(clickedElement.id);
+    } else {
+      const alreadySelected = state.selectedIds.includes(clickedElement.id);
+      if (!alreadySelected) {
+        selectElement(clickedElement.id);
+      }
+    }
+
+    // Start move drag for all selected elements
+    const currentSelected = getSelectedElements();
+    saveHistory();
+    state.isDragging = true;
+    state.dragType = currentSelected.length > 1 ? 'group-move' : 'move';
+    state.dragStartX = pos.x;
+    state.dragStartY = pos.y;
+    state.dragStartElements = currentSelected.map(el => ({ ...el }));
+    state.dragStartBounds = getMultiElementBounds(currentSelected);
+    return;
+  }
+
+  // Clicked on empty area
+  if (state.multiLabel.enabled) {
+    const { zoneIndex } = getZoneRelativePos(pos.x, pos.y);
+    if (zoneIndex === null) {
+      deselect();
+      return;
+    }
+  }
+
+  deselect();
+}
+
+/**
+ * Handle canvas pointer move (unified touch/mouse)
+ */
+function handleCanvasPointerMove(e) {
+  const canvas = state.renderer.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  // Update pointer position
+  if (state.pointer.pointers.has(e.pointerId)) {
+    const pointerInfo = {
+      x: (e.clientX - rect.left) * scaleX / state.zoom,
+      y: (e.clientY - rect.top) * scaleY / state.zoom,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    };
+    state.pointer.pointers.set(e.pointerId, pointerInfo);
+  }
+
+  // Handle pinch gesture
+  if (state.pointer.isPinching && state.pointer.pointers.size === 2) {
+    handlePinchMove();
+    return;
+  }
+
+  // Check if long-press should be cancelled due to movement
+  if (state.pointer.longPressTimer && state.pointer.pointers.size === 1) {
+    const ptr = state.pointer.pointers.get(e.pointerId);
+    if (ptr) {
+      const startPtr = Array.from(state.pointer.pointers.values())[0];
+      const dx = ptr.x - startPtr.x;
+      const dy = ptr.y - startPtr.y;
+      // This check is a bit redundant since ptr IS startPtr, but we check the drag distance
+      if (state.isDragging) {
+        const dragDx = ptr.x - state.dragStartX;
+        const dragDy = ptr.y - state.dragStartY;
+        if (Math.hypot(dragDx, dragDy) > TOUCH.LONG_PRESS_MOVE_TOLERANCE) {
+          cancelLongPress();
+        }
+      }
+    }
+  }
+
+  const pos = {
+    x: (e.clientX - rect.left) * scaleX / state.zoom,
+    y: (e.clientY - rect.top) * scaleY / state.zoom,
+  };
+
+  if (state.isDragging && state.dragStartElements) {
+    // Cancel long-press on any drag
+    cancelLongPress();
+
+    const dx = pos.x - state.dragStartX;
+    const dy = pos.y - state.dragStartY;
+
+    switch (state.dragType) {
+      case 'move': {
+        const el = state.dragStartElements[0];
+        let newX = el.x + dx;
+        let newY = el.y + dy;
+        const snapResult = detectAlignmentGuides(
+          { x: newX, y: newY, width: el.width, height: el.height },
+          [el.id]
+        );
+        newX += snapResult.snapX;
+        newY += snapResult.snapY;
+        modifyElement(el.id, { x: newX, y: newY });
+        state.alignmentGuides = snapResult.guides;
+        break;
+      }
+
+      case 'group-move': {
+        state.elements = moveElements(
+          state.elements,
+          state.dragStartElements.map(e => e.id),
+          dx, dy
+        );
+        const movedElements = getSelectedElements();
+        const groupBounds = getMultiElementBounds(movedElements);
+        if (groupBounds) {
+          const groupSnapResult = detectAlignmentGuides(
+            { x: groupBounds.x, y: groupBounds.y, width: groupBounds.width, height: groupBounds.height },
+            movedElements.map(e => e.id)
+          );
+          if (groupSnapResult.snapX !== 0 || groupSnapResult.snapY !== 0) {
+            state.elements = moveElements(
+              state.elements,
+              movedElements.map(e => e.id),
+              groupSnapResult.snapX, groupSnapResult.snapY
+            );
+          }
+          state.alignmentGuides = groupSnapResult.guides;
+        }
+        state.dragStartElements = getSelectedElements().map(e => ({ ...e }));
+        state.dragStartX = pos.x;
+        state.dragStartY = pos.y;
+        render();
+        break;
+      }
+
+      case 'resize': {
+        const resizeEl = state.dragStartElements[0];
+        const isLockedImage = resizeEl.type === 'image' && resizeEl.lockAspectRatio !== false;
+        const preserveAspect = isLockedImage ? !e.shiftKey : e.shiftKey;
+        const newBounds = calculateResize(resizeEl, state.dragHandle, dx, dy, preserveAspect);
+        modifyElement(resizeEl.id, constrainSize({ ...resizeEl, ...newBounds }));
+        break;
+      }
+
+      case 'group-resize': {
+        const { scaleX, scaleY } = calculateGroupResize(
+          state.dragStartBounds,
+          state.dragHandle,
+          dx, dy,
+          e.shiftKey
+        );
+
+        const isHorizontalSide = state.dragHandle === HandleType.E || state.dragHandle === HandleType.W;
+        const isVerticalSide = state.dragHandle === HandleType.N || state.dragHandle === HandleType.S;
+
+        const scaledElements = state.dragStartElements.map(origEl => {
+          const elCx = origEl.x + origEl.width / 2;
+          const elCy = origEl.y + origEl.height / 2;
+          const centerX = state.dragStartBounds.cx;
+          const centerY = state.dragStartBounds.cy;
+
+          const effectiveScaleX = isVerticalSide ? 1 : scaleX;
+          const effectiveScaleY = isHorizontalSide ? 1 : scaleY;
+
+          const newCx = centerX + (elCx - centerX) * effectiveScaleX;
+          const newCy = centerY + (elCy - centerY) * effectiveScaleY;
+
+          const newWidth = Math.max(origEl.width * effectiveScaleX, ELEMENT.MIN_WIDTH);
+          const newHeight = Math.max(origEl.height * effectiveScaleY, ELEMENT.MIN_HEIGHT);
+
+          return {
+            ...origEl,
+            x: newCx - newWidth / 2,
+            y: newCy - newHeight / 2,
+            width: newWidth,
+            height: newHeight,
+          };
+        });
+
+        state.elements = state.elements.map(el => {
+          const scaled = scaledElements.find(s => s.id === el.id);
+          return scaled || el;
+        });
+
+        state.dragStartElements.forEach(el => state.renderer.clearCache(el.id));
+        render();
+        break;
+      }
+
+      case 'rotate': {
+        const rotEl = state.dragStartElements[0];
+        const adjustedRotEl = getElementWithCanvasPos(rotEl);
+        let rotation = calculateRotation(adjustedRotEl, pos.x, pos.y);
+        if (!e.shiftKey) {
+          rotation = snapRotation(rotation);
+        }
+        modifyElement(rotEl.id, { rotation });
+        break;
+      }
+
+      case 'group-rotate': {
+        const adjustedBounds = getBoundsWithCanvasPos(state.dragStartBounds, state.dragStartElements[0]?.zone || 0);
+        const currentAngle = Math.atan2(pos.y - adjustedBounds.cy, pos.x - adjustedBounds.cx);
+        let angleDelta = ((currentAngle * 180) / Math.PI + 90) - state.dragStartAngle;
+        if (!e.shiftKey) {
+          angleDelta = snapRotation(angleDelta);
+        }
+        state.elements = rotateElements(
+          state.elements,
+          state.dragStartElements.map(e => e.id),
+          angleDelta,
+          { x: state.dragStartBounds.cx, y: state.dragStartBounds.cy }
+        );
+        state.dragStartAngle = (currentAngle * 180) / Math.PI + 90;
+        state.dragStartElements = getSelectedElements().map(e => ({ ...e }));
+        render();
+        break;
+      }
+    }
+    return;
+  }
+
+  // Update cursor based on what's under pointer (only for mouse)
+  if (e.pointerType !== 'touch') {
+    const selectedElements = getSelectedElements();
+    const isMultiSelect = state.selectedIds.length > 1;
+
+    if (isMultiSelect || (selectedElements.length === 1 && selectedElements[0].groupId)) {
+      const rawBounds = getMultiElementBounds(selectedElements);
+      const bounds = selectedElements.length > 0
+        ? getBoundsWithCanvasPos(rawBounds, selectedElements[0].zone || 0)
+        : rawBounds;
+      if (bounds) {
+        const handle = getGroupHandleAtPoint(pos.x, pos.y, bounds, false);
+        if (handle) {
+          canvas.style.cursor = getCursorForHandle(handle, 0);
+          return;
+        }
+      }
+    }
+
+    if (state.selectedIds.length === 1) {
+      const selected = selectedElements[0];
+      if (selected) {
+        const adjustedElement = getElementWithCanvasPos(selected);
+        const handle = getHandleAtPoint(pos.x, pos.y, adjustedElement, false);
+        if (handle) {
+          canvas.style.cursor = getCursorForHandle(handle, selected.rotation);
+          return;
+        }
+      }
+    }
+
+    const hovered = getElementAtCanvasPoint(pos.x, pos.y);
+    canvas.style.cursor = hovered ? 'move' : 'crosshair';
+  }
+}
+
+/**
+ * Handle canvas pointer up (unified touch/mouse)
+ */
+function handleCanvasPointerUp(e) {
+  const canvas = state.renderer.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  const pos = {
+    x: (e.clientX - rect.left) * scaleX / state.zoom,
+    y: (e.clientY - rect.top) * scaleY / state.zoom,
+  };
+
+  // Cancel long-press
+  cancelLongPress();
+
+  // Remove this pointer
+  state.pointer.pointers.delete(e.pointerId);
+
+  // End pinch if we go below 2 fingers
+  if (state.pointer.isPinching && state.pointer.pointers.size < 2) {
+    endPinchGesture();
+  }
+
+  // Check for double-tap on touch (for inline text editing)
+  if (e.pointerType === 'touch' && !state.isDragging) {
+    if (checkDoubleTap(pos)) {
+      const element = getElementAtCanvasPoint(pos.x, pos.y);
+      if (element && element.type === 'text') {
+        startInlineEdit(element.id);
+        return;
+      }
+    }
+  }
+
+  // Standard drag end handling
+  const wasDragging = state.isDragging;
+  state.isDragging = false;
+  state.dragType = null;
+  state.dragHandle = null;
+  state.dragStartElements = null;
+  state.dragStartBounds = null;
+  state.dragStartAngle = 0;
+
+  if (state.alignmentGuides.length > 0) {
+    state.alignmentGuides = [];
+    render();
+  }
+
+  if (wasDragging) {
+    autoCloneIfEnabled();
+    render();
+  }
+}
+
+/**
+ * Handle canvas pointer cancel (touch interrupted)
+ */
+function handleCanvasPointerCancel(e) {
+  cancelLongPress();
+  state.pointer.pointers.delete(e.pointerId);
+
+  if (state.pointer.isPinching && state.pointer.pointers.size < 2) {
+    endPinchGesture();
+  }
+
+  // Reset drag state
+  state.isDragging = false;
+  state.dragType = null;
+  state.dragHandle = null;
+  state.dragStartElements = null;
+  state.dragStartBounds = null;
+  state.dragStartAngle = 0;
+
+  if (state.alignmentGuides.length > 0) {
+    state.alignmentGuides = [];
+    render();
+  }
+}
+
 /**
  * Add a new text element
  */
@@ -4488,13 +5092,18 @@ function init() {
     modifyElement(id, { qrData: e.target.value });
   });
 
-  // Canvas mouse events
-  canvas.addEventListener('mousedown', handleCanvasMouseDown);
-  canvas.addEventListener('mousemove', handleCanvasMouseMove);
-  canvas.addEventListener('mouseup', handleCanvasMouseUp);
-  canvas.addEventListener('mouseleave', handleCanvasMouseUp);
+  // Canvas pointer events (unified touch + mouse handling)
+  canvas.addEventListener('pointerdown', handleCanvasPointerDown);
+  canvas.addEventListener('pointermove', handleCanvasPointerMove);
+  canvas.addEventListener('pointerup', handleCanvasPointerUp);
+  canvas.addEventListener('pointercancel', handleCanvasPointerCancel);
+  canvas.addEventListener('pointerleave', handleCanvasPointerUp);
 
-  // Native double-click for inline text editing
+  // Prevent default touch behaviors on canvas (scrolling, zooming)
+  canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+  // Native double-click for inline text editing (mouse only)
   canvas.addEventListener('dblclick', (e) => {
     const pos = getCanvasPos(e);
     const clickedElement = getElementAtCanvasPoint(pos.x, pos.y);

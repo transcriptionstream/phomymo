@@ -1880,6 +1880,11 @@ function handleCustomSizeChange() {
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, isRound);
   updatePrintSize();
   render();
+
+  // Sync to mobile custom inputs
+  if ($('#mobile-custom-width')) $('#mobile-custom-width').value = w;
+  if ($('#mobile-custom-height')) $('#mobile-custom-height').value = h;
+  if ($('#mobile-custom-round')) $('#mobile-custom-round').checked = isRound;
 }
 
 // =============================================================================
@@ -5001,11 +5006,81 @@ function initMobileUI() {
   if (mobileLabelSize && desktopLabelSize) {
     mobileLabelSize.value = desktopLabelSize.value;
     mobileLabelSize.addEventListener('change', (e) => {
-      desktopLabelSize.value = e.target.value;
-      handleLabelSizeChange({ target: desktopLabelSize });
-      closeMobileMenu();
+      const value = e.target.value;
+      desktopLabelSize.value = value;
+
+      // Show/hide mobile custom size inputs
+      const mobileCustomSize = $('#mobile-custom-size');
+      if (value === 'custom') {
+        mobileCustomSize?.classList.remove('hidden');
+        // Sync values from desktop
+        $('#mobile-custom-width').value = $('#custom-width').value || '';
+        $('#mobile-custom-height').value = $('#custom-height').value || '';
+        $('#mobile-custom-round').checked = $('#custom-round').checked || false;
+        updateMobileCustomSizeVisibility();
+      } else {
+        mobileCustomSize?.classList.add('hidden');
+        handleLabelSizeChange({ target: desktopLabelSize });
+        if (value !== 'multi-label') {
+          closeMobileMenu();
+        }
+      }
     });
   }
+
+  // Mobile custom size input handlers
+  const mobileCustomWidth = $('#mobile-custom-width');
+  const mobileCustomHeight = $('#mobile-custom-height');
+  const mobileCustomRound = $('#mobile-custom-round');
+
+  function updateMobileCustomSizeVisibility() {
+    const isRound = $('#mobile-custom-round')?.checked;
+    const heightInput = $('#mobile-custom-height');
+    if (isRound) {
+      heightInput?.classList.add('hidden');
+      heightInput.previousElementSibling?.classList.add('hidden'); // hide 'x'
+    } else {
+      heightInput?.classList.remove('hidden');
+      heightInput.previousElementSibling?.classList.remove('hidden');
+    }
+  }
+
+  function syncMobileCustomToDesktop() {
+    const w = $('#mobile-custom-width')?.value;
+    const h = $('#mobile-custom-height')?.value;
+    const isRound = $('#mobile-custom-round')?.checked;
+
+    // Sync to desktop inputs
+    if ($('#custom-width')) $('#custom-width').value = w;
+    if ($('#custom-height')) $('#custom-height').value = isRound ? w : h;
+    if ($('#custom-round')) $('#custom-round').checked = isRound;
+
+    // Trigger the desktop handler
+    handleCustomSizeChange();
+  }
+
+  // Helper to reset iOS zoom after input blur
+  function resetMobileZoom() {
+    // Force viewport reset by temporarily scrolling
+    window.scrollTo(0, 0);
+    // Also blur any active element to ensure keyboard dismisses
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+  }
+
+  mobileCustomWidth?.addEventListener('change', syncMobileCustomToDesktop);
+  mobileCustomHeight?.addEventListener('change', syncMobileCustomToDesktop);
+  mobileCustomWidth?.addEventListener('blur', resetMobileZoom);
+  mobileCustomHeight?.addEventListener('blur', resetMobileZoom);
+  mobileCustomRound?.addEventListener('change', () => {
+    updateMobileCustomSizeVisibility();
+    // If round is checked, sync width to height
+    if ($('#mobile-custom-round')?.checked) {
+      $('#mobile-custom-height').value = $('#mobile-custom-width').value;
+    }
+    syncMobileCustomToDesktop();
+  });
 
   // Sync mobile connection type
   const mobileConnType = $('#mobile-conn-type');
@@ -5207,9 +5282,9 @@ function populateMobileProps() {
       <div class="prop-group">
         <div class="prop-label">Horizontal Align</div>
         <div class="flex gap-2">
-          <button class="flex-1 py-2.5 border rounded ${selected.textAlign === 'left' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="left">Left</button>
-          <button class="flex-1 py-2.5 border rounded ${selected.textAlign === 'center' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="center">Center</button>
-          <button class="flex-1 py-2.5 border rounded ${selected.textAlign === 'right' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="right">Right</button>
+          <button class="flex-1 py-2.5 border rounded ${(selected.align || 'left') === 'left' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="left">Left</button>
+          <button class="flex-1 py-2.5 border rounded ${selected.align === 'center' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="center">Center</button>
+          <button class="flex-1 py-2.5 border rounded ${selected.align === 'right' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="right">Right</button>
         </div>
       </div>
       <div class="prop-group">
@@ -5461,7 +5536,7 @@ function wireUpMobilePropHandlers(element) {
   // Horizontal alignment
   $$('[data-align]').forEach(btn => {
     btn.addEventListener('click', () => {
-      updateProp('textAlign', btn.dataset.align);
+      updateProp('align', btn.dataset.align);
       populateMobileProps();
     });
   });
@@ -5589,7 +5664,44 @@ function updateMobileUI() {
   if (undoBtn) undoBtn.disabled = state.historyIndex < 0;
   if (redoBtn) redoBtn.disabled = state.historyIndex >= state.history.length - 1;
 
+  // Sync mobile label size selector with desktop
+  syncMobileLabelSize();
+
   // Note: Don't auto-rebuild mobile props panel here - it causes keyboard dismissal during typing
+}
+
+/**
+ * Sync mobile label size selector and custom inputs with desktop state
+ */
+function syncMobileLabelSize() {
+  const mobileLabelSize = $('#mobile-label-size');
+  const desktopLabelSize = $('#label-size');
+  const mobileCustomSize = $('#mobile-custom-size');
+
+  if (!mobileLabelSize || !desktopLabelSize) return;
+
+  // Sync selector value
+  mobileLabelSize.value = desktopLabelSize.value;
+
+  // Show/hide custom inputs
+  if (desktopLabelSize.value === 'custom') {
+    mobileCustomSize?.classList.remove('hidden');
+    // Sync custom values
+    const mobileW = $('#mobile-custom-width');
+    const mobileH = $('#mobile-custom-height');
+    const mobileRound = $('#mobile-custom-round');
+    if (mobileW) mobileW.value = $('#custom-width')?.value || '';
+    if (mobileH) mobileH.value = $('#custom-height')?.value || '';
+    if (mobileRound) mobileRound.checked = $('#custom-round')?.checked || false;
+    // Update visibility based on round
+    const isRound = mobileRound?.checked;
+    if (mobileH) {
+      mobileH.classList.toggle('hidden', isRound);
+      mobileH.previousElementSibling?.classList.toggle('hidden', isRound);
+    }
+  } else {
+    mobileCustomSize?.classList.add('hidden');
+  }
 }
 
 /**

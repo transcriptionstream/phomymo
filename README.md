@@ -6,7 +6,7 @@ A free, browser-based label designer for Phomemo thermal printers. No drivers ne
 
 ![Phomymo Label Designer](screenshot.png)
 
-Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02) and D-series (D30, D35, D50, D110, Q30, Q30S) thermal printers.
+Supports Phomemo P12-series (P12, P12 Pro), M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02) and D-series (D30, D35, D50, D110, Q30, Q30S) thermal printers.
 
 ## Features
 
@@ -30,6 +30,15 @@ Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M11
 - **Undo/Redo** - Full history support (Ctrl/Cmd+Z to undo, Ctrl/Cmd+Shift+Z to redo)
 - **Keyboard shortcuts** - Arrow keys to nudge, Delete to remove, Ctrl/Cmd+D to duplicate
 - **Layer ordering** - Raise/lower elements in z-order
+
+### Mobile Interface
+Full-featured mobile UI with touch support (activates automatically on screens < 768px):
+- **Touch gestures** - Pinch to zoom, two-finger drag to pan, double-tap to edit
+- **Fixed toolbar** - Quick access to add elements (Text, Image, Rect, Circle, Line, Barcode, QR)
+- **Selection actions** - Edit, Copy, Forward, Back, Delete buttons when element selected
+- **Slide-up properties panel** - Full property editing for all element types
+- **Hamburger menu** - Access to label size, custom dimensions, connection, save/load, undo/redo, print settings
+- **Feature parity** - All desktop features available on mobile
 
 ### Templates & Batch Printing
 - **Variable fields** - Use `{{FieldName}}` syntax in text, barcodes, and QR codes
@@ -69,11 +78,18 @@ Supports Phomemo M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M11
 
 ## Supported Printers
 
+### P12-series (Experimental)
+
+| Model | Print Width | Notes |
+|-------|-------------|-------|
+| P12 / P12 Pro | 12mm tape | Tape-based label maker (beta support, assumes M02-like protocol) |
+
 ### M02-series (ESC/POS with Prefix)
 
 | Model | Print Width | Notes |
 |-------|-------------|-------|
-| M02 / M02S / M02X / M02 Pro | 48mm (384px) | Mini pocket printers (continuous paper) |
+| M02 / M02S / M02X | 48mm (384px) | Mini pocket printers (continuous paper) |
+| M02 Pro | 53mm (626px) | 300 DPI high-resolution model |
 
 ### M-series (ESC/POS Raster Protocol)
 
@@ -103,9 +119,10 @@ D-series printers use a different protocol and print labels rotated 90°. The ap
 ### Auto-Detection
 
 The app automatically detects your printer model from the Bluetooth device name and configures the correct:
-- Print width (48-110 bytes depending on model)
-- Protocol (M02-series with prefix, M-series ESC/POS, or D-series rotated)
+- Print width (12-110mm depending on model)
+- Protocol (P12-series, M02-series with prefix, M-series ESC/POS, or D-series rotated)
 - Label size presets
+- DPI (203 standard, 300 for M02 Pro)
 
 If auto-detection fails (e.g., printer shows serial number instead of model), you can manually select your printer model in Print Settings, or the app will prompt you to choose on first connection.
 
@@ -141,9 +158,10 @@ If auto-detection fails (e.g., printer shows serial number instead of model), yo
 
 ## Browser Requirements
 
-- Chrome, Edge, or another Chromium-based browser
+- Chrome, Edge, or another Chromium-based browser (desktop or Android)
 - Web Bluetooth API support (not available in Firefox or Safari)
 - HTTPS or localhost
+- **Mobile**: Android Chrome supported with full touch interface; iOS not supported (no Web Bluetooth)
 
 ## Connection Tips
 

@@ -1,0 +1,10 @@
+# Cache control for Cloudflare Pages
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Allow caching for versioned JS files
+/*.js
+  Cache-Control: public, max-age=31536000, immutable

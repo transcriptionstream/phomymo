@@ -3,10 +3,10 @@
  * Multi-element label editor with drag, resize, and rotate
  */
 
-import { CanvasRenderer } from './canvas.js?v=68';
-import { BLETransport } from './ble.js?v=11';
-import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=15';
+import { CanvasRenderer } from './canvas.js?v=100';
+import { BLETransport } from './ble.js?v=100';
+import { USBTransport } from './usb.js?v=100';
+import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=100';
 import {
   createTextElement,
   createImageElement,
@@ -35,7 +35,7 @@ import {
   collapseToSingleZone,
   hasElementsInHigherZones,
   removeElementsInHigherZones,
-} from './elements.js?v=9';
+} from './elements.js?v=100';
 import {
   HandleType,
   getHandleAtPoint,
@@ -47,13 +47,13 @@ import {
   drawGroupHandles,
   calculateGroupResize,
   calculateGroupRotation,
-} from './handles.js?v=5';
+} from './handles.js?v=100';
 import {
   saveDesign,
   loadDesign,
   listDesigns,
   deleteDesign,
-} from './storage.js?v=5';
+} from './storage.js?v=100';
 import {
   extractFields,
   hasTemplateFields,
@@ -61,7 +61,7 @@ import {
   substituteFieldsByZone,
   parseCSV,
   createEmptyRecord,
-} from './templates.js?v=2';
+} from './templates.js?v=100';
 import {
   ZOOM,
   TEXT,
@@ -78,7 +78,7 @@ import {
   M_SERIES_ROUND_LABELS,
   D_SERIES_LABEL_SIZES,
   D_SERIES_ROUND_LABELS,
-} from './constants.js';
+} from './constants.js?v=100';
 import {
   bindCheckbox,
   bindToggleButton,
@@ -89,7 +89,7 @@ import {
   bindPositionInputs,
   bindAlignButtons,
   createBindingContext,
-} from './utils/bindings.js';
+} from './utils/bindings.js?v=100';
 import {
   configureErrorHandlers,
   safeAsync,
@@ -103,7 +103,7 @@ import {
   ErrorLevel,
   ErrorCodes,
   getErrorMessage,
-} from './utils/errors.js';
+} from './utils/errors.js?v=100';
 import {
   validateFontSize,
   validateImageScale,
@@ -123,7 +123,7 @@ import {
   validateCSVFile,
   validateJSONFile,
   validatePosition,
-} from './utils/validation.js';
+} from './utils/validation.js?v=100';
 
 // DOM helpers
 const $ = (sel) => document.querySelector(sel);
@@ -761,6 +761,31 @@ function updateTemplateIndicator() {
   dataCount.textContent = state.templateData.length;
   printCount.textContent = state.templateData.length;
 
+  // Update mobile template UI
+  const mobileStatus = $('#mobile-template-status');
+  const mobileFields = $('#mobile-template-fields');
+  const mobileFieldTags = $('#mobile-template-field-tags');
+  const mobileDataCount = $('#mobile-template-data-count');
+  const mobilePrintCount = $('#mobile-template-print-count');
+
+  if (mobileStatus) {
+    if (hasFields) {
+      mobileStatus.textContent = `${state.templateFields.length} field${state.templateFields.length > 1 ? 's' : ''}`;
+      mobileStatus.classList.remove('hidden');
+      mobileFields?.classList.remove('hidden');
+      if (mobileFieldTags) {
+        mobileFieldTags.innerHTML = state.templateFields.map(f =>
+          `<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">{{${escapeHtml(f)}}}</span>`
+        ).join('');
+      }
+    } else {
+      mobileStatus.classList.add('hidden');
+      mobileFields?.classList.add('hidden');
+    }
+  }
+  if (mobileDataCount) mobileDataCount.textContent = state.templateData.length;
+  if (mobilePrintCount) mobilePrintCount.textContent = state.templateData.length;
+
   // Update field dropdowns for insert field buttons
   updateFieldDropdowns();
 }
@@ -999,7 +1024,7 @@ function updateTemplateDataTable() {
       <td class="px-2 py-1 text-xs text-gray-400">${idx + 1}</td>
       ${state.templateFields.map(f => `
         <td class="px-2 py-1">
-          <input type="text" class="template-field-input w-full text-sm border-0 bg-transparent p-0 focus:ring-1 focus:ring-blue-500 rounded"
+          <input type="text" class="template-field-input w-full text-base border-0 bg-transparent p-0 focus:ring-1 focus:ring-blue-500 rounded"
             data-index="${idx}" data-field="${escapeHtml(f)}" value="${escapeHtml(record[f] || '')}">
         </td>
       `).join('')}
@@ -5004,6 +5029,20 @@ function initMobileUI() {
   });
   $('#mobile-print-btn')?.addEventListener('click', handlePrint);
 
+  // Mobile template buttons
+  $('#mobile-template-manage')?.addEventListener('click', () => {
+    closeMobileMenu();
+    showTemplateDataDialog();
+  });
+  $('#mobile-template-preview')?.addEventListener('click', () => {
+    closeMobileMenu();
+    showPreviewDialog();
+  });
+  $('#mobile-template-print')?.addEventListener('click', () => {
+    closeMobileMenu();
+    handleBatchPrint();
+  });
+
   // Sync mobile label size selector with desktop
   const mobileLabelSize = $('#mobile-label-size');
   const desktopLabelSize = $('#label-size');
@@ -5245,6 +5284,22 @@ function populateMobileProps() {
   // Generate properties form
   let html = '<div class="space-y-4">';
 
+  // Helper to generate field dropdown HTML
+  const fieldDropdownHtml = (inputId) => {
+    const existingFields = state.templateFields || [];
+    const fieldOptions = existingFields.map(f =>
+      `<button class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 active:bg-purple-100" data-insert-field="${f}" data-target="${inputId}">{{${escapeHtml(f)}}}</button>`
+    ).join('');
+    return `
+      <div class="mobile-field-dropdown hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[80] min-w-[160px] overflow-hidden">
+        ${fieldOptions}
+        <div class="border-t border-gray-100 p-2">
+          <input type="text" class="mobile-new-field-input w-full px-2 py-1.5 text-base border border-gray-200 rounded" placeholder="New field name..." data-target="${inputId}">
+        </div>
+      </div>
+    `;
+  };
+
   // Type-specific properties FIRST (content is most important on mobile)
   if (selected.type === 'text') {
     const fontFamily = selected.fontFamily || 'Inter, sans-serif';
@@ -5253,8 +5308,17 @@ function populateMobileProps() {
     const bgColor = selected.background || 'transparent';
     html += `
       <div class="prop-group">
-        <div class="prop-label">Text Content</div>
-        <textarea id="mobile-prop-text" class="prop-input" rows="2">${selected.text || ''}</textarea>
+        <div class="flex items-center justify-between mb-1">
+          <div class="prop-label mb-0">Text Content</div>
+          <div class="relative">
+            <button class="mobile-field-btn text-xs text-purple-600 font-medium flex items-center gap-0.5 px-2 py-1 rounded hover:bg-purple-50 active:bg-purple-100">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              {{Field}}
+            </button>
+            ${fieldDropdownHtml('mobile-prop-text')}
+          </div>
+        </div>
+        <textarea id="mobile-prop-text" class="prop-input" rows="2">${escapeHtml(selected.text || '')}</textarea>
       </div>
       <div class="prop-group">
         <div class="prop-row">
@@ -5338,8 +5402,17 @@ function populateMobileProps() {
   } else if (selected.type === 'barcode') {
     html += `
       <div class="prop-group">
-        <div class="prop-label">Barcode Value</div>
-        <input type="text" id="mobile-prop-value" class="prop-input" value="${selected.value || selected.barcodeData || ''}">
+        <div class="flex items-center justify-between mb-1">
+          <div class="prop-label mb-0">Barcode Value</div>
+          <div class="relative">
+            <button class="mobile-field-btn text-xs text-purple-600 font-medium flex items-center gap-0.5 px-2 py-1 rounded hover:bg-purple-50 active:bg-purple-100">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              {{Field}}
+            </button>
+            ${fieldDropdownHtml('mobile-prop-value')}
+          </div>
+        </div>
+        <input type="text" id="mobile-prop-value" class="prop-input" value="${escapeHtml(selected.value || selected.barcodeData || '')}">
       </div>
       <div class="prop-group">
         <div class="prop-label">Format</div>
@@ -5360,8 +5433,17 @@ function populateMobileProps() {
   } else if (selected.type === 'qr') {
     html += `
       <div class="prop-group">
-        <div class="prop-label">QR Content</div>
-        <textarea id="mobile-prop-value" class="prop-input" rows="3">${selected.value || selected.qrData || ''}</textarea>
+        <div class="flex items-center justify-between mb-1">
+          <div class="prop-label mb-0">QR Content</div>
+          <div class="relative">
+            <button class="mobile-field-btn text-xs text-purple-600 font-medium flex items-center gap-0.5 px-2 py-1 rounded hover:bg-purple-50 active:bg-purple-100">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              {{Field}}
+            </button>
+            ${fieldDropdownHtml('mobile-prop-value')}
+          </div>
+        </div>
+        <textarea id="mobile-prop-value" class="prop-input" rows="3">${escapeHtml(selected.value || selected.qrData || '')}</textarea>
       </div>
     `;
   } else if (selected.type === 'shape') {
@@ -5531,7 +5613,10 @@ function wireUpMobilePropHandlers(element) {
   // Text properties - use live update for typing, save history on blur
   const textInput = $('#mobile-prop-text');
   if (textInput) {
-    textInput.addEventListener('input', (e) => updatePropLive('text', e.target.value));
+    textInput.addEventListener('input', (e) => {
+      updatePropLive('text', e.target.value);
+      detectTemplateFields(); // Detect {{fields}} as user types
+    });
     textInput.addEventListener('blur', saveOnBlur('text'));
   }
   $('#mobile-prop-fontSize')?.addEventListener('change', (e) => updateProp('fontSize', parseInt(e.target.value)));
@@ -5591,6 +5676,7 @@ function wireUpMobilePropHandlers(element) {
       updatePropLive('value', e.target.value);
       if (element.type === 'barcode') element.barcodeData = e.target.value;
       if (element.type === 'qr') element.qrData = e.target.value;
+      detectTemplateFields(); // Detect {{fields}} as user types
     });
     valueInput.addEventListener('blur', saveOnBlur('value'));
   }
@@ -5599,6 +5685,71 @@ function wireUpMobilePropHandlers(element) {
     element.barcodeFormat = e.target.value; // Also update legacy property
   });
   $('#mobile-prop-showText')?.addEventListener('change', (e) => updateProp('showText', e.target.checked));
+
+  // Mobile field insertion buttons
+  $$('.mobile-field-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dropdown = btn.parentElement.querySelector('.mobile-field-dropdown');
+      // Close any other open dropdowns
+      $$('.mobile-field-dropdown').forEach(d => {
+        if (d !== dropdown) d.classList.add('hidden');
+      });
+      dropdown?.classList.toggle('hidden');
+    });
+  });
+
+  // Insert existing field
+  $$('[data-insert-field]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const fieldName = btn.dataset.insertField;
+      const targetId = btn.dataset.target;
+      const target = $(`#${targetId}`);
+      if (target) {
+        const fieldText = `{{${fieldName}}}`;
+        const start = target.selectionStart || target.value.length;
+        const end = target.selectionEnd || target.value.length;
+        target.value = target.value.slice(0, start) + fieldText + target.value.slice(end);
+        target.focus();
+        target.selectionStart = target.selectionEnd = start + fieldText.length;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      btn.closest('.mobile-field-dropdown')?.classList.add('hidden');
+    });
+  });
+
+  // Add new field from input
+  $$('.mobile-new-field-input').forEach(input => {
+    // Helper to insert the field
+    const insertNewField = () => {
+      if (!input.value.trim()) return;
+      const fieldName = input.value.trim();
+      const targetId = input.dataset.target;
+      const target = $(`#${targetId}`);
+      if (target) {
+        const fieldText = `{{${fieldName}}}`;
+        const start = target.selectionStart || target.value.length;
+        const end = target.selectionEnd || target.value.length;
+        target.value = target.value.slice(0, start) + fieldText + target.value.slice(end);
+        target.focus();
+        target.selectionStart = target.selectionEnd = start + fieldText.length;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      input.value = '';
+      input.closest('.mobile-field-dropdown')?.classList.add('hidden');
+    };
+
+    // Enter key (desktop + some mobile keyboards)
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        insertNewField();
+      }
+    });
+
+    // Change event (mobile Done/checkmark button)
+    input.addEventListener('change', insertNewField);
+  });
 
   // Shape properties
   $('#mobile-prop-shapeType')?.addEventListener('change', (e) => {
@@ -6513,6 +6664,13 @@ function init() {
   document.addEventListener('click', (e) => {
     if (!e.target.closest('[id^="field-dropdown-"]') && !e.target.closest('[id^="insert-field-"]')) {
       $$('[id^="field-dropdown-"]').forEach(d => d.classList.add('hidden'));
+    }
+  });
+
+  // Close mobile field dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.mobile-field-btn') && !e.target.closest('.mobile-field-dropdown')) {
+      $$('.mobile-field-dropdown').forEach(d => d.classList.add('hidden'));
     }
   });
 

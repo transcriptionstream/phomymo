@@ -60,6 +60,8 @@ const D_CMD = {
  * Keys match the dropdown values in index.html
  */
 const PRINTER_WIDTHS = {
+  // P12 series (12mm tape / ~96px) - uses m02 protocol (assumed)
+  'p12': 12,
   // M02 series (48mm / 384px) - uses m02 protocol
   'm02': 48,
   // M02 Pro (53mm at 300 DPI = 626px = 78 bytes) - uses m02 protocol
@@ -91,6 +93,10 @@ const PRINTER_WIDTHS = {
  * DPI: Most printers are 203 DPI, but M02 Pro is 300 DPI
  */
 const DEVICE_PATTERNS = [
+  // P12 series (12mm tape / ~96px at 203 DPI) - assumed m02-like protocol
+  { pattern: 'P12 PRO', width: 12, protocol: 'm02', dpi: 203 },
+  { pattern: 'P12PRO', width: 12, protocol: 'm02', dpi: 203 },
+  { pattern: 'P12', width: 12, protocol: 'm02', dpi: 203 },
   // M02 Pro series (53mm at 300 DPI = 626px = 78 bytes) - must come before generic M02 patterns
   { pattern: 'M02 PRO', width: 78, protocol: 'm02', dpi: 300 },
   { pattern: 'M02PRO', width: 78, protocol: 'm02', dpi: 300 },

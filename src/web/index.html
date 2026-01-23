@@ -7,7 +7,7 @@
 
   <!-- SEO Meta Tags -->
   <meta name="description" content="Free browser-based label designer for Phomemo thermal printers. Create custom labels with text, barcodes, QR codes, and images. No drivers needed - connects via Bluetooth. Works with M02, M03, M110, M120, M200, M220, M260, D30, D35, D50, Q30 and more.">
-  <meta name="keywords" content="Phomemo, label printer, thermal printer, label designer, barcode generator, QR code, M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M250, M260, D30, D35, D50, Q30, Q30S, T02, bluetooth printer, label maker, free label software, Phomemo alternative, thermal label printer software">
+  <meta name="keywords" content="Phomemo, label printer, thermal printer, label designer, barcode generator, QR code, P12, P12 Pro, M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M250, M260, D30, D35, D50, Q30, Q30S, T02, bluetooth printer, label maker, free label software, Phomemo alternative, thermal label printer software">
   <meta name="author" content="Phomymo">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://phomymo.affordablemagic.net/">
@@ -1148,6 +1148,9 @@
           <div class="prop-label">Printer Model</div>
           <select id="printer-model" class="prop-input">
             <option value="auto">Auto-detect</option>
+            <optgroup label="P12 Series">
+              <option value="p12">P12 / P12 Pro (12mm tape)</option>
+            </optgroup>
             <optgroup label="M02 Series">
               <option value="m02">M02 / M02S / M02X (48mm)</option>
               <option value="m02-pro">M02 Pro (53mm, 300 DPI)</option>
@@ -1235,7 +1238,12 @@
       </div>
 
       <div class="space-y-2">
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">M02 Series</div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">P12 Series</div>
+        <button data-model="p12" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          P12 / P12 Pro (12mm tape)
+        </button>
+
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M02 Series</div>
         <button data-model="m02" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
           M02 / M02S / M02X / M02 Pro (48mm)
         </button>
@@ -1356,7 +1364,12 @@
         </div>
 
         <!-- Supported Printers -->
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <span class="text-xs font-medium text-green-600 uppercase tracking-wide">P-Series</span>
+            <p class="text-sm text-gray-700">P12, P12 Pro</p>
+            <p class="text-xs text-gray-500">12mm tape labels</p>
+          </div>
           <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
             <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
             <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02</p>

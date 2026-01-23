@@ -4894,12 +4894,16 @@ function checkCompatibility() {
           </div>
 
           <!-- Supported Printers Info -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <div class="grid grid-cols-1 gap-2">
+            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+              <span class="text-xs font-medium text-green-600 uppercase tracking-wide">P-Series</span>
+              <p class="text-sm text-gray-700">P12, P12 Pro (12mm tape)</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
               <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
               <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02</p>
             </div>
-            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
               <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
               <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30, Q30S</p>
             </div>

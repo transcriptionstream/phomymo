@@ -6,7 +6,7 @@
 import { CanvasRenderer } from './canvas.js?v=68';
 import { BLETransport } from './ble.js?v=11';
 import { USBTransport } from './usb.js?v=3';
-import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=15';
+import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=15';
 import {
   createTextElement,
   createImageElement,
@@ -194,6 +194,7 @@ const state = {
     pinchStartZoom: 1,          // Zoom level when pinch started
     lastTapTime: 0,             // Timestamp of last tap (for double-tap detection)
     lastTapPos: { x: 0, y: 0 }, // Position of last tap
+    usingTouch: false,          // Flag to prevent pointer/touch event conflicts
   },
 };
 
@@ -2699,8 +2700,9 @@ function handleCanvasMouseUp() {
 function getPointerDistance(pointers) {
   const pts = Array.from(pointers.values());
   if (pts.length < 2) return 0;
-  const dx = pts[1].x - pts[0].x;
-  const dy = pts[1].y - pts[0].y;
+  // Use clientX/clientY for screen-space distance (works for both pointer and touch)
+  const dx = (pts[1].clientX || pts[1].x) - (pts[0].clientX || pts[0].x);
+  const dy = (pts[1].clientY || pts[1].y) - (pts[0].clientY || pts[0].y);
   return Math.hypot(dx, dy);
 }
 
@@ -2831,19 +2833,26 @@ function endPinchGesture() {
  * Handle canvas pointer down (unified touch/mouse)
  */
 function handleCanvasPointerDown(e) {
-  const canvas = state.renderer.canvas;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  // Skip if touch events are handling this (prevents double-handling on iOS)
+  if (state.pointer.usingTouch && e.pointerType === 'touch') {
+    return;
+  }
 
-  // Track this pointer
-  const pointerInfo = {
-    x: (e.clientX - rect.left) * scaleX / state.zoom,
-    y: (e.clientY - rect.top) * scaleY / state.zoom,
+  // Prevent default to stop iOS Safari from scrolling/zooming
+  e.preventDefault();
+
+  const canvas = state.renderer.canvas;
+
+  // Capture pointer for reliable tracking on iOS Safari
+  if (e.pointerType === 'touch') {
+    canvas.setPointerCapture(e.pointerId);
+  }
+
+  // Track this pointer (raw coordinates for pinch)
+  state.pointer.pointers.set(e.pointerId, {
     clientX: e.clientX,
     clientY: e.clientY,
-  };
-  state.pointer.pointers.set(e.pointerId, pointerInfo);
+  });
 
   // Check for pinch gesture (two fingers)
   if (state.pointer.pointers.size === 2) {
@@ -2857,10 +2866,12 @@ function handleCanvasPointerDown(e) {
     return; // Ignore 3+ finger gestures
   }
 
-  const pos = { x: pointerInfo.x, y: pointerInfo.y };
+  // Use getCanvasPos for correct coordinate calculation
+  const pos = getCanvasPos(e);
 
   // If inline editing is active, clicking on canvas closes it
   if (state.editingTextId) {
+    stopInlineEdit(true);
     return;
   }
 
@@ -2979,20 +2990,24 @@ function handleCanvasPointerDown(e) {
  * Handle canvas pointer move (unified touch/mouse)
  */
 function handleCanvasPointerMove(e) {
-  const canvas = state.renderer.canvas;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  // Skip if touch events are handling this
+  if (state.pointer.usingTouch && e.pointerType === 'touch') {
+    return;
+  }
 
-  // Update pointer position
+  // Prevent default to stop iOS Safari from scrolling
+  if (e.pointerType === 'touch') {
+    e.preventDefault();
+  }
+
+  const canvas = state.renderer.canvas;
+
+  // Update pointer position (raw for pinch)
   if (state.pointer.pointers.has(e.pointerId)) {
-    const pointerInfo = {
-      x: (e.clientX - rect.left) * scaleX / state.zoom,
-      y: (e.clientY - rect.top) * scaleY / state.zoom,
+    state.pointer.pointers.set(e.pointerId, {
       clientX: e.clientX,
       clientY: e.clientY,
-    };
-    state.pointer.pointers.set(e.pointerId, pointerInfo);
+    });
   }
 
   // Handle pinch gesture
@@ -3001,28 +3016,17 @@ function handleCanvasPointerMove(e) {
     return;
   }
 
+  // Use getCanvasPos for correct coordinates
+  const pos = getCanvasPos(e);
+
   // Check if long-press should be cancelled due to movement
   if (state.pointer.longPressTimer && state.pointer.pointers.size === 1) {
-    const ptr = state.pointer.pointers.get(e.pointerId);
-    if (ptr) {
-      const startPtr = Array.from(state.pointer.pointers.values())[0];
-      const dx = ptr.x - startPtr.x;
-      const dy = ptr.y - startPtr.y;
-      // This check is a bit redundant since ptr IS startPtr, but we check the drag distance
-      if (state.isDragging) {
-        const dragDx = ptr.x - state.dragStartX;
-        const dragDy = ptr.y - state.dragStartY;
-        if (Math.hypot(dragDx, dragDy) > TOUCH.LONG_PRESS_MOVE_TOLERANCE) {
-          cancelLongPress();
-        }
-      }
+    const dx = pos.x - state.dragStartX;
+    const dy = pos.y - state.dragStartY;
+    if (Math.hypot(dx, dy) > TOUCH.LONG_PRESS_MOVE_TOLERANCE) {
+      cancelLongPress();
     }
   }
-
-  const pos = {
-    x: (e.clientX - rect.left) * scaleX / state.zoom,
-    y: (e.clientY - rect.top) * scaleY / state.zoom,
-  };
 
   if (state.isDragging && state.dragStartElements) {
     // Cancel long-press on any drag
@@ -3203,15 +3207,12 @@ function handleCanvasPointerMove(e) {
  * Handle canvas pointer up (unified touch/mouse)
  */
 function handleCanvasPointerUp(e) {
-  const canvas = state.renderer.canvas;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  // Skip if touch events are handling this
+  if (state.pointer.usingTouch && e.pointerType === 'touch') {
+    return;
+  }
 
-  const pos = {
-    x: (e.clientX - rect.left) * scaleX / state.zoom,
-    y: (e.clientY - rect.top) * scaleY / state.zoom,
-  };
+  const pos = getCanvasPos(e);
 
   // Cancel long-press
   cancelLongPress();
@@ -3267,6 +3268,416 @@ function handleCanvasPointerCancel(e) {
   }
 
   // Reset drag state
+  state.isDragging = false;
+  state.dragType = null;
+  state.dragHandle = null;
+  state.dragStartElements = null;
+  state.dragStartBounds = null;
+  state.dragStartAngle = 0;
+
+  if (state.alignmentGuides.length > 0) {
+    state.alignmentGuides = [];
+    render();
+  }
+}
+
+// =============================================================================
+// TOUCH EVENT HANDLERS (iOS Safari fallback)
+// =============================================================================
+
+/**
+ * Convert touch to pointer-like event for iOS Safari
+ */
+function touchToPointerEvent(touch, type) {
+  return {
+    pointerId: touch.identifier,
+    pointerType: 'touch',
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    preventDefault: () => {},
+    shiftKey: false,
+  };
+}
+
+/**
+ * Handle touch start (iOS Safari fallback)
+ */
+function handleCanvasTouchStart(e) {
+  e.preventDefault();
+
+  // Mark that we're using touch events (prevents pointer event double-handling)
+  state.pointer.usingTouch = true;
+
+  // Process all changed touches - store raw positions for pinch calculation
+  for (const touch of e.changedTouches) {
+    state.pointer.pointers.set(touch.identifier, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+  }
+
+  // Check for pinch gesture (two fingers)
+  if (e.touches.length === 2) {
+    cancelLongPress();
+    startPinchGesture();
+    return;
+  }
+
+  if (e.touches.length > 2) {
+    return;
+  }
+
+  // Single touch - use getCanvasPos for correct coordinate calculation
+  const touch = e.touches[0];
+  const pos = getCanvasPos(touch);
+
+  // If inline editing is active, clicking on canvas closes it
+  if (state.editingTextId) {
+    stopInlineEdit(true);
+    return;
+  }
+
+  // In multi-label mode, check which zone was clicked
+  if (state.multiLabel.enabled) {
+    const { zoneIndex } = getZoneRelativePos(pos.x, pos.y);
+    if (zoneIndex !== null && zoneIndex !== state.activeZone) {
+      setActiveZone(zoneIndex);
+    }
+  }
+
+  const clickedElement = getElementAtCanvasPoint(pos.x, pos.y);
+
+  // Start long-press timer only if touching an element
+  if (clickedElement) {
+    startLongPressTimer(clickedElement, pos);
+  }
+
+  const selectedElements = getSelectedElements();
+  const isMultiSelect = state.selectedIds.length > 1;
+
+  // Check group handles
+  if (isMultiSelect || (selectedElements.length === 1 && selectedElements[0].groupId)) {
+    const rawBounds = getMultiElementBounds(selectedElements);
+    const bounds = selectedElements.length > 0
+      ? getBoundsWithCanvasPos(rawBounds, selectedElements[0].zone || 0)
+      : rawBounds;
+    if (bounds) {
+      const handle = getGroupHandleAtPoint(pos.x, pos.y, bounds, true);
+      if (handle) {
+        cancelLongPress();
+        saveHistory();
+        state.isDragging = true;
+        state.dragStartX = pos.x;
+        state.dragStartY = pos.y;
+        state.dragStartElements = selectedElements.map(el => ({ ...el }));
+        state.dragStartBounds = { ...rawBounds };
+
+        if (handle === HandleType.ROTATE) {
+          state.dragType = 'group-rotate';
+          const angle = Math.atan2(pos.y - bounds.cy, pos.x - bounds.cx);
+          state.dragStartAngle = (angle * 180) / Math.PI + 90;
+        } else {
+          state.dragType = 'group-resize';
+          state.dragHandle = handle;
+        }
+        return;
+      }
+    }
+  }
+
+  // Single element handles
+  if (state.selectedIds.length === 1) {
+    const selected = selectedElements[0];
+    if (selected) {
+      const adjustedElement = getElementWithCanvasPos(selected);
+      const handle = getHandleAtPoint(pos.x, pos.y, adjustedElement, true);
+      if (handle) {
+        cancelLongPress();
+        saveHistory();
+        state.isDragging = true;
+        state.dragStartX = pos.x;
+        state.dragStartY = pos.y;
+        state.dragStartElements = [{ ...selected }];
+
+        if (handle === HandleType.ROTATE) {
+          state.dragType = 'rotate';
+        } else {
+          state.dragType = 'resize';
+          state.dragHandle = handle;
+        }
+        return;
+      }
+    }
+  }
+
+  // Check if touching an element
+  if (clickedElement) {
+    const alreadySelected = state.selectedIds.includes(clickedElement.id);
+    if (!alreadySelected) {
+      selectElement(clickedElement.id);
+    }
+
+    const currentSelected = getSelectedElements();
+    saveHistory();
+    state.isDragging = true;
+    state.dragType = currentSelected.length > 1 ? 'group-move' : 'move';
+    state.dragStartX = pos.x;
+    state.dragStartY = pos.y;
+    state.dragStartElements = currentSelected.map(el => ({ ...el }));
+    state.dragStartBounds = getMultiElementBounds(currentSelected);
+    return;
+  }
+
+  // Touched empty area
+  if (state.multiLabel.enabled) {
+    const { zoneIndex } = getZoneRelativePos(pos.x, pos.y);
+    if (zoneIndex === null) {
+      deselect();
+      return;
+    }
+  }
+
+  deselect();
+}
+
+/**
+ * Handle touch move (iOS Safari fallback)
+ */
+function handleCanvasTouchMove(e) {
+  e.preventDefault();
+
+  // Update all touch positions (raw for pinch calculation)
+  for (const touch of e.touches) {
+    state.pointer.pointers.set(touch.identifier, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+  }
+
+  // Handle pinch
+  if (state.pointer.isPinching && e.touches.length === 2) {
+    handlePinchMove();
+    return;
+  }
+
+  // Cancel long-press if moved
+  if (state.pointer.longPressTimer && e.touches.length === 1) {
+    const touch = e.touches[0];
+    const pos = getCanvasPos(touch);
+    const dx = pos.x - state.dragStartX;
+    const dy = pos.y - state.dragStartY;
+    if (Math.hypot(dx, dy) > TOUCH.LONG_PRESS_MOVE_TOLERANCE) {
+      cancelLongPress();
+    }
+  }
+
+  if (!state.isDragging || !state.dragStartElements || e.touches.length !== 1) {
+    return;
+  }
+
+  const touch = e.touches[0];
+  const pos = getCanvasPos(touch);
+
+  const dx = pos.x - state.dragStartX;
+  const dy = pos.y - state.dragStartY;
+
+  switch (state.dragType) {
+    case 'move': {
+      const el = state.dragStartElements[0];
+      let newX = el.x + dx;
+      let newY = el.y + dy;
+      const snapResult = detectAlignmentGuides(
+        { x: newX, y: newY, width: el.width, height: el.height },
+        [el.id]
+      );
+      newX += snapResult.snapX;
+      newY += snapResult.snapY;
+      modifyElement(el.id, { x: newX, y: newY });
+      state.alignmentGuides = snapResult.guides;
+      break;
+    }
+
+    case 'group-move': {
+      state.elements = moveElements(
+        state.elements,
+        state.dragStartElements.map(e => e.id),
+        dx, dy
+      );
+      const movedElements = getSelectedElements();
+      const groupBounds = getMultiElementBounds(movedElements);
+      if (groupBounds) {
+        const groupSnapResult = detectAlignmentGuides(
+          { x: groupBounds.x, y: groupBounds.y, width: groupBounds.width, height: groupBounds.height },
+          movedElements.map(e => e.id)
+        );
+        if (groupSnapResult.snapX !== 0 || groupSnapResult.snapY !== 0) {
+          state.elements = moveElements(
+            state.elements,
+            movedElements.map(e => e.id),
+            groupSnapResult.snapX, groupSnapResult.snapY
+          );
+        }
+        state.alignmentGuides = groupSnapResult.guides;
+      }
+      state.dragStartElements = getSelectedElements().map(e => ({ ...e }));
+      state.dragStartX = pos.x;
+      state.dragStartY = pos.y;
+      render();
+      break;
+    }
+
+    case 'resize': {
+      const resizeEl = state.dragStartElements[0];
+      const isLockedImage = resizeEl.type === 'image' && resizeEl.lockAspectRatio !== false;
+      const newBounds = calculateResize(resizeEl, state.dragHandle, dx, dy, isLockedImage);
+      modifyElement(resizeEl.id, constrainSize({ ...resizeEl, ...newBounds }));
+      break;
+    }
+
+    case 'group-resize': {
+      const { scaleX, scaleY } = calculateGroupResize(
+        state.dragStartBounds,
+        state.dragHandle,
+        dx, dy,
+        false
+      );
+
+      const isHorizontalSide = state.dragHandle === HandleType.E || state.dragHandle === HandleType.W;
+      const isVerticalSide = state.dragHandle === HandleType.N || state.dragHandle === HandleType.S;
+
+      const scaledElements = state.dragStartElements.map(origEl => {
+        const elCx = origEl.x + origEl.width / 2;
+        const elCy = origEl.y + origEl.height / 2;
+        const centerX = state.dragStartBounds.cx;
+        const centerY = state.dragStartBounds.cy;
+
+        const effectiveScaleX = isVerticalSide ? 1 : scaleX;
+        const effectiveScaleY = isHorizontalSide ? 1 : scaleY;
+
+        const newCx = centerX + (elCx - centerX) * effectiveScaleX;
+        const newCy = centerY + (elCy - centerY) * effectiveScaleY;
+
+        const newWidth = Math.max(origEl.width * effectiveScaleX, ELEMENT.MIN_WIDTH);
+        const newHeight = Math.max(origEl.height * effectiveScaleY, ELEMENT.MIN_HEIGHT);
+
+        return {
+          ...origEl,
+          x: newCx - newWidth / 2,
+          y: newCy - newHeight / 2,
+          width: newWidth,
+          height: newHeight,
+        };
+      });
+
+      state.elements = state.elements.map(el => {
+        const scaled = scaledElements.find(s => s.id === el.id);
+        return scaled || el;
+      });
+
+      state.dragStartElements.forEach(el => state.renderer.clearCache(el.id));
+      render();
+      break;
+    }
+
+    case 'rotate': {
+      const rotEl = state.dragStartElements[0];
+      const adjustedRotEl = getElementWithCanvasPos(rotEl);
+      let rotation = calculateRotation(adjustedRotEl, pos.x, pos.y);
+      rotation = snapRotation(rotation);
+      modifyElement(rotEl.id, { rotation });
+      break;
+    }
+
+    case 'group-rotate': {
+      const adjustedBounds = getBoundsWithCanvasPos(state.dragStartBounds, state.dragStartElements[0]?.zone || 0);
+      const currentAngle = Math.atan2(pos.y - adjustedBounds.cy, pos.x - adjustedBounds.cx);
+      let angleDelta = ((currentAngle * 180) / Math.PI + 90) - state.dragStartAngle;
+      angleDelta = snapRotation(angleDelta);
+      state.elements = rotateElements(
+        state.elements,
+        state.dragStartElements.map(e => e.id),
+        angleDelta,
+        { x: state.dragStartBounds.cx, y: state.dragStartBounds.cy }
+      );
+      state.dragStartAngle = (currentAngle * 180) / Math.PI + 90;
+      state.dragStartElements = getSelectedElements().map(e => ({ ...e }));
+      render();
+      break;
+    }
+  }
+}
+
+/**
+ * Handle touch end (iOS Safari fallback)
+ */
+function handleCanvasTouchEnd(e) {
+  e.preventDefault();
+
+  // Get position from changed touches before cleanup
+  let pos = { x: 0, y: 0 };
+  if (e.changedTouches.length > 0) {
+    pos = getCanvasPos(e.changedTouches[0]);
+  }
+
+  cancelLongPress();
+
+  // Remove ended touches
+  for (const touch of e.changedTouches) {
+    state.pointer.pointers.delete(touch.identifier);
+  }
+
+  // End pinch if needed
+  if (state.pointer.isPinching && e.touches.length < 2) {
+    endPinchGesture();
+  }
+
+  // Check for double-tap
+  if (!state.isDragging && e.touches.length === 0) {
+    if (checkDoubleTap(pos)) {
+      const element = getElementAtCanvasPoint(pos.x, pos.y);
+      if (element && element.type === 'text') {
+        startInlineEdit(element.id);
+        return;
+      }
+    }
+  }
+
+  // Standard drag end
+  const wasDragging = state.isDragging;
+  state.isDragging = false;
+  state.dragType = null;
+  state.dragHandle = null;
+  state.dragStartElements = null;
+  state.dragStartBounds = null;
+  state.dragStartAngle = 0;
+
+  if (state.alignmentGuides.length > 0) {
+    state.alignmentGuides = [];
+    render();
+  }
+
+  if (wasDragging) {
+    autoCloneIfEnabled();
+    render();
+  }
+}
+
+/**
+ * Handle touch cancel (iOS Safari fallback)
+ */
+function handleCanvasTouchCancel(e) {
+  e.preventDefault();
+  cancelLongPress();
+
+  // Clear all touches
+  for (const touch of e.changedTouches) {
+    state.pointer.pointers.delete(touch.identifier);
+  }
+
+  if (state.pointer.isPinching) {
+    endPinchGesture();
+  }
+
   state.isDragging = false;
   state.dragType = null;
   state.dragHandle = null;
@@ -3575,9 +3986,10 @@ async function handlePrint() {
     // Render to raster (use raw format for D-series printers)
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+    const printerDpi = getPrinterDpi(deviceName, printerModel);
     const rasterData = isDSeriesPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(state.elements)
-      : state.renderer.getRasterData(state.elements, printerWidth);
+      : state.renderer.getRasterData(state.elements, printerWidth, printerDpi);
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {
@@ -5092,16 +5504,18 @@ function init() {
     modifyElement(id, { qrData: e.target.value });
   });
 
-  // Canvas pointer events (unified touch + mouse handling)
-  canvas.addEventListener('pointerdown', handleCanvasPointerDown);
-  canvas.addEventListener('pointermove', handleCanvasPointerMove);
+  // Canvas pointer events (for mouse and non-iOS touch)
+  canvas.addEventListener('pointerdown', handleCanvasPointerDown, { passive: false });
+  canvas.addEventListener('pointermove', handleCanvasPointerMove, { passive: false });
   canvas.addEventListener('pointerup', handleCanvasPointerUp);
   canvas.addEventListener('pointercancel', handleCanvasPointerCancel);
   canvas.addEventListener('pointerleave', handleCanvasPointerUp);
 
-  // Prevent default touch behaviors on canvas (scrolling, zooming)
-  canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
-  canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  // Touch events as fallback for iOS Safari (which has quirky Pointer Events)
+  canvas.addEventListener('touchstart', handleCanvasTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', handleCanvasTouchMove, { passive: false });
+  canvas.addEventListener('touchend', handleCanvasTouchEnd, { passive: false });
+  canvas.addEventListener('touchcancel', handleCanvasTouchCancel, { passive: false });
 
   // Native double-click for inline text editing (mouse only)
   canvas.addEventListener('dblclick', (e) => {
@@ -5275,9 +5689,9 @@ function init() {
     if (state.renderer) {
       state.renderer.destroy();
     }
-    // Disconnect BLE if connected
-    if (bleTransport && bleTransport.connected) {
-      bleTransport.disconnect();
+    // Disconnect transport if connected
+    if (state.transport && state.transport.connected) {
+      state.transport.disconnect();
     }
   });
 

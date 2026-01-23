@@ -62,6 +62,8 @@ const D_CMD = {
 const PRINTER_WIDTHS = {
   // M02 series (48mm / 384px) - uses m02 protocol
   'm02': 48,
+  // M02 Pro (53mm at 300 DPI = 626px = 78 bytes) - uses m02 protocol
+  'm02-pro': 78,
   // M110/M120 (48mm / 384px) - standard m-series protocol
   'm110': 48,
   // M03/T02 (53mm / 432px)
@@ -85,56 +87,58 @@ const PRINTER_WIDTHS = {
  * Device name patterns for auto-detection
  * Matched against start of device name (case-insensitive)
  * More specific patterns should come first
+ *
+ * DPI: Most printers are 203 DPI, but M02 Pro is 300 DPI
  */
 const DEVICE_PATTERNS = [
-  // M02 series (48mm / 384px) - must come before generic M0x patterns
-  // M02 Pro has 300 DPI but we scale to 203 DPI equivalent
-  { pattern: 'M02 PRO', width: 48, protocol: 'm02' },
-  { pattern: 'M02PRO', width: 48, protocol: 'm02' },
-  { pattern: 'M02X', width: 48, protocol: 'm02' },
-  { pattern: 'M02S', width: 48, protocol: 'm02' },
-  { pattern: 'M02', width: 48, protocol: 'm02' },
+  // M02 Pro series (53mm at 300 DPI = 626px = 78 bytes) - must come before generic M02 patterns
+  { pattern: 'M02 PRO', width: 78, protocol: 'm02', dpi: 300 },
+  { pattern: 'M02PRO', width: 78, protocol: 'm02', dpi: 300 },
+  // M02 series (48mm / 384px at 203 DPI)
+  { pattern: 'M02X', width: 48, protocol: 'm02', dpi: 203 },
+  { pattern: 'M02S', width: 48, protocol: 'm02', dpi: 203 },
+  { pattern: 'M02', width: 48, protocol: 'm02', dpi: 203 },
   // M03 and T02 (53mm / 432px)
-  { pattern: 'M03', width: 54, protocol: 'm-series' },
-  { pattern: 'T02', width: 54, protocol: 'm-series' },
+  { pattern: 'M03', width: 54, protocol: 'm-series', dpi: 203 },
+  { pattern: 'T02', width: 54, protocol: 'm-series', dpi: 203 },
   // M-series narrow (48mm)
-  { pattern: 'M110', width: 48, protocol: 'm-series' },
-  { pattern: 'M120', width: 48, protocol: 'm-series' },
+  { pattern: 'M110', width: 48, protocol: 'm-series', dpi: 203 },
+  { pattern: 'M120', width: 48, protocol: 'm-series', dpi: 203 },
   // M-series mid (75mm)
-  { pattern: 'M200', width: 76, protocol: 'm-series' },
-  { pattern: 'M250', width: 76, protocol: 'm-series' },
+  { pattern: 'M200', width: 76, protocol: 'm-series', dpi: 203 },
+  { pattern: 'M250', width: 76, protocol: 'm-series', dpi: 203 },
   // M-series wide (80mm)
-  { pattern: 'M220', width: 81, protocol: 'm-series' },
-  { pattern: 'M221', width: 81, protocol: 'm-series' },
+  { pattern: 'M220', width: 81, protocol: 'm-series', dpi: 203 },
+  { pattern: 'M221', width: 81, protocol: 'm-series', dpi: 203 },
   // M-series wide (72mm) - M260 and catch-all for M2xx
-  { pattern: 'M260', width: 72, protocol: 'm-series' },
+  { pattern: 'M260', width: 72, protocol: 'm-series', dpi: 203 },
   // M04 series (variable width, default to 54mm)
-  { pattern: 'M04', width: 54, protocol: 'm-series' },
+  { pattern: 'M04', width: 54, protocol: 'm-series', dpi: 203 },
   // D-series (rotated protocol)
-  { pattern: 'D30', width: null, protocol: 'd-series' },
-  { pattern: 'D35', width: null, protocol: 'd-series' },
-  { pattern: 'D50', width: null, protocol: 'd-series' },
-  { pattern: 'Q30S', width: null, protocol: 'd-series' },
-  { pattern: 'Q30', width: null, protocol: 'd-series' },
+  { pattern: 'D30', width: null, protocol: 'd-series', dpi: 203 },
+  { pattern: 'D35', width: null, protocol: 'd-series', dpi: 203 },
+  { pattern: 'D50', width: null, protocol: 'd-series', dpi: 203 },
+  { pattern: 'Q30S', width: null, protocol: 'd-series', dpi: 203 },
+  { pattern: 'Q30', width: null, protocol: 'd-series', dpi: 203 },
   // Generic D prefix last (catches D110, etc)
-  { pattern: 'D', width: null, protocol: 'd-series' },
+  { pattern: 'D', width: null, protocol: 'd-series', dpi: 203 },
 ];
 
 // Default configuration when no pattern matches
-const DEFAULT_CONFIG = { width: 72, protocol: 'm-series' };
+const DEFAULT_CONFIG = { width: 72, protocol: 'm-series', dpi: 203 };
 
 /**
  * Get printer configuration from device name
  * @param {string} deviceName - BLE device name
- * @returns {Object} { width, protocol, recognized, matchedPattern }
+ * @returns {Object} { width, protocol, dpi, recognized, matchedPattern }
  */
 function detectPrinterConfig(deviceName) {
   if (!deviceName) return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
 
   const name = deviceName.toUpperCase();
-  for (const { pattern, width, protocol } of DEVICE_PATTERNS) {
+  for (const { pattern, width, protocol, dpi } of DEVICE_PATTERNS) {
     if (name.startsWith(pattern)) {
-      return { width, protocol, recognized: true, matchedPattern: pattern };
+      return { width, protocol, dpi: dpi || 203, recognized: true, matchedPattern: pattern };
     }
   }
   return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
@@ -167,17 +171,22 @@ function getOverrideConfig(modelOverride) {
   if (!modelOverride || modelOverride === 'auto') return null;
 
   if (modelOverride === 'd-series') {
-    return { width: null, protocol: 'd-series' };
+    return { width: null, protocol: 'd-series', dpi: 203 };
   }
 
   // M02 uses special protocol
   if (modelOverride === 'm02') {
-    return { width: PRINTER_WIDTHS['m02'], protocol: 'm02' };
+    return { width: PRINTER_WIDTHS['m02'], protocol: 'm02', dpi: 203 };
+  }
+
+  // M02 Pro uses special protocol and 300 DPI
+  if (modelOverride === 'm02-pro') {
+    return { width: PRINTER_WIDTHS['m02-pro'], protocol: 'm02', dpi: 300 };
   }
 
   const width = PRINTER_WIDTHS[modelOverride];
   if (width !== undefined) {
-    return { width, protocol: 'm-series' };
+    return { width, protocol: 'm-series', dpi: 203 };
   }
 
   return null;
@@ -249,6 +258,25 @@ export function getPrinterWidthBytes(deviceName, modelOverride = 'auto') {
   // Auto-detect from device name
   const config = detectPrinterConfig(deviceName);
   return config.width ?? DEFAULT_CONFIG.width;
+}
+
+/**
+ * Get the DPI (dots per inch) for a printer
+ * Most printers are 203 DPI, but M02 Pro is 300 DPI
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ * @returns {number} DPI value (203 or 300)
+ */
+export function getPrinterDpi(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig && overrideConfig.dpi) {
+    return overrideConfig.dpi;
+  }
+
+  // Auto-detect from device name
+  const config = detectPrinterConfig(deviceName);
+  return config.dpi || 203;
 }
 
 /**

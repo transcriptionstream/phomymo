@@ -1527,14 +1527,140 @@ export class CanvasRenderer {
   }
 
   /**
-   * Convert pixel data to raster bytes
+   * Convert RGBA pixels to perceptual grayscale with gamma correction
+   * @param {Uint8ClampedArray} pixels - RGBA pixel data
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @param {number} gamma - Gamma correction value (1.0 = none, 1.3 = lighter midtones for thermal)
+   * @returns {Float32Array} Grayscale values 0-255
+   */
+  _rgbaToGrayscale(pixels, width, height, gamma = 1.3) {
+    const grayscale = new Float32Array(width * height);
+    const gammaInv = 1.0 / gamma;
+
+    for (let i = 0; i < width * height; i++) {
+      const idx = i * 4;
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
+      const a = pixels[idx + 3];
+
+      // Perceptual grayscale (ITU-R BT.601)
+      let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      // Handle transparency - blend with white background
+      if (a < 255) {
+        gray = gray * (a / 255) + 255 * (1 - a / 255);
+      }
+
+      // Apply gamma correction to lift midtones for thermal printing
+      gray = 255 * Math.pow(gray / 255, gammaInv);
+
+      grayscale[i] = gray;
+    }
+
+    return grayscale;
+  }
+
+  /**
+   * Apply Floyd-Steinberg dithering to grayscale image
+   * Produces high-quality 1-bit output that simulates grayscale through dot patterns
+   * @param {Float32Array} grayscale - Grayscale values 0-255
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @returns {Uint8Array} 1-bit values (0 = white, 1 = black)
+   */
+  _floydSteinbergDither(grayscale, width, height) {
+    // Work on a copy to avoid modifying original
+    const pixels = new Float32Array(grayscale);
+    const output = new Uint8Array(width * height);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const oldPixel = pixels[idx];
+
+        // Threshold to black (0) or white (255)
+        const newPixel = oldPixel < 128 ? 0 : 255;
+        output[idx] = newPixel === 0 ? 1 : 0; // 1 = black, 0 = white
+
+        // Calculate quantization error
+        const error = oldPixel - newPixel;
+
+        // Distribute error to neighboring pixels (Floyd-Steinberg pattern)
+        //       X   7/16
+        // 3/16 5/16 1/16
+        if (x + 1 < width) {
+          pixels[idx + 1] += error * 7 / 16;
+        }
+        if (y + 1 < height) {
+          if (x > 0) {
+            pixels[(y + 1) * width + (x - 1)] += error * 3 / 16;
+          }
+          pixels[(y + 1) * width + x] += error * 5 / 16;
+          if (x + 1 < width) {
+            pixels[(y + 1) * width + (x + 1)] += error * 1 / 16;
+          }
+        }
+      }
+    }
+
+    return output;
+  }
+
+  /**
+   * Detect if image likely contains photos or gradients that benefit from dithering
+   * @param {Uint8ClampedArray} pixels - RGBA pixel data
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @returns {boolean} True if dithering recommended
+   */
+  _shouldUseDithering(pixels, width, height) {
+    // Sample pixels to check for gradients/photos
+    const sampleSize = Math.min(1000, width * height);
+    const step = Math.floor((width * height) / sampleSize);
+
+    let uniqueColors = new Set();
+    let gradientCount = 0;
+    let lastGray = -1;
+
+    for (let i = 0; i < width * height; i += step) {
+      const idx = i * 4;
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
+
+      // Count unique colors (packed RGB)
+      uniqueColors.add((r << 16) | (g << 8) | b);
+
+      // Check for gradual transitions (indicates gradients/photos)
+      const gray = Math.round((r + g + b) / 3);
+      if (lastGray >= 0) {
+        const diff = Math.abs(gray - lastGray);
+        if (diff > 0 && diff < 30) {
+          gradientCount++;
+        }
+      }
+      lastGray = gray;
+    }
+
+    // Use dithering if many colors or gradual transitions detected
+    const hasManyfColors = uniqueColors.size > 50;
+    const hasGradients = gradientCount > sampleSize * 0.1;
+
+    return hasManyfColors || hasGradients;
+  }
+
+  /**
+   * Convert pixel data to raster bytes using simple threshold
+   * Best for text, barcodes, and simple graphics
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
    * @param {number} height - Image height
    * @param {number} outputWidthBytes - Output width in bytes (for centering)
    * @param {boolean} center - Whether to center output in outputWidthBytes
    */
-  _pixelsToRaster(pixels, width, height, outputWidthBytes, center = false) {
+  _pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center = false) {
     const canvasBytesPerRow = Math.ceil(width / 8);
     const output = new Uint8Array(outputWidthBytes * height);
     const offset = center ? Math.floor((outputWidthBytes - canvasBytesPerRow) / 2) : 0;
@@ -1551,7 +1677,8 @@ export class CanvasRenderer {
           const r = pixels[idx];
           const g = pixels[idx + 1];
           const b = pixels[idx + 2];
-          const brightness = (r + g + b) / 3;
+          // Use perceptual grayscale even for threshold
+          const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
 
           if (brightness < 128) {
             byte |= (1 << (7 - bit));
@@ -1569,13 +1696,123 @@ export class CanvasRenderer {
   }
 
   /**
+   * Convert pixel data to raster bytes using Floyd-Steinberg dithering
+   * Best for images with gradients, photos, or many colors
+   * @param {Uint8ClampedArray} pixels - RGBA pixel data
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @param {number} outputWidthBytes - Output width in bytes (for centering)
+   * @param {boolean} center - Whether to center output in outputWidthBytes
+   */
+  _pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center = false) {
+    // Convert to grayscale with gamma correction
+    const grayscale = this._rgbaToGrayscale(pixels, width, height, 1.3);
+
+    // Apply Floyd-Steinberg dithering
+    const dithered = this._floydSteinbergDither(grayscale, width, height);
+
+    // Pack into bytes
+    const canvasBytesPerRow = Math.ceil(width / 8);
+    const output = new Uint8Array(outputWidthBytes * height);
+    const offset = center ? Math.floor((outputWidthBytes - canvasBytesPerRow) / 2) : 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let byteX = 0; byteX < canvasBytesPerRow; byteX++) {
+        let byte = 0;
+
+        for (let bit = 0; bit < 8; bit++) {
+          const x = byteX * 8 + bit;
+          if (x >= width) continue;
+
+          if (dithered[y * width + x] === 1) {
+            byte |= (1 << (7 - bit));
+          }
+        }
+
+        const outputPos = y * outputWidthBytes + offset + byteX;
+        if (outputPos >= 0 && outputPos < output.length) {
+          output[outputPos] = byte;
+        }
+      }
+    }
+
+    return output;
+  }
+
+  /**
+   * Convert pixel data to raster bytes (auto-selects best method)
+   * @param {Uint8ClampedArray} pixels - RGBA pixel data
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @param {number} outputWidthBytes - Output width in bytes (for centering)
+   * @param {boolean} center - Whether to center output in outputWidthBytes
+   */
+  _pixelsToRaster(pixels, width, height, outputWidthBytes, center = false) {
+    // Auto-detect whether to use dithering based on image content
+    const useDithering = this._shouldUseDithering(pixels, width, height);
+
+    if (useDithering) {
+      console.log('Using Floyd-Steinberg dithering for better image quality');
+      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center);
+    } else {
+      console.log('Using threshold method for crisp text/graphics');
+      return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center);
+    }
+  }
+
+  /**
    * Get canvas image data as raster format for printing
    * Renders to a temporary off-screen canvas at base resolution (zoom=1)
    * @param {Array} elements - Elements to render
    * @param {number} printerWidthBytes - Printer width in bytes (48 for M110/M200, 72 for M260)
+   * @param {number} printerDpi - Printer DPI (203 for most, 300 for M02 Pro)
    */
-  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES) {
-    const { pixels, width, height } = this._renderToPixels(elements);
+  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203) {
+    let { pixels, width, height } = this._renderToPixels(elements);
+
+    // Scale up for higher DPI printers (e.g., M02 Pro at 300 DPI)
+    if (printerDpi > 203) {
+      const scale = printerDpi / 203;
+      const scaledWidth = Math.round(width * scale);
+      const scaledHeight = Math.round(height * scale);
+
+      // Create scaled canvas
+      const scaledCanvas = document.createElement('canvas');
+      scaledCanvas.width = scaledWidth;
+      scaledCanvas.height = scaledHeight;
+      const scaledCtx = scaledCanvas.getContext('2d');
+
+      // Create source canvas from pixels
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = width;
+      srcCanvas.height = height;
+      const srcCtx = srcCanvas.getContext('2d');
+      const srcImageData = srcCtx.createImageData(width, height);
+      srcImageData.data.set(pixels);
+      srcCtx.putImageData(srcImageData, 0, 0);
+
+      // Scale up with smooth interpolation
+      scaledCtx.imageSmoothingEnabled = true;
+      scaledCtx.imageSmoothingQuality = 'high';
+      scaledCtx.drawImage(srcCanvas, 0, 0, scaledWidth, scaledHeight);
+
+      // Get scaled pixels
+      const scaledImageData = scaledCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+      pixels = scaledImageData.data;
+      width = scaledWidth;
+      height = scaledHeight;
+
+      // For high-DPI printers, use the specified printer width but left-align
+      // (no centering) to avoid white gaps at the start edge
+      const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, false);
+
+      return {
+        data,
+        widthBytes: printerWidthBytes,
+        heightLines: height,
+      };
+    }
+
     const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, true);
 
     return {

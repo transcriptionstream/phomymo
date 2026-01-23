@@ -407,8 +407,8 @@
   <main class="flex-1 flex overflow-hidden relative">
     <!-- Canvas Area -->
     <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto relative">
-      <div id="canvas-container" class="rounded-lg shadow-inner transition-transform origin-center">
-        <canvas id="preview-canvas" class="cursor-crosshair rounded-lg" style="touch-action: none; -webkit-user-select: none; user-select: none;"></canvas>
+      <div id="canvas-container" class="rounded-lg shadow-inner transition-transform origin-center" style="touch-action: none;">
+        <canvas id="preview-canvas" class="cursor-crosshair rounded-lg" style="touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;"></canvas>
       </div>
 
       <!-- Inline Text Editor Overlay -->
@@ -958,7 +958,8 @@
           <select id="printer-model" class="prop-input">
             <option value="auto">Auto-detect</option>
             <optgroup label="M02 Series">
-              <option value="m02">M02 / M02S / M02X / M02 Pro (48mm)</option>
+              <option value="m02">M02 / M02S / M02X (48mm)</option>
+              <option value="m02-pro">M02 Pro (53mm, 300 DPI)</option>
             </optgroup>
             <optgroup label="M03 Series">
               <option value="m03">M03 / T02 (53mm)</option>

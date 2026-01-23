@@ -129,18 +129,174 @@
     .prop-input {
       @apply w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent;
     }
+    /* Mobile-specific input styling - more obvious editable appearance */
+    @media (max-width: 767px) {
+      .prop-input {
+        @apply border-gray-300 bg-gray-50 py-2.5 text-base;
+        -webkit-appearance: none;
+      }
+      .prop-input:focus {
+        @apply bg-white;
+      }
+      select.prop-input {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+        background-position: right 0.5rem center;
+        background-repeat: no-repeat;
+        background-size: 1.5em 1.5em;
+        padding-right: 2.5rem;
+      }
+      textarea.prop-input {
+        min-height: 60px;
+      }
+    }
     .prop-row {
       @apply flex gap-2;
     }
     .prop-group {
       @apply mb-4;
     }
+
+    /* Mobile UI styles */
+    @media (max-width: 767px) {
+      .desktop-only { display: none !important; }
+      .mobile-only { display: flex !important; }
+      .mobile-only.mobile-hidden { display: none !important; }
+      /* Add space for fixed header and toolbar */
+      body { padding-top: 52px; padding-bottom: 70px; }
+      /* Move zoom controls to top on mobile */
+      #zoom-controls {
+        bottom: auto !important;
+        top: 60px;
+      }
+    }
+    @media (min-width: 768px) {
+      .mobile-only { display: none !important; }
+    }
+
+    /* Mobile fixed bottom toolbar */
+    .mobile-toolbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-top: 1px solid #e5e7eb;
+      z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    .mobile-toolbar-row {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 8px 4px;
+    }
+
+    .mobile-tool-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 9px;
+      color: #6b7280;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      min-width: 52px;
+    }
+
+    .mobile-tool-btn:active {
+      background: #f3f4f6;
+    }
+
+    .mobile-tool-btn svg {
+      width: 22px;
+      height: 22px;
+      margin-bottom: 2px;
+    }
+
+    .mobile-tool-btn.danger {
+      color: #ef4444;
+    }
+
+    .mobile-divider {
+      width: 1px;
+      height: 32px;
+      background: #e5e7eb;
+    }
+
+    /* Mobile properties panel */
+    .mobile-props-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+      z-index: 55;
+      max-height: 60vh;
+      transform: translateY(100%);
+      transition: transform 0.3s ease-out;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    .mobile-props-panel.props-open {
+      transform: translateY(0);
+    }
+
+    .mobile-props-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .mobile-props-content {
+      padding: 16px;
+      overflow-y: auto;
+      max-height: calc(60vh - 100px);
+    }
+
+    /* Mobile menu */
+    #mobile-menu-panel {
+      transition: transform 0.3s ease-out;
+    }
+    #mobile-menu-panel.menu-open {
+      transform: translateX(0) !important;
+    }
   </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
 
-  <!-- Top Bar -->
-  <header class="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex-shrink-0">
+  <!-- Mobile Top Bar -->
+  <header id="mobile-header" class="mobile-only fixed top-0 left-0 right-0 bg-white border-b border-gray-200 px-3 py-2 z-40">
+    <div class="flex items-center justify-between">
+      <!-- Hamburger Menu Button -->
+      <button id="mobile-menu-btn" class="p-2 -ml-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+        <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+
+      <!-- Label Name -->
+      <div class="flex-1 mx-3 text-center">
+        <span id="mobile-label-name" class="text-sm font-medium text-gray-900 truncate">Untitled Label</span>
+      </div>
+
+      <!-- Print Button -->
+      <button id="mobile-print-btn" class="p-2 bg-gray-900 text-white rounded-lg active:bg-gray-700">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Desktop Top Bar -->
+  <header class="desktop-only bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex-shrink-0">
     <div class="flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
         <div class="flex items-center gap-1 sm:gap-2">
@@ -220,8 +376,8 @@
     </div>
   </header>
 
-  <!-- Toolbar -->
-  <div class="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex-shrink-0">
+  <!-- Toolbar (Desktop only) -->
+  <div class="desktop-only bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex-shrink-0">
     <div class="flex items-center gap-1 sm:gap-2 flex-wrap">
       <!-- Add Elements -->
       <button id="add-text" class="toolbar-btn" title="Add Text">
@@ -361,8 +517,8 @@
     </div>
   </div>
 
-  <!-- Multi-Label Zone Toolbar (hidden by default) -->
-  <div id="zone-toolbar" class="hidden bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 px-2 sm:px-4 py-2 flex-shrink-0">
+  <!-- Multi-Label Zone Toolbar (hidden by default, desktop only) -->
+  <div id="zone-toolbar" class="hidden desktop-only bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 px-2 sm:px-4 py-2 flex-shrink-0">
     <div class="flex items-center gap-2 sm:gap-4 flex-wrap">
       <!-- Zone Info -->
       <div class="flex items-center gap-2">
@@ -414,8 +570,8 @@
       <!-- Inline Text Editor Overlay -->
       <textarea id="inline-text-editor" class="hidden fixed resize-none border-2 border-blue-400 rounded outline-none p-1" style="background: rgba(255,255,255,0.95); overflow: hidden; z-index: 100; box-sizing: border-box;"></textarea>
 
-      <!-- Zoom Controls - Centered bottom -->
-      <div class="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-2 sm:px-4 py-2 sm:py-3 z-40">
+      <!-- Zoom Controls - Centered bottom (moves to top on mobile) -->
+      <div id="zoom-controls" class="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-3 bg-white rounded-xl shadow-lg border border-gray-200 px-2 sm:px-4 py-2 sm:py-3 z-40">
         <button id="zoom-out" class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Zoom Out">
           <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"/></svg>
         </button>
@@ -429,8 +585,8 @@
         </button>
       </div>
 
-      <!-- Mobile Properties Toggle Button -->
-      <button id="props-toggle" class="md:hidden fixed bottom-20 right-4 z-50 p-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors" title="Properties">
+      <!-- Mobile Properties Toggle Button (hidden - replaced by bottom sheet) -->
+      <button id="props-toggle" class="hidden fixed bottom-20 right-4 z-50 p-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors" title="Properties">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
       </button>
     </div>
@@ -1470,17 +1626,217 @@
     </div>
   </div>
 
-  <!-- Eruda mobile console (debug only) -->
-  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-  <script>
-    eruda.init();
-    eruda.position({x: window.innerWidth - 50, y: window.innerHeight - 50});
-  </script>
+  <!-- Mobile Menu Overlay -->
+  <div id="mobile-menu-overlay" class="mobile-only mobile-hidden fixed inset-0 z-[60]">
+    <!-- Backdrop -->
+    <div id="mobile-menu-backdrop" class="absolute inset-0 bg-black/50"></div>
+
+    <!-- Slide-out Menu -->
+    <aside id="mobile-menu-panel" class="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl transform -translate-x-full">
+      <div class="p-4 border-b border-gray-200">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900">Phomymo</h2>
+          <button id="mobile-menu-close" class="p-2 text-gray-400 hover:text-gray-600 active:bg-gray-100 rounded-lg">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="p-4 overflow-y-auto" style="max-height: calc(100vh - 80px);">
+        <!-- Label Settings -->
+        <div class="mb-6">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label Size</label>
+          <select id="mobile-label-size" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+            <option value="12x40">12x40mm</option>
+            <option value="15x30">15x30mm</option>
+            <option value="20x30">20x30mm</option>
+            <option value="25x50">25x50mm</option>
+            <option value="30x20">30x20mm</option>
+            <option value="30x40">30x40mm</option>
+            <option value="40x30" selected>40x30mm</option>
+            <option value="40x60">40x60mm</option>
+            <option value="50x25">50x25mm</option>
+            <option value="50x30">50x30mm</option>
+            <option value="50x80">50x80mm</option>
+            <option value="60x40">60x40mm</option>
+            <option disabled>── Round Labels ──</option>
+            <option value="20mm Round">20mm Round</option>
+            <option value="30mm Round">30mm Round</option>
+            <option value="40mm Round">40mm Round</option>
+            <option value="50mm Round">50mm Round</option>
+          </select>
+        </div>
+
+        <!-- Connection -->
+        <div class="mb-6">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Connection</label>
+          <div class="mt-2 flex gap-2">
+            <button id="mobile-connect-btn" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm active:bg-gray-100">
+              Connect
+            </button>
+            <select id="mobile-conn-type" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+              <option value="ble">BT</option>
+              <option value="usb">USB</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="space-y-1">
+          <button id="mobile-save-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+            </svg>
+            Save Design
+          </button>
+          <button id="mobile-load-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            Load Design
+          </button>
+
+          <hr class="my-3 border-gray-200">
+
+          <button id="mobile-undo-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3 disabled:opacity-50" disabled>
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+            </svg>
+            Undo
+          </button>
+          <button id="mobile-redo-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3 disabled:opacity-50" disabled>
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/>
+            </svg>
+            Redo
+          </button>
+
+          <hr class="my-3 border-gray-200">
+
+          <button id="mobile-print-settings-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Print Settings
+          </button>
+          <button id="mobile-info-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            About
+          </button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Mobile Fixed Bottom Toolbar -->
+  <div id="mobile-toolbar" class="mobile-only mobile-toolbar flex-col">
+    <!-- Selection Actions Row (shown when element selected) -->
+    <div id="mobile-selection-row" class="hidden mobile-toolbar-row border-b border-gray-100">
+      <button id="mobile-edit-btn" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+        </svg>
+        <span>Edit</span>
+      </button>
+      <button id="mobile-duplicate-btn" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        <span>Copy</span>
+      </button>
+      <button id="mobile-raise-btn" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+        </svg>
+        <span>Forward</span>
+      </button>
+      <button id="mobile-lower-btn" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+        <span>Back</span>
+      </button>
+      <button id="mobile-delete-btn" class="mobile-tool-btn danger">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+        <span>Delete</span>
+      </button>
+    </div>
+
+    <!-- Main Add Tools Row -->
+    <div class="mobile-toolbar-row">
+      <button id="mobile-add-text" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16"/>
+        </svg>
+        <span>Text</span>
+      </button>
+      <button id="mobile-add-image" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <span>Image</span>
+      </button>
+      <div class="mobile-divider"></div>
+      <button id="mobile-add-rect" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="4" y="6" width="16" height="12" rx="1" stroke-width="2"/>
+        </svg>
+        <span>Rect</span>
+      </button>
+      <button id="mobile-add-ellipse" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <ellipse cx="12" cy="12" rx="8" ry="6" stroke-width="2"/>
+        </svg>
+        <span>Circle</span>
+      </button>
+      <button id="mobile-add-line" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <line x1="4" y1="12" x2="20" y2="12" stroke-width="2"/>
+        </svg>
+        <span>Line</span>
+      </button>
+      <div class="mobile-divider"></div>
+      <button id="mobile-add-barcode" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-width="2" d="M4 4h2v16H4V4zm4 0h1v16H8V4zm3 0h2v16h-2V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4z"/>
+        </svg>
+        <span>Barcode</span>
+      </button>
+      <button id="mobile-add-qr" class="mobile-tool-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h2M4 8h2m10 0h2m2-4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/>
+        </svg>
+        <span>QR</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile Properties Panel (slides up when editing) -->
+  <div id="mobile-props-panel" class="mobile-only mobile-props-panel flex-col">
+    <div class="mobile-props-header">
+      <span id="mobile-props-title" class="font-medium text-gray-900">Properties</span>
+      <button id="mobile-props-close" class="p-1 -mr-1 rounded hover:bg-gray-100">
+        <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div id="mobile-props-content" class="mobile-props-content">
+      <!-- Dynamic content based on selected element type -->
+    </div>
+  </div>
 
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-  <script type="module" src="app.js?v=57"></script>
+  <script type="module" src="app.js?v=72"></script>
   <script>
     // Show body once styles are ready
     requestAnimationFrame(() => {

@@ -195,6 +195,21 @@ const state = {
     lastTapTime: 0,             // Timestamp of last tap (for double-tap detection)
     lastTapPos: { x: 0, y: 0 }, // Position of last tap
     usingTouch: false,          // Flag to prevent pointer/touch event conflicts
+    // Two-finger gesture state
+    isPanning: false,           // Whether two-finger pan is active
+    panStartMidpoint: null,     // Starting midpoint of two fingers
+    panStartOffset: { x: 0, y: 0 }, // Pan offset when gesture started
+    gestureMode: null,          // null, 'zoom', or 'pan'
+    lastDistance: 0,            // Last distance between fingers
+    lastMidpoint: null,         // Last midpoint position
+  },
+  // Canvas pan offset (for viewing when zoomed in)
+  panOffset: { x: 0, y: 0 },
+  // Mobile UI state
+  mobile: {
+    isMobile: false,            // Whether viewport is mobile (<768px)
+    menuOpen: false,            // Whether hamburger menu is open
+    propsOpen: false,           // Whether properties panel is open
   },
 };
 
@@ -671,6 +686,7 @@ function zoomOut() {
 function zoomReset() {
   state.zoom = 1;
   updateZoom();
+  resetPanOffset();
 }
 
 /**
@@ -1795,6 +1811,9 @@ function updatePropertiesPanel() {
       });
       break;
   }
+
+  // Update mobile UI when selection changes
+  updateMobileUI();
 }
 
 /**
@@ -2712,9 +2731,14 @@ function getPointerDistance(pointers) {
 function getPointerMidpoint(pointers) {
   const pts = Array.from(pointers.values());
   if (pts.length < 2) return { x: 0, y: 0 };
+  // Use clientX/clientY for screen-space position (works for both pointer and touch)
+  const x0 = pts[0].clientX ?? pts[0].x;
+  const y0 = pts[0].clientY ?? pts[0].y;
+  const x1 = pts[1].clientX ?? pts[1].x;
+  const y1 = pts[1].clientY ?? pts[1].y;
   return {
-    x: (pts[0].x + pts[1].x) / 2,
-    y: (pts[0].y + pts[1].y) / 2,
+    x: (x0 + x1) / 2,
+    y: (y0 + y1) / 2,
   };
 }
 
@@ -2788,45 +2812,110 @@ function checkDoubleTap(pos) {
 }
 
 /**
- * Start pinch gesture
+ * Start two-finger gesture
  */
 function startPinchGesture() {
   state.pointer.isPinching = true;
+  state.pointer.isPanning = true;
+  state.pointer.gestureMode = null;  // Will be set on first significant movement
   state.pointer.pinchStartDistance = getPointerDistance(state.pointer.pointers);
   state.pointer.pinchStartZoom = state.zoom;
+  state.pointer.lastDistance = state.pointer.pinchStartDistance;
+  state.pointer.panStartMidpoint = getPointerMidpoint(state.pointer.pointers);
+  state.pointer.lastMidpoint = { ...state.pointer.panStartMidpoint };
+  state.pointer.panStartOffset = { ...state.panOffset };
 }
 
 /**
- * Handle pinch move - update zoom based on finger distance
+ * Handle two-finger move - zoom OR pan based on movement type
  */
 function handlePinchMove() {
   const currentDistance = getPointerDistance(state.pointer.pointers);
-  if (state.pointer.pinchStartDistance < TOUCH.PINCH_MIN_DISTANCE) {
-    return;
+  const currentMidpoint = getPointerMidpoint(state.pointer.pointers);
+
+  // Calculate how much distance changed vs how much midpoint moved
+  const distanceChange = Math.abs(currentDistance - state.pointer.lastDistance);
+  const midpointDelta = Math.hypot(
+    currentMidpoint.x - state.pointer.lastMidpoint.x,
+    currentMidpoint.y - state.pointer.lastMidpoint.y
+  );
+
+  // Determine gesture type if not yet locked
+  if (!state.pointer.gestureMode) {
+    // Need some minimum movement to decide
+    if (distanceChange > 5 || midpointDelta > 5) {
+      // If distance is changing more than midpoint is moving, it's a zoom
+      // If midpoint is moving more than distance is changing, it's a pan
+      if (distanceChange > midpointDelta * 1.5) {
+        state.pointer.gestureMode = 'zoom';
+      } else if (midpointDelta > distanceChange * 1.5) {
+        state.pointer.gestureMode = 'pan';
+      }
+    }
   }
 
-  const scale = currentDistance / state.pointer.pinchStartDistance;
-  let newZoom = state.pointer.pinchStartZoom * scale;
+  // Handle zoom (pinch)
+  if (state.pointer.gestureMode === 'zoom' || !state.pointer.gestureMode) {
+    if (state.pointer.gestureMode === 'zoom' && state.pointer.pinchStartDistance >= 10) {
+      const scale = currentDistance / state.pointer.pinchStartDistance;
+      let newZoom = state.pointer.pinchStartZoom * scale;
 
-  // Clamp zoom to valid range
-  newZoom = Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, newZoom));
+      newZoom = Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, newZoom));
+      newZoom = Math.round(newZoom * 20) / 20;
 
-  // Round to nearest 0.05 for smoother feel
-  newZoom = Math.round(newZoom * 20) / 20;
+      if (newZoom !== state.zoom) {
+        state.zoom = newZoom;
+        updateZoom();
+      }
+    }
+  }
 
-  if (newZoom !== state.zoom) {
-    state.zoom = newZoom;
-    updateZoom();
+  // Handle pan (two-finger drag)
+  if (state.pointer.gestureMode === 'pan') {
+    const deltaX = currentMidpoint.x - state.pointer.panStartMidpoint.x;
+    const deltaY = currentMidpoint.y - state.pointer.panStartMidpoint.y;
+
+    state.panOffset.x = state.pointer.panStartOffset.x + deltaX;
+    state.panOffset.y = state.pointer.panStartOffset.y + deltaY;
+
+    applyPanOffset();
+  }
+
+  // Update last values for next frame
+  state.pointer.lastDistance = currentDistance;
+  state.pointer.lastMidpoint = { ...currentMidpoint };
+}
+
+/**
+ * End two-finger gesture
+ */
+function endPinchGesture() {
+  state.pointer.isPinching = false;
+  state.pointer.isPanning = false;
+  state.pointer.gestureMode = null;
+  state.pointer.pinchStartDistance = 0;
+  state.pointer.pinchStartZoom = 1;
+  state.pointer.panStartMidpoint = null;
+  state.pointer.lastDistance = 0;
+  state.pointer.lastMidpoint = null;
+}
+
+/**
+ * Apply pan offset to canvas container via CSS transform
+ */
+function applyPanOffset() {
+  const container = $('#canvas-container');
+  if (container) {
+    container.style.transform = `translate(${state.panOffset.x}px, ${state.panOffset.y}px)`;
   }
 }
 
 /**
- * End pinch gesture
+ * Reset pan offset to center
  */
-function endPinchGesture() {
-  state.pointer.isPinching = false;
-  state.pointer.pinchStartDistance = 0;
-  state.pointer.pinchStartZoom = 1;
+function resetPanOffset() {
+  state.panOffset = { x: 0, y: 0 };
+  applyPanOffset();
 }
 
 /**
@@ -3631,19 +3720,35 @@ function handleCanvasTouchEnd(e) {
     endPinchGesture();
   }
 
-  // Check for double-tap
-  if (!state.isDragging && e.touches.length === 0) {
+  // Standard drag end - but first check if user actually moved or just tapped
+  const wasDragging = state.isDragging;
+  const actuallyMoved = wasDragging && state.dragStartX !== undefined &&
+    (Math.abs(pos.x - state.dragStartX) > 5 || Math.abs(pos.y - state.dragStartY) > 5);
+
+  // Check for double-tap (only if didn't actually drag/move)
+  if (!actuallyMoved && e.touches.length === 0) {
     if (checkDoubleTap(pos)) {
       const element = getElementAtCanvasPoint(pos.x, pos.y);
-      if (element && element.type === 'text') {
-        startInlineEdit(element.id);
-        return;
+      if (element) {
+        // On mobile, open properties panel for any element type
+        if (state.mobile.isMobile) {
+          selectElement(element.id);
+          openMobileProps();
+          // Reset drag state
+          state.isDragging = false;
+          state.dragType = null;
+          state.dragHandle = null;
+          state.dragStartElements = null;
+          return;
+        }
+        // On desktop, only inline edit for text
+        if (element.type === 'text') {
+          startInlineEdit(element.id);
+          return;
+        }
       }
     }
   }
-
-  // Standard drag end
-  const wasDragging = state.isDragging;
   state.isDragging = false;
   state.dragType = null;
   state.dragHandle = null;
@@ -4834,6 +4939,659 @@ function checkCompatibility() {
   return true; // Always return true to allow app to initialize
 }
 
+// =============================================================================
+// MOBILE UI FUNCTIONS
+// =============================================================================
+
+/**
+ * Check if viewport is mobile (< 768px)
+ */
+function isMobileViewport() {
+  return window.matchMedia('(max-width: 767px)').matches;
+}
+
+/**
+ * Handle viewport changes (resize, orientation)
+ */
+function handleViewportChange() {
+  const wasMobile = state.mobile.isMobile;
+  state.mobile.isMobile = isMobileViewport();
+
+  if (wasMobile !== state.mobile.isMobile) {
+    // Close mobile props panel when switching modes
+    closeMobileProps();
+    updateMobileUI();
+  }
+}
+
+/**
+ * Initialize mobile UI event handlers
+ */
+function initMobileUI() {
+  // Menu toggle
+  $('#mobile-menu-btn')?.addEventListener('click', openMobileMenu);
+  $('#mobile-menu-close')?.addEventListener('click', closeMobileMenu);
+  $('#mobile-menu-backdrop')?.addEventListener('click', closeMobileMenu);
+
+  // Mobile menu actions
+  $('#mobile-save-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    showSaveDialog();
+  });
+  $('#mobile-load-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    showLoadDialog();
+  });
+  $('#mobile-undo-btn')?.addEventListener('click', () => undo());
+  $('#mobile-redo-btn')?.addEventListener('click', () => redo());
+  $('#mobile-print-settings-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    $('#print-settings-dialog')?.classList.remove('hidden');
+    $('#print-settings-dialog')?.classList.add('flex');
+  });
+  $('#mobile-info-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    showInfoDialog();
+  });
+  $('#mobile-print-btn')?.addEventListener('click', handlePrint);
+
+  // Sync mobile label size selector with desktop
+  const mobileLabelSize = $('#mobile-label-size');
+  const desktopLabelSize = $('#label-size');
+  if (mobileLabelSize && desktopLabelSize) {
+    mobileLabelSize.value = desktopLabelSize.value;
+    mobileLabelSize.addEventListener('change', (e) => {
+      desktopLabelSize.value = e.target.value;
+      handleLabelSizeChange({ target: desktopLabelSize });
+      closeMobileMenu();
+    });
+  }
+
+  // Sync mobile connection type
+  const mobileConnType = $('#mobile-conn-type');
+  const desktopConnType = $('#conn-type');
+  if (mobileConnType && desktopConnType) {
+    mobileConnType.value = desktopConnType.value;
+    mobileConnType.addEventListener('change', (e) => {
+      desktopConnType.value = e.target.value;
+      state.connectionType = e.target.value;
+    });
+  }
+
+  // Mobile connect button
+  $('#mobile-connect-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    handleConnect();
+  });
+
+  // Fixed toolbar - add element buttons
+  $('#mobile-add-text')?.addEventListener('click', () => addTextElement());
+  $('#mobile-add-image')?.addEventListener('click', () => $('#image-file-input').click());
+  $('#mobile-add-rect')?.addEventListener('click', () => addShapeElement('rectangle'));
+  $('#mobile-add-ellipse')?.addEventListener('click', () => addShapeElement('ellipse'));
+  $('#mobile-add-line')?.addEventListener('click', () => addShapeElement('line'));
+  $('#mobile-add-barcode')?.addEventListener('click', () => addBarcodeElement());
+  $('#mobile-add-qr')?.addEventListener('click', () => addQRElement());
+
+  // Edit button - open properties panel
+  $('#mobile-edit-btn')?.addEventListener('click', openMobileProps);
+  $('#mobile-props-close')?.addEventListener('click', closeMobileProps);
+
+  // Selection actions
+  $('#mobile-duplicate-btn')?.addEventListener('click', () => {
+    const selected = getSelected();
+    if (selected) {
+      saveHistory();
+      state.elements = duplicateElement(state.elements, selected.id);
+      autoCloneIfEnabled();
+      selectElement(state.elements[state.elements.length - 1].id);
+      setStatus('Element duplicated');
+    }
+  });
+
+  $('#mobile-delete-btn')?.addEventListener('click', () => {
+    if (state.selectedIds.length > 0) {
+      saveHistory();
+      state.selectedIds.forEach(id => {
+        state.renderer.clearCache(id);
+        state.elements = deleteElement(state.elements, id);
+      });
+      autoCloneIfEnabled();
+      deselect();
+      setStatus('Element deleted');
+    }
+  });
+
+  $('#mobile-raise-btn')?.addEventListener('click', () => {
+    const selected = getSelected();
+    if (selected) {
+      saveHistory();
+      state.elements = bringToFront(state.elements, selected.id);
+      render();
+      setStatus('Element raised');
+    }
+  });
+
+  $('#mobile-lower-btn')?.addEventListener('click', () => {
+    const selected = getSelected();
+    if (selected) {
+      saveHistory();
+      state.elements = sendToBack(state.elements, selected.id);
+      render();
+      setStatus('Element lowered');
+    }
+  });
+
+  // Viewport change listener
+  window.matchMedia('(max-width: 767px)').addEventListener('change', handleViewportChange);
+  handleViewportChange(); // Initial check
+}
+
+/**
+ * Open mobile menu
+ */
+function openMobileMenu() {
+  const overlay = $('#mobile-menu-overlay');
+  const panel = $('#mobile-menu-panel');
+  if (!overlay || !panel) return;
+
+  overlay.classList.remove('mobile-hidden');
+  requestAnimationFrame(() => {
+    panel.classList.add('menu-open');
+  });
+  state.mobile.menuOpen = true;
+}
+
+/**
+ * Close mobile menu
+ */
+function closeMobileMenu() {
+  const overlay = $('#mobile-menu-overlay');
+  const panel = $('#mobile-menu-panel');
+  if (!overlay || !panel) return;
+
+  panel.classList.remove('menu-open');
+  setTimeout(() => overlay.classList.add('mobile-hidden'), 300);
+  state.mobile.menuOpen = false;
+}
+
+/**
+ * Open mobile properties panel
+ */
+function openMobileProps() {
+  const panel = $('#mobile-props-panel');
+  if (!panel) return;
+
+  populateMobileProps();
+  panel.classList.add('props-open');
+  state.mobile.propsOpen = true;
+}
+
+/**
+ * Close mobile properties panel
+ */
+function closeMobileProps() {
+  const panel = $('#mobile-props-panel');
+  if (!panel) return;
+
+  panel.classList.remove('props-open');
+  state.mobile.propsOpen = false;
+}
+
+/**
+ * Populate mobile properties panel based on selected element
+ */
+function populateMobileProps() {
+  const content = $('#mobile-props-content');
+  const title = $('#mobile-props-title');
+  if (!content || !title) return;
+
+  const selected = getSelected();
+  if (!selected) {
+    content.innerHTML = '<p class="text-gray-500 text-center py-4">No element selected</p>';
+    title.textContent = 'Properties';
+    return;
+  }
+
+  // Set title based on element type
+  const typeNames = {
+    text: 'Text',
+    image: 'Image',
+    shape: selected.shapeType ? selected.shapeType.charAt(0).toUpperCase() + selected.shapeType.slice(1) : 'Shape',
+    barcode: 'Barcode',
+    qr: 'QR Code',
+  };
+  title.textContent = typeNames[selected.type] || 'Properties';
+
+  // Generate properties form
+  let html = '<div class="space-y-4">';
+
+  // Type-specific properties FIRST (content is most important on mobile)
+  if (selected.type === 'text') {
+    const fontFamily = selected.fontFamily || 'Inter, sans-serif';
+    const vAlign = selected.verticalAlign || 'middle';
+    const textColor = selected.color || 'black';
+    const bgColor = selected.background || 'transparent';
+    html += `
+      <div class="prop-group">
+        <div class="prop-label">Text Content</div>
+        <textarea id="mobile-prop-text" class="prop-input" rows="2">${selected.text || ''}</textarea>
+      </div>
+      <div class="prop-group">
+        <div class="prop-row">
+          <div class="flex-1">
+            <div class="prop-label">Font</div>
+            <select id="mobile-prop-fontFamily" class="prop-input">
+              <optgroup label="Sans-Serif">
+                <option value="Inter, sans-serif" ${fontFamily === 'Inter, sans-serif' ? 'selected' : ''}>Inter</option>
+                <option value="Roboto, sans-serif" ${fontFamily === 'Roboto, sans-serif' ? 'selected' : ''}>Roboto</option>
+                <option value="Open Sans, sans-serif" ${fontFamily === 'Open Sans, sans-serif' ? 'selected' : ''}>Open Sans</option>
+                <option value="Arial, sans-serif" ${fontFamily === 'Arial, sans-serif' ? 'selected' : ''}>Arial</option>
+              </optgroup>
+              <optgroup label="Serif">
+                <option value="Georgia, serif" ${fontFamily === 'Georgia, serif' ? 'selected' : ''}>Georgia</option>
+                <option value="Times New Roman, serif" ${fontFamily === 'Times New Roman, serif' ? 'selected' : ''}>Times New Roman</option>
+              </optgroup>
+              <optgroup label="Monospace">
+                <option value="Roboto Mono, monospace" ${fontFamily === 'Roboto Mono, monospace' ? 'selected' : ''}>Roboto Mono</option>
+                <option value="Courier New, monospace" ${fontFamily === 'Courier New, monospace' ? 'selected' : ''}>Courier New</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="w-20">
+            <div class="prop-label">Size</div>
+            <input type="number" id="mobile-prop-fontSize" class="prop-input" value="${selected.fontSize || 24}" min="8" max="200">
+          </div>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Horizontal Align</div>
+        <div class="flex gap-2">
+          <button class="flex-1 py-2.5 border rounded ${selected.textAlign === 'left' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="left">Left</button>
+          <button class="flex-1 py-2.5 border rounded ${selected.textAlign === 'center' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="center">Center</button>
+          <button class="flex-1 py-2.5 border rounded ${selected.textAlign === 'right' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-align="right">Right</button>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Vertical Align</div>
+        <div class="flex gap-2">
+          <button class="flex-1 py-2.5 border rounded ${vAlign === 'top' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-valign="top">Top</button>
+          <button class="flex-1 py-2.5 border rounded ${vAlign === 'middle' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-valign="middle">Middle</button>
+          <button class="flex-1 py-2.5 border rounded ${vAlign === 'bottom' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-valign="bottom">Bottom</button>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Style</div>
+        <div class="flex gap-2">
+          <button id="mobile-prop-bold" class="flex-1 py-2.5 border rounded font-bold ${selected.fontWeight === 'bold' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}">B</button>
+          <button id="mobile-prop-italic" class="flex-1 py-2.5 border rounded italic ${selected.fontStyle === 'italic' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}">I</button>
+          <button id="mobile-prop-underline" class="flex-1 py-2.5 border rounded underline ${selected.textDecoration === 'underline' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}">U</button>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-row">
+          <div class="flex-1">
+            <div class="prop-label">Text Color</div>
+            <div class="flex gap-2">
+              <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${textColor === 'black' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-color="black">
+                <span class="w-4 h-4 bg-black rounded"></span> Black
+              </button>
+              <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${textColor === 'white' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-color="white">
+                <span class="w-4 h-4 bg-white border border-gray-300 rounded"></span> White
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Background</div>
+        <div class="flex gap-2">
+          <button class="flex-1 py-2.5 border rounded text-sm ${bgColor === 'transparent' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-bg="transparent">None</button>
+          <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${bgColor === 'black' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-bg="black">
+            <span class="w-4 h-4 bg-black rounded"></span>
+          </button>
+          <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${bgColor === 'white' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-bg="white">
+            <span class="w-4 h-4 bg-white border border-gray-300 rounded"></span>
+          </button>
+        </div>
+      </div>
+    `;
+  } else if (selected.type === 'barcode') {
+    html += `
+      <div class="prop-group">
+        <div class="prop-label">Barcode Value</div>
+        <input type="text" id="mobile-prop-value" class="prop-input" value="${selected.value || selected.barcodeData || ''}">
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Format</div>
+        <select id="mobile-prop-format" class="prop-input">
+          <option value="CODE128" ${(selected.format || selected.barcodeFormat) === 'CODE128' ? 'selected' : ''}>Code 128</option>
+          <option value="EAN13" ${(selected.format || selected.barcodeFormat) === 'EAN13' ? 'selected' : ''}>EAN-13</option>
+          <option value="UPC" ${(selected.format || selected.barcodeFormat) === 'UPC' ? 'selected' : ''}>UPC</option>
+          <option value="CODE39" ${(selected.format || selected.barcodeFormat) === 'CODE39' ? 'selected' : ''}>Code 39</option>
+        </select>
+      </div>
+      <div class="prop-group">
+        <label class="flex items-center gap-2 py-1">
+          <input type="checkbox" id="mobile-prop-showText" class="w-5 h-5" ${selected.showText !== false ? 'checked' : ''}>
+          <span class="text-sm">Show text below barcode</span>
+        </label>
+      </div>
+    `;
+  } else if (selected.type === 'qr') {
+    html += `
+      <div class="prop-group">
+        <div class="prop-label">QR Content</div>
+        <textarea id="mobile-prop-value" class="prop-input" rows="3">${selected.value || selected.qrData || ''}</textarea>
+      </div>
+    `;
+  } else if (selected.type === 'shape') {
+    const shapeType = selected.shapeType || 'rectangle';
+    let fillValue = selected.fill || 'black';
+    const strokeValue = selected.stroke || 'black';
+    html += `
+      <div class="prop-group">
+        <div class="prop-label">Shape Type</div>
+        <select id="mobile-prop-shapeType" class="prop-input">
+          <option value="rectangle" ${shapeType === 'rectangle' ? 'selected' : ''}>Rectangle</option>
+          <option value="ellipse" ${shapeType === 'ellipse' ? 'selected' : ''}>Ellipse</option>
+          <option value="triangle" ${shapeType === 'triangle' ? 'selected' : ''}>Triangle</option>
+          <option value="line" ${shapeType === 'line' ? 'selected' : ''}>Line</option>
+        </select>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Fill</div>
+        <select id="mobile-prop-fill" class="prop-input">
+          <option value="none" ${fillValue === 'none' ? 'selected' : ''}>None (Outline only)</option>
+          <option value="white" ${fillValue === 'white' ? 'selected' : ''}>White (0%)</option>
+          <option value="dither-25" ${fillValue === 'dither-25' ? 'selected' : ''}>25% Gray</option>
+          <option value="dither-50" ${fillValue === 'dither-50' ? 'selected' : ''}>50% Gray</option>
+          <option value="dither-75" ${fillValue === 'dither-75' ? 'selected' : ''}>75% Gray</option>
+          <option value="black" ${fillValue === 'black' ? 'selected' : ''}>Black (100%)</option>
+        </select>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Stroke</div>
+        <div class="flex gap-2">
+          <button class="flex-1 py-2.5 border rounded ${strokeValue === 'none' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-stroke="none">None</button>
+          <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${strokeValue === 'black' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-stroke="black">
+            <span class="w-4 h-4 bg-black rounded"></span> Black
+          </button>
+          <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${strokeValue === 'white' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-stroke="white">
+            <span class="w-4 h-4 bg-white border border-gray-300 rounded"></span> White
+          </button>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Stroke Width</div>
+        <input type="number" id="mobile-prop-strokeWidth" class="prop-input" value="${selected.strokeWidth || 2}" min="1" max="20">
+      </div>
+      ${shapeType === 'rectangle' ? `
+      <div class="prop-group">
+        <div class="prop-label">Corner Radius</div>
+        <input type="number" id="mobile-prop-cornerRadius" class="prop-input" value="${selected.cornerRadius || 0}" min="0" max="100">
+      </div>
+      ` : ''}
+    `;
+  } else if (selected.type === 'image') {
+    const scaleW = selected.naturalWidth ? (selected.width / selected.naturalWidth) * 100 : 100;
+    const scaleH = selected.naturalHeight ? (selected.height / selected.naturalHeight) * 100 : 100;
+    const currentScale = Math.round(Math.max(scaleW, scaleH));
+    html += `
+      <div class="prop-group">
+        <div class="prop-label">Scale: ${currentScale}%</div>
+        <input type="range" id="mobile-prop-scale" class="w-full" min="10" max="200" value="${currentScale}">
+      </div>
+      <div class="prop-group">
+        <label class="flex items-center gap-2 py-1">
+          <input type="checkbox" id="mobile-prop-lockRatio" class="w-5 h-5" ${selected.lockAspectRatio !== false ? 'checked' : ''}>
+          <span class="text-sm">Lock aspect ratio</span>
+        </label>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Dithering</div>
+        <select id="mobile-prop-dither" class="prop-input">
+          <option value="none" ${selected.dither === 'none' ? 'selected' : ''}>None</option>
+          <option value="threshold" ${selected.dither === 'threshold' ? 'selected' : ''}>Threshold</option>
+          <option value="floyd-steinberg" ${(selected.dither === 'floyd-steinberg' || !selected.dither) ? 'selected' : ''}>Floyd-Steinberg</option>
+        </select>
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Brightness</div>
+        <input type="range" id="mobile-prop-brightness" class="w-full" min="-100" max="100" value="${selected.brightness || 0}">
+      </div>
+      <div class="prop-group">
+        <div class="prop-label">Contrast</div>
+        <input type="range" id="mobile-prop-contrast" class="w-full" min="-100" max="100" value="${selected.contrast || 0}">
+      </div>
+    `;
+  }
+
+  // Position/Size/Rotation section (collapsible, at bottom)
+  html += `
+    <div class="border-t border-gray-200 pt-4 mt-4">
+      <div class="prop-label text-gray-400 mb-3">Position & Size</div>
+      <div class="prop-group">
+        <div class="prop-row">
+          <div class="flex-1">
+            <label class="text-xs text-gray-500">X</label>
+            <input type="number" id="mobile-prop-x" class="prop-input" value="${Math.round(selected.x)}">
+          </div>
+          <div class="flex-1">
+            <label class="text-xs text-gray-500">Y</label>
+            <input type="number" id="mobile-prop-y" class="prop-input" value="${Math.round(selected.y)}">
+          </div>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-row">
+          <div class="flex-1">
+            <label class="text-xs text-gray-500">Width</label>
+            <input type="number" id="mobile-prop-width" class="prop-input" value="${Math.round(selected.width)}">
+          </div>
+          <div class="flex-1">
+            <label class="text-xs text-gray-500">Height</label>
+            <input type="number" id="mobile-prop-height" class="prop-input" value="${Math.round(selected.height)}">
+          </div>
+        </div>
+      </div>
+      <div class="prop-group">
+        <div class="prop-row">
+          <div class="flex-1">
+            <label class="text-xs text-gray-500">Rotation</label>
+            <input type="number" id="mobile-prop-rotation" class="prop-input" value="${selected.rotation || 0}" min="0" max="360">
+          </div>
+          <div class="flex-1"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  html += '</div>';
+  content.innerHTML = html;
+
+  // Wire up event handlers
+  wireUpMobilePropHandlers(selected);
+}
+
+/**
+ * Wire up event handlers for mobile properties
+ */
+function wireUpMobilePropHandlers(element) {
+  // Full update - saves history and syncs desktop panel (use for discrete changes)
+  const updateProp = (prop, value) => {
+    saveHistory();
+    element[prop] = value;
+    state.renderer.clearCache(element.id);
+    autoCloneIfEnabled();
+    render();
+    updatePropertiesPanel();
+  };
+
+  // Live update - no history save, no panel sync (use for continuous input like typing)
+  const updatePropLive = (prop, value) => {
+    element[prop] = value;
+    state.renderer.clearCache(element.id);
+    autoCloneIfEnabled();
+    render();
+  };
+
+  // Save history on blur for live inputs (captures the final value)
+  const saveOnBlur = (prop) => (e) => {
+    saveHistory();
+    updatePropertiesPanel(); // Sync desktop panel on blur
+  };
+
+  // Position and size
+  $('#mobile-prop-x')?.addEventListener('change', (e) => updateProp('x', parseFloat(e.target.value)));
+  $('#mobile-prop-y')?.addEventListener('change', (e) => updateProp('y', parseFloat(e.target.value)));
+  $('#mobile-prop-width')?.addEventListener('change', (e) => updateProp('width', parseFloat(e.target.value)));
+  $('#mobile-prop-height')?.addEventListener('change', (e) => updateProp('height', parseFloat(e.target.value)));
+  $('#mobile-prop-rotation')?.addEventListener('change', (e) => updateProp('rotation', parseFloat(e.target.value)));
+
+  // Text properties - use live update for typing, save history on blur
+  const textInput = $('#mobile-prop-text');
+  if (textInput) {
+    textInput.addEventListener('input', (e) => updatePropLive('text', e.target.value));
+    textInput.addEventListener('blur', saveOnBlur('text'));
+  }
+  $('#mobile-prop-fontSize')?.addEventListener('change', (e) => updateProp('fontSize', parseInt(e.target.value)));
+  $('#mobile-prop-fontFamily')?.addEventListener('change', (e) => updateProp('fontFamily', e.target.value));
+
+  // Horizontal alignment
+  $$('[data-align]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      updateProp('textAlign', btn.dataset.align);
+      populateMobileProps();
+    });
+  });
+
+  // Vertical alignment
+  $$('[data-valign]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      updateProp('verticalAlign', btn.dataset.valign);
+      populateMobileProps();
+    });
+  });
+
+  // Text style buttons
+  $('#mobile-prop-bold')?.addEventListener('click', () => {
+    updateProp('fontWeight', element.fontWeight === 'bold' ? 'normal' : 'bold');
+    populateMobileProps();
+  });
+  $('#mobile-prop-italic')?.addEventListener('click', () => {
+    updateProp('fontStyle', element.fontStyle === 'italic' ? 'normal' : 'italic');
+    populateMobileProps();
+  });
+  $('#mobile-prop-underline')?.addEventListener('click', () => {
+    updateProp('textDecoration', element.textDecoration === 'underline' ? 'none' : 'underline');
+    populateMobileProps();
+  });
+
+  // Text color buttons
+  $$('[data-color]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      updateProp('color', btn.dataset.color);
+      populateMobileProps();
+    });
+  });
+
+  // Background buttons
+  $$('[data-bg]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      updateProp('background', btn.dataset.bg);
+      populateMobileProps();
+    });
+  });
+
+  // Barcode/QR properties - use live update for typing
+  const valueInput = $('#mobile-prop-value');
+  if (valueInput) {
+    // Update both value and legacy property names
+    valueInput.addEventListener('input', (e) => {
+      updatePropLive('value', e.target.value);
+      if (element.type === 'barcode') element.barcodeData = e.target.value;
+      if (element.type === 'qr') element.qrData = e.target.value;
+    });
+    valueInput.addEventListener('blur', saveOnBlur('value'));
+  }
+  $('#mobile-prop-format')?.addEventListener('change', (e) => {
+    updateProp('format', e.target.value);
+    element.barcodeFormat = e.target.value; // Also update legacy property
+  });
+  $('#mobile-prop-showText')?.addEventListener('change', (e) => updateProp('showText', e.target.checked));
+
+  // Shape properties
+  $('#mobile-prop-shapeType')?.addEventListener('change', (e) => {
+    updateProp('shapeType', e.target.value);
+    populateMobileProps(); // Refresh to show/hide corner radius
+  });
+  $('#mobile-prop-fill')?.addEventListener('change', (e) => updateProp('fill', e.target.value));
+  $('#mobile-prop-strokeWidth')?.addEventListener('change', (e) => updateProp('strokeWidth', parseInt(e.target.value)));
+  $('#mobile-prop-cornerRadius')?.addEventListener('change', (e) => updateProp('cornerRadius', parseInt(e.target.value)));
+
+  // Stroke buttons
+  $$('[data-stroke]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      updateProp('stroke', btn.dataset.stroke);
+      populateMobileProps();
+    });
+  });
+
+  // Image properties - use live update for sliders
+  const scaleInput = $('#mobile-prop-scale');
+  if (scaleInput && element.naturalWidth && element.naturalHeight) {
+    scaleInput.addEventListener('input', (e) => {
+      const scale = parseInt(e.target.value) / 100;
+      const lockRatio = element.lockAspectRatio !== false;
+      if (lockRatio) {
+        element.width = element.naturalWidth * scale;
+        element.height = element.naturalHeight * scale;
+      } else {
+        element.width = element.naturalWidth * scale;
+      }
+      state.renderer.clearCache(element.id);
+      autoCloneIfEnabled();
+      render();
+    });
+    scaleInput.addEventListener('change', saveOnBlur('width'));
+  }
+  $('#mobile-prop-lockRatio')?.addEventListener('change', (e) => updateProp('lockAspectRatio', e.target.checked));
+
+  const brightnessInput = $('#mobile-prop-brightness');
+  if (brightnessInput) {
+    brightnessInput.addEventListener('input', (e) => updatePropLive('brightness', parseInt(e.target.value)));
+    brightnessInput.addEventListener('change', saveOnBlur('brightness'));
+  }
+  const contrastInput = $('#mobile-prop-contrast');
+  if (contrastInput) {
+    contrastInput.addEventListener('input', (e) => updatePropLive('contrast', parseInt(e.target.value)));
+    contrastInput.addEventListener('change', saveOnBlur('contrast'));
+  }
+  $('#mobile-prop-dither')?.addEventListener('change', (e) => updateProp('dither', e.target.value));
+}
+
+/**
+ * Update mobile UI state (selection actions, properties sync)
+ */
+function updateMobileUI() {
+  if (!state.mobile.isMobile) return;
+
+  // Show/hide selection actions row
+  const selectionRow = $('#mobile-selection-row');
+  if (selectionRow) {
+    selectionRow.classList.toggle('hidden', state.selectedIds.length === 0);
+  }
+
+  // Sync undo/redo button states
+  const undoBtn = $('#mobile-undo-btn');
+  const redoBtn = $('#mobile-redo-btn');
+  if (undoBtn) undoBtn.disabled = state.historyIndex < 0;
+  if (redoBtn) redoBtn.disabled = state.historyIndex >= state.history.length - 1;
+
+  // Note: Don't auto-rebuild mobile props panel here - it causes keyboard dismissal during typing
+}
+
 /**
  * Initialize the application
  */
@@ -5682,6 +6440,9 @@ function init() {
   if (shouldShowInfoOnLoad()) {
     showInfoDialog();
   }
+
+  // Initialize mobile UI
+  initMobileUI();
 
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {

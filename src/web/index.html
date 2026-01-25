@@ -376,6 +376,11 @@
             <option value="custom">Custom...</option>
             <option value="multi-label">Multi-Label Roll...</option>
           </select>
+          <!-- P12 length adjust buttons (hidden by default, shown for P12 continuous tape) -->
+          <div id="label-length-adjust" class="hidden flex items-center gap-1 ml-1">
+            <button id="length-minus" class="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold" title="Decrease length by 5mm">−</button>
+            <button id="length-plus" class="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold" title="Increase length by 5mm">+</button>
+          </div>
           <!-- Custom size inputs (hidden by default) -->
           <div id="custom-size" class="hidden flex items-center gap-1">
             <input type="number" id="custom-width" class="w-12 sm:w-14 px-1.5 sm:px-2 py-1 sm:py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg" placeholder="W" min="10" max="100">
@@ -1708,27 +1713,34 @@
         <!-- Label Settings -->
         <div class="mb-6">
           <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label Size</label>
-          <select id="mobile-label-size" class="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            <option value="12x40">12x40mm</option>
-            <option value="15x30">15x30mm</option>
-            <option value="20x30">20x30mm</option>
-            <option value="25x50">25x50mm</option>
-            <option value="30x20">30x20mm</option>
-            <option value="30x40">30x40mm</option>
-            <option value="40x30" selected>40x30mm</option>
-            <option value="40x60">40x60mm</option>
-            <option value="50x25">50x25mm</option>
-            <option value="50x30">50x30mm</option>
-            <option value="50x80">50x80mm</option>
-            <option value="60x40">60x40mm</option>
-            <option disabled>── Round Labels ──</option>
-            <option value="20mm Round">20mm Round</option>
-            <option value="30mm Round">30mm Round</option>
-            <option value="40mm Round">40mm Round</option>
-            <option value="50mm Round">50mm Round</option>
-            <option value="custom">Custom...</option>
-            <option value="multi-label">Multi-Label Roll...</option>
-          </select>
+          <div class="flex items-center gap-2 mt-1">
+            <select id="mobile-label-size" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+              <option value="12x40">12x40mm</option>
+              <option value="15x30">15x30mm</option>
+              <option value="20x30">20x30mm</option>
+              <option value="25x50">25x50mm</option>
+              <option value="30x20">30x20mm</option>
+              <option value="30x40">30x40mm</option>
+              <option value="40x30" selected>40x30mm</option>
+              <option value="40x60">40x60mm</option>
+              <option value="50x25">50x25mm</option>
+              <option value="50x30">50x30mm</option>
+              <option value="50x80">50x80mm</option>
+              <option value="60x40">60x40mm</option>
+              <option disabled>── Round Labels ──</option>
+              <option value="20mm Round">20mm Round</option>
+              <option value="30mm Round">30mm Round</option>
+              <option value="40mm Round">40mm Round</option>
+              <option value="50mm Round">50mm Round</option>
+              <option value="custom">Custom...</option>
+              <option value="multi-label">Multi-Label Roll...</option>
+            </select>
+            <!-- P12 length adjust buttons (hidden by default, shown for P12 continuous tape) -->
+            <div id="mobile-label-length-adjust" class="hidden flex items-center gap-2">
+              <button id="mobile-length-minus" class="w-8 h-8 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-lg font-bold">−</button>
+              <button id="mobile-length-plus" class="w-8 h-8 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-lg font-bold">+</button>
+            </div>
+          </div>
           <!-- Custom size inputs (hidden by default) -->
           <div id="mobile-custom-size" class="hidden mt-2">
             <div class="flex items-center gap-2">

@@ -475,11 +475,10 @@ export async function print(transport, rasterData, options = {}) {
   console.log(`Device: ${deviceName}, Model: ${printerModel}, Detected: ${printerDesc}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
-  if (isDSeries && isBLE) {
-    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
-  } else if (isP12) {
-    // P12 uses M-series protocol with rotation, works for both BLE and USB
-    await printP12(transport, data, widthBytes, heightLines, density, onProgress, isBLE);
+  if ((isDSeries || isP12) && isBLE) {
+    // P12 uses same rotation as D30, but needs FEED instead of D_CMD.END for continuous tape
+    const useFeedEnd = isP12;
+    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density, useFeedEnd);
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isBLE) {
@@ -490,23 +489,27 @@ export async function print(transport, rasterData, options = {}) {
 }
 
 /**
- * Print via BLE for D-series printers (D30, D110)
+ * Print via BLE for D-series and P12-series printers
+ * Both use rotated printing, but P12 needs FEED instead of D_CMD.END for continuous tape
+ * @param {boolean} useFeedEnd - Use CMD.FEED(8) instead of D_CMD.END (for continuous tape like P12)
  */
-async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6) {
-  console.log('Using D-series protocol...');
+async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6, useFeedEnd = false) {
+  console.log(`Using D-series protocol${useFeedEnd ? ' (with FEED end for continuous tape)' : ''}...`);
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
-  // Rotate for D-series (they print labels sideways)
+  // Rotate for D-series/P12 (they print labels sideways)
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
   console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
-  // Try to set heat/density before print (may help with thermal management)
-  const heatTime = densityToHeatTime(density);
-  console.log(`Setting density ${density} (heat time: ${heatTime})...`);
-  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
-  await transport.delay(30);
+  // Set heat/density before header (skip for P12/continuous tape to avoid gap)
+  if (!useFeedEnd) {
+    const heatTime = densityToHeatTime(density);
+    console.log(`Setting density ${density} (heat time: ${heatTime})...`);
+    await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
+    await transport.delay(30);
+  }
 
-  // D-series header
+  // D-series header (includes init)
   console.log('Sending D-series header...');
   await transport.send(D_CMD.HEADER(rotated.widthBytes, rotated.heightLines));
 
@@ -525,10 +528,15 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
     }
   }
 
-  // D-series end command
+  // End command - use FEED for continuous tape (P12), D_CMD.END for discrete labels (D30)
   await transport.delay(100);
-  console.log('Sending D-series end command...');
-  await transport.send(D_CMD.END);
+  if (useFeedEnd) {
+    console.log('Sending minimal feed (8 dots for continuous tape)...');
+    await transport.send(CMD.FEED(8));
+  } else {
+    console.log('Sending D-series end command...');
+    await transport.send(D_CMD.END);
+  }
 
   console.log('Print complete!');
 }

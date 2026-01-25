@@ -645,6 +645,56 @@ function updateLabelSizeDropdown(isDSeries) {
 }
 
 /**
+ * Check if the currently connected printer is a continuous tape printer (P12)
+ * @returns {boolean} True if P12 printer is connected
+ */
+function isContinuousTapePrinter() {
+  const deviceName = state.transport?.getDeviceName?.() || '';
+  const printerModel = state.printSettings.printerModel;
+  return isP12Printer(deviceName, printerModel);
+}
+
+/**
+ * Show or hide the label length adjust buttons based on printer type
+ * Only shown for P12 continuous tape printers
+ */
+function updateLengthAdjustButtons() {
+  const show = isContinuousTapePrinter();
+  $('#label-length-adjust')?.classList.toggle('hidden', !show);
+  $('#mobile-label-length-adjust')?.classList.toggle('hidden', !show);
+}
+
+/**
+ * Adjust the label length by a delta (for P12 continuous tape)
+ * @param {number} delta - Amount to adjust in mm (positive or negative)
+ */
+function adjustLabelLength(delta) {
+  const currentWidth = state.labelSize.width;
+  const newWidth = Math.max(10, Math.min(100, currentWidth + delta));
+
+  if (newWidth !== currentWidth) {
+    // Update to custom size
+    state.labelSize = { width: newWidth, height: 12 };
+    $('#label-size').value = 'custom';
+    $('#custom-size').classList.remove('hidden');
+    $('#custom-width').value = newWidth;
+    $('#custom-height').value = 12;
+
+    // Update canvas
+    state.renderer.setDimensions(newWidth, 12, state.zoom, false);
+    state.renderer.clearCache();
+    render();
+    updatePrintSize();
+
+    // Sync mobile
+    $('#mobile-label-size').value = 'custom';
+    $('#mobile-custom-size')?.classList.remove('hidden');
+    $('#mobile-custom-width').value = newWidth;
+    $('#mobile-custom-height').value = 12;
+  }
+}
+
+/**
  * Update print size display
  */
 function updatePrintSize() {
@@ -3984,6 +4034,7 @@ function showPrinterModelPrompt(deviceName) {
 
     // Update label sizes for rotated printers (D-series and P12)
     updateLabelSizeDropdown(isRotatedPrinter(deviceName, model));
+    updateLengthAdjustButtons();
 
     // Close dialog
     dialog.classList.add('hidden');
@@ -4050,10 +4101,15 @@ async function handleConnect() {
     const savedModel = getSavedDeviceModel(deviceName);
     const printerModel = state.printSettings.printerModel;
 
-    // Determine effective model: saved mapping > print settings > auto-detect
+    // Determine effective model: auto-detect for recognized devices, else saved mapping > print settings
     let effectiveModel = printerModel;
-    if (savedModel && printerModel === 'auto') {
-      // Use saved mapping and update print settings
+    if (recognized) {
+      // Device is recognized - use auto-detection (ignore saved model which may be outdated)
+      effectiveModel = 'auto';
+      state.printSettings.printerModel = 'auto';
+      $('#printer-model').value = 'auto';  // Update dropdown to match
+    } else if (savedModel && printerModel === 'auto') {
+      // Unrecognized device with saved mapping - use saved model
       state.printSettings.printerModel = savedModel;
       effectiveModel = savedModel;
     }
@@ -4070,6 +4126,7 @@ async function handleConnect() {
 
     // Update label sizes for rotated printers (D-series and P12)
     updateLabelSizeDropdown(isRotatedPrinter(deviceName, effectiveModel));
+    updateLengthAdjustButtons();
 
     // Update printer info UI
     updatePrinterInfoUI(deviceName, effectiveModel);
@@ -5898,6 +5955,12 @@ function init() {
   $('#custom-height').addEventListener('change', handleCustomSizeChange);
   $('#custom-round').addEventListener('change', handleCustomSizeChange);
 
+  // P12 label length adjust buttons
+  $('#length-plus')?.addEventListener('click', () => adjustLabelLength(5));
+  $('#length-minus')?.addEventListener('click', () => adjustLabelLength(-5));
+  $('#mobile-length-plus')?.addEventListener('click', () => adjustLabelLength(5));
+  $('#mobile-length-minus')?.addEventListener('click', () => adjustLabelLength(-5));
+
   // Connection type
   const connType = $('#conn-type');
   if (!('usb' in navigator)) {
@@ -5913,6 +5976,7 @@ function init() {
     updateConnectionStatus(false);
     // Reset to M-series sizes when disconnecting/changing connection
     updateLabelSizeDropdown(false);
+    updateLengthAdjustButtons();
   });
 
   // Info dialog

@@ -403,6 +403,54 @@ function rotateRaster90CW(data, widthBytes, heightLines) {
 }
 
 /**
+ * Rotate raster data 90 degrees counter-clockwise
+ * Used for P12 printers which may need opposite rotation from D30
+ *
+ * @param {Uint8Array} data - Original raster data (1 bit per pixel, packed in bytes)
+ * @param {number} widthBytes - Width in bytes (8 pixels per byte)
+ * @param {number} heightLines - Height in lines
+ * @returns {Object} { data, widthBytes, heightLines } - Rotated raster data
+ */
+function rotateRaster90CCW(data, widthBytes, heightLines) {
+  const srcWidthPx = widthBytes * 8;
+  const srcHeightPx = heightLines;
+
+  // After 90° CCW rotation: new width = old height, new height = old width
+  const dstWidthPx = srcHeightPx;
+  const dstHeightPx = srcWidthPx;
+  const dstWidthBytes = Math.ceil(dstWidthPx / 8);
+
+  const rotated = new Uint8Array(dstWidthBytes * dstHeightPx);
+
+  // For each pixel in source, calculate its position in destination
+  for (let srcY = 0; srcY < srcHeightPx; srcY++) {
+    for (let srcX = 0; srcX < srcWidthPx; srcX++) {
+      // Get source pixel
+      const srcByteIdx = srcY * widthBytes + Math.floor(srcX / 8);
+      const srcBitIdx = 7 - (srcX % 8);
+      const pixel = (data[srcByteIdx] >> srcBitIdx) & 1;
+
+      // 90° CCW rotation: (x, y) -> (y, width - 1 - x)
+      const dstX = srcY;
+      const dstY = srcWidthPx - 1 - srcX;
+
+      // Set destination pixel
+      const dstByteIdx = dstY * dstWidthBytes + Math.floor(dstX / 8);
+      const dstBitIdx = 7 - (dstX % 8);
+      if (pixel) {
+        rotated[dstByteIdx] |= (1 << dstBitIdx);
+      }
+    }
+  }
+
+  return {
+    data: rotated,
+    widthBytes: dstWidthBytes,
+    heightLines: dstHeightPx,
+  };
+}
+
+/**
  * Print raster data to a Phomemo printer
  *
  * @param {Object} transport - BLE or USB transport instance
@@ -487,30 +535,31 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
 
 /**
  * Print for P12-series printers (P12, P12 Pro)
- * Uses M-series protocol (like M110/M120/M220) but with rotation like D30
- * Supports both BLE and USB transports
+ * P12 works like D30 (rotated continuous tape) but uses M-series protocol
+ * - Same 90° CW rotation as D30
+ * - M-series commands (INIT, RASTER_HEADER, FEED) instead of D30's combined header
  */
 async function printP12(transport, data, widthBytes, heightLines, density, onProgress, isBLE = true) {
-  console.log('Using P12-series protocol (M-series with rotation)...');
+  console.log('Using P12-series protocol (D30 rotation + M-series commands)...');
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
-  // Rotate for P12 (prints labels sideways like D30)
+  // Rotate 90° CW - same as D30 (landscape design becomes portrait for tape)
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
-  console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
+  console.log(`Rotated CW: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
-  // Init
+  // M-series protocol: INIT first
   console.log('Sending init...');
   await transport.send(CMD.INIT);
   await transport.delay(100);
 
-  // Set density using ESC 7 heat command
+  // Set density
   const heatTime = densityToHeatTime(density);
   console.log(`Setting density to ${density} (heat time: ${heatTime})...`);
   await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
   await transport.delay(30);
 
-  // Raster header with rotated dimensions
-  console.log('Sending header...');
+  // M-series raster header (with rotated dimensions)
+  console.log('Sending raster header...');
   await transport.send(CMD.RASTER_HEADER(rotated.widthBytes, rotated.heightLines));
 
   // Send data in chunks (128 for BLE, 512 for USB)

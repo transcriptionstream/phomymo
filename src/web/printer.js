@@ -2,6 +2,7 @@
  * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
  * Supports M-series (M02, M110, M200, M220, M260) and D-series (D30, D110)
+ * v102
  */
 
 /**

@@ -6,7 +6,7 @@
 import { CanvasRenderer } from './canvas.js?v=100';
 import { BLETransport } from './ble.js?v=100';
 import { USBTransport } from './usb.js?v=100';
-import { print, printDensityTest, isDSeriesPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=100';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=100';
 import {
   createTextElement,
   createImageElement,
@@ -515,12 +515,14 @@ function updateConnectionStatus(connected) {
 function updatePrinterInfoUI(deviceName, printerModel) {
   const effectiveModel = printerModel || state.printSettings.printerModel;
   const isDSeries = isDSeriesPrinter(deviceName, effectiveModel);
+  const isP12 = isP12Printer(deviceName, effectiveModel);
   const width = getPrinterWidthBytes(deviceName, effectiveModel);
 
   // Update device info
   $('#pi-device-name').textContent = deviceName || '--';
   $('#pi-model').textContent = getMatchedPattern(deviceName) || effectiveModel || 'Unknown';
-  $('#pi-protocol').textContent = isDSeries ? 'D-series (rotated)' : 'M-series (ESC/POS)';
+  // P12 uses M-series protocol but prints rotated like D-series
+  $('#pi-protocol').textContent = isP12 ? 'P12 (rotated, M-series)' : isDSeries ? 'D-series (rotated)' : 'M-series (ESC/POS)';
   $('#pi-width').textContent = isDSeries ? 'Variable' : `${width * 8}px (${Math.round(width * 8 / 8)}mm)`;
 
   // Update summary in button
@@ -1383,10 +1385,10 @@ async function handleBatchPrint() {
         btn.textContent = `Printing ${rowIndex + 1}/${totalRows}...`;
       }
 
-      // Render to raster (use raw format for D-series printers)
+      // Render to raster (use raw format for rotated printers like D-series and P12)
       const deviceName = state.transport.getDeviceName?.() || '';
       const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
-      const rasterData = isDSeriesPrinter(deviceName, printerModel)
+      const rasterData = isRotatedPrinter(deviceName, printerModel)
         ? state.renderer.getRasterDataRaw(mergedElements)
         : state.renderer.getRasterData(mergedElements, printerWidth);
 
@@ -1462,10 +1464,10 @@ async function handlePrintSinglePreview() {
     // Substitute fields
     const mergedElements = substituteFields(state.elements, record);
 
-    // Render to raster (use raw format for D-series printers)
+    // Render to raster (use raw format for rotated printers like D-series and P12)
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
-    const rasterData = isDSeriesPrinter(deviceName, printerModel)
+    const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(mergedElements)
       : state.renderer.getRasterData(mergedElements, printerWidth);
 
@@ -3980,8 +3982,8 @@ function showPrinterModelPrompt(deviceName) {
     const modelDesc = getPrinterDescription(deviceName, model);
     setStatus(`Connected: ${deviceName} (${modelDesc})`);
 
-    // Update label sizes if D-series
-    updateLabelSizeDropdown(isDSeriesPrinter(deviceName, model));
+    // Update label sizes for rotated printers (D-series and P12)
+    updateLabelSizeDropdown(isRotatedPrinter(deviceName, model));
 
     // Close dialog
     dialog.classList.add('hidden');
@@ -4066,8 +4068,8 @@ async function handleConnect() {
       showPrinterModelPrompt(deviceName);
     }
 
-    // Update label sizes based on connected printer type
-    updateLabelSizeDropdown(isDSeriesPrinter(deviceName, effectiveModel));
+    // Update label sizes for rotated printers (D-series and P12)
+    updateLabelSizeDropdown(isRotatedPrinter(deviceName, effectiveModel));
 
     // Update printer info UI
     updatePrinterInfoUI(deviceName, effectiveModel);
@@ -4118,11 +4120,11 @@ async function handlePrint() {
 
     btn.textContent = 'Printing...';
 
-    // Render to raster (use raw format for D-series printers)
+    // Render to raster (use raw format for rotated printers like D-series and P12)
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
     const printerDpi = getPrinterDpi(deviceName, printerModel);
-    const rasterData = isDSeriesPrinter(deviceName, printerModel)
+    const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(state.elements)
       : state.renderer.getRasterData(state.elements, printerWidth, printerDpi);
 

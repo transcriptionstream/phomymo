@@ -93,10 +93,10 @@ const PRINTER_WIDTHS = {
  * DPI: Most printers are 203 DPI, but M02 Pro is 300 DPI
  */
 const DEVICE_PATTERNS = [
-  // P12 series (12mm tape / ~96px at 203 DPI) - assumed m02-like protocol
-  { pattern: 'P12 PRO', width: 12, protocol: 'm02', dpi: 203 },
-  { pattern: 'P12PRO', width: 12, protocol: 'm02', dpi: 203 },
-  { pattern: 'P12', width: 12, protocol: 'm02', dpi: 203 },
+  // P12 series (12mm tape / ~96px at 203 DPI) - M-series protocol with rotation like D30
+  { pattern: 'P12 PRO', width: 12, protocol: 'p12', dpi: 203 },
+  { pattern: 'P12PRO', width: 12, protocol: 'p12', dpi: 203 },
+  { pattern: 'P12', width: 12, protocol: 'p12', dpi: 203 },
   // M02 Pro series (53mm at 300 DPI = 626px = 78 bytes) - must come before generic M02 patterns
   { pattern: 'M02 PRO', width: 78, protocol: 'm02', dpi: 300 },
   { pattern: 'M02PRO', width: 78, protocol: 'm02', dpi: 300 },
@@ -180,6 +180,11 @@ function getOverrideConfig(modelOverride) {
     return { width: null, protocol: 'd-series', dpi: 203 };
   }
 
+  // P12 uses M-series protocol with rotation
+  if (modelOverride === 'p12') {
+    return { width: PRINTER_WIDTHS['p12'], protocol: 'p12', dpi: 203 };
+  }
+
   // M02 uses special protocol
   if (modelOverride === 'm02') {
     return { width: PRINTER_WIDTHS['m02'], protocol: 'm02', dpi: 203 };
@@ -239,6 +244,39 @@ export function isM02Printer(deviceName, modelOverride = 'auto') {
 }
 
 /**
+ * Detect if device is P12-series based on name or override
+ * P12 series uses M-series protocol but prints rotated like D30 (continuous tape)
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isP12Printer(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'p12') {
+    return true;
+  }
+
+  // For other overrides, use the override's protocol
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) {
+    return overrideConfig.protocol === 'p12';
+  }
+
+  // Auto-detect from device name
+  const config = detectPrinterConfig(deviceName);
+  return config.protocol === 'p12';
+}
+
+/**
+ * Detect if device is a rotated printer (D-series or P12-series)
+ * These printers print labels sideways and need raw raster data with rotation
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isRotatedPrinter(deviceName, modelOverride = 'auto') {
+  return isDSeriesPrinter(deviceName, modelOverride) || isP12Printer(deviceName, modelOverride);
+}
+
+/**
  * Detect if device is a narrow M-series printer (M110, M120)
  * @param {string} deviceName - BLE device name
  * @param {string} modelOverride - Manual model selection
@@ -294,6 +332,9 @@ export function getPrinterDpi(deviceName, modelOverride = 'auto') {
 export function getPrinterDescription(deviceName, modelOverride = 'auto') {
   const isDSeries = isDSeriesPrinter(deviceName, modelOverride);
   if (isDSeries) return 'D-series';
+
+  const isP12 = isP12Printer(deviceName, modelOverride);
+  if (isP12) return 'P12-series (12mm)';
 
   const isM02 = isM02Printer(deviceName, modelOverride);
   const width = getPrinterWidthBytes(deviceName, modelOverride);
@@ -369,6 +410,7 @@ export async function print(transport, rasterData, options = {}) {
   const { data, widthBytes, heightLines } = rasterData;
 
   const isDSeries = isDSeriesPrinter(deviceName, printerModel);
+  const isP12 = isP12Printer(deviceName, printerModel);
   const isM02 = isM02Printer(deviceName, printerModel);
   const printerDesc = getPrinterDescription(deviceName, printerModel);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
@@ -377,6 +419,9 @@ export async function print(transport, rasterData, options = {}) {
 
   if (isDSeries && isBLE) {
     await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
+  } else if (isP12) {
+    // P12 uses M-series protocol with rotation, works for both BLE and USB
+    await printP12(transport, data, widthBytes, heightLines, density, onProgress, isBLE);
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isBLE) {
@@ -426,6 +471,58 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
   await transport.delay(100);
   console.log('Sending D-series end command...');
   await transport.send(D_CMD.END);
+
+  console.log('Print complete!');
+}
+
+/**
+ * Print for P12-series printers (P12, P12 Pro)
+ * Uses M-series protocol (like M110/M120/M220) but with rotation like D30
+ * Supports both BLE and USB transports
+ */
+async function printP12(transport, data, widthBytes, heightLines, density, onProgress, isBLE = true) {
+  console.log('Using P12-series protocol (M-series with rotation)...');
+  console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
+
+  // Rotate for P12 (prints labels sideways like D30)
+  const rotated = rotateRaster90CW(data, widthBytes, heightLines);
+  console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
+
+  // Init
+  console.log('Sending init...');
+  await transport.send(CMD.INIT);
+  await transport.delay(100);
+
+  // Set density using ESC 7 heat command
+  const heatTime = densityToHeatTime(density);
+  console.log(`Setting density to ${density} (heat time: ${heatTime})...`);
+  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
+  await transport.delay(30);
+
+  // Raster header with rotated dimensions
+  console.log('Sending header...');
+  await transport.send(CMD.RASTER_HEADER(rotated.widthBytes, rotated.heightLines));
+
+  // Send data in chunks (128 for BLE, 512 for USB)
+  console.log('Sending data...');
+  const chunkSize = isBLE ? 128 : 512;
+
+  for (let i = 0; i < rotated.data.length; i += chunkSize) {
+    const chunk = rotated.data.slice(i, Math.min(i + chunkSize, rotated.data.length));
+    await transport.send(chunk);
+    await transport.delay(isBLE ? 20 : 10);
+
+    if (onProgress) {
+      const progress = Math.round((i + chunk.length) / rotated.data.length * 100);
+      onProgress(progress);
+    }
+  }
+
+  // P12 uses continuous tape - minimal feed to clear print head
+  await transport.delay(300);
+  console.log('Sending minimal feed (8 dots for continuous tape)...');
+  await transport.send(CMD.FEED(8));
+  await transport.delay(500);
 
   console.log('Print complete!');
 }

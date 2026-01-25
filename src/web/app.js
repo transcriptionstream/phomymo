@@ -6145,6 +6145,11 @@ function init() {
     // Save to localStorage
     safeStorageSet('phomymo_print_settings', safeJsonStringify(state.printSettings));
 
+    // Update UI based on printer model (for P12 length buttons and label sizes)
+    const deviceName = state.transport?.getDeviceName?.() || '';
+    updateLabelSizeDropdown(isRotatedPrinter(deviceName, state.printSettings.printerModel));
+    updateLengthAdjustButtons();
+
     printSettingsDialog.classList.add('hidden');
     setStatus('Print settings saved');
   });

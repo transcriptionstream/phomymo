@@ -110,6 +110,10 @@ export class BLETransport {
           filters: [
             { namePrefix: 'M' },      // M110, M220, M260, etc.
             { namePrefix: 'D' },      // D30, D110, etc.
+            { namePrefix: 'P' },      // P12, P12 Pro
+            { namePrefix: 'Q' },      // M110S (advertises as Q199E... pattern)
+            { namePrefix: 'T' },      // T02
+            { namePrefix: 'Mr.in' },  // Mr.in series
             { namePrefix: 'Phomemo' },
           ],
           optionalServices: [BLE.SERVICE_UUID],

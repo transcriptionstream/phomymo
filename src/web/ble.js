@@ -62,8 +62,10 @@ export class BLETransport {
 
   /**
    * Main connect method
+   * @param {Object} options - Connection options
+   * @param {boolean} options.showAllDevices - If true, show all Bluetooth devices instead of filtering
    */
-  async connect() {
+  async connect({ showAllDevices = false } = {}) {
     if (!BLETransport.isAvailable()) {
       throw new Error('Bluetooth not supported');
     }
@@ -103,30 +105,43 @@ export class BLETransport {
     for (let pickerAttempt = 0; pickerAttempt < 3; pickerAttempt++) {
       console.log('Showing device picker...');
 
-      // Use name prefix filter to show Phomemo printers
-      // This helps filter out ghost devices while still showing the printer
-      try {
-        this.device = await navigator.bluetooth.requestDevice({
-          filters: [
-            { namePrefix: 'M' },      // M110, M220, M260, etc.
-            { namePrefix: 'D' },      // D30, D110, etc.
-            { namePrefix: 'P' },      // P12, P12 Pro
-            { namePrefix: 'Q' },      // M110S (advertises as Q199E... pattern)
-            { namePrefix: 'T' },      // T02
-            { namePrefix: 'Mr.in' },  // Mr.in series
-            { namePrefix: 'Phomemo' },
-          ],
-          optionalServices: [BLE.SERVICE_UUID],
-        });
-      } catch (filterError) {
-        console.log('Name filter failed, trying acceptAllDevices:', filterError.message);
+      if (showAllDevices) {
+        // User requested to see all devices (Shift+Click on Connect)
+        console.log('Showing ALL Bluetooth devices (filter bypassed)');
         this.device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: true,
           optionalServices: [BLE.SERVICE_UUID],
         });
+      } else {
+        // Use name prefix filter to show Phomemo printers
+        // This helps filter out ghost devices while still showing the printer
+        try {
+          this.device = await navigator.bluetooth.requestDevice({
+            filters: [
+              { namePrefix: 'M' },      // M110, M220, M260, etc.
+              { namePrefix: 'D' },      // D30, D110, etc.
+              { namePrefix: 'P' },      // P12, P12 Pro
+              { namePrefix: 'Q' },      // M110S (advertises as Q199E... pattern)
+              { namePrefix: 'T' },      // T02
+              { namePrefix: 'Mr.in' },  // Mr.in series
+              { namePrefix: 'Phomemo' },
+            ],
+            optionalServices: [BLE.SERVICE_UUID],
+          });
+        } catch (filterError) {
+          console.log('Name filter failed, trying acceptAllDevices:', filterError.message);
+          this.device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [BLE.SERVICE_UUID],
+          });
+        }
       }
 
-      console.log('Selected:', this.device.name);
+      // Log device name prominently so users can report unrecognized devices
+      console.log('═══════════════════════════════════════════════════');
+      console.log('SELECTED DEVICE NAME:', this.device.name);
+      console.log('If this device is not recognized, please report this name');
+      console.log('═══════════════════════════════════════════════════');
 
       // Wait for device to be ready
       await this.waitForDeviceReady();

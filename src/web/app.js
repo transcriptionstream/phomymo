@@ -4055,12 +4055,19 @@ function showPrinterModelPrompt(deviceName) {
 
 /**
  * Handle connect button click
+ * @param {MouseEvent} event - Click event (shift+click shows all devices)
  */
-async function handleConnect() {
+async function handleConnect(event) {
   // Check if printing is supported in this browser
   if (!state.canPrint) {
     alert('Printing is not available in this browser.\n\nPlease use Chrome, Edge, or Opera on desktop for Bluetooth printing.');
     return;
+  }
+
+  // Shift+Click bypasses device filter to show all Bluetooth devices
+  const showAllDevices = event?.shiftKey ?? false;
+  if (showAllDevices) {
+    console.log('Shift+Click detected: will show all Bluetooth devices');
   }
 
   const btn = $('#connect-btn');
@@ -4069,7 +4076,7 @@ async function handleConnect() {
   try {
     btn.disabled = true;
     btn.textContent = 'Connecting...';
-    setStatus('Select printer with signal indicator (📶)');
+    setStatus(showAllDevices ? 'Select your printer (showing all devices)' : 'Select printer with signal indicator (📶)');
 
     const isBLE = state.connectionType === 'ble';
 
@@ -4085,7 +4092,7 @@ async function handleConnect() {
       state.transport = USBTransport.getShared();
     }
 
-    await state.transport.connect();
+    await state.transport.connect({ showAllDevices });
 
     if (!state.transport.isConnected()) {
       throw new Error('Connection failed');
@@ -5197,9 +5204,9 @@ function initMobileUI() {
   }
 
   // Mobile connect button
-  $('#mobile-connect-btn')?.addEventListener('click', () => {
+  $('#mobile-connect-btn')?.addEventListener('click', (e) => {
     closeMobileMenu();
-    handleConnect();
+    handleConnect(e);
   });
 
   // Fixed toolbar - add element buttons

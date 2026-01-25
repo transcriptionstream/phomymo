@@ -77,8 +77,9 @@ export class USBTransport {
 
   /**
    * Connect to a Phomemo printer via USB
+   * @param {Object} options - Connection options (unused for USB, for API consistency)
    */
-  async connect() {
+  async connect(options = {}) {
     if (!USBTransport.isAvailable()) {
       throw new Error('WebUSB is not supported in this browser');
     }

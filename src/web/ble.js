@@ -36,6 +36,7 @@ export class BLETransport {
     this.connected = false;
     this.onDisconnect = null;
     this.onPrinterInfo = null; // Callback for printer info updates
+    this._useWriteWithResponse = false; // Some devices need writeValue instead of writeValueWithoutResponse
     this.printerInfo = {
       battery: null,
       paper: null,
@@ -267,6 +268,21 @@ export class BLETransport {
     console.log('Getting characteristics...');
     this.writeChar = await this.service.getCharacteristic(BLE.WRITE_CHAR_UUID);
 
+    // Log characteristic properties for debugging
+    const props = this.writeChar.properties;
+    console.log('Write characteristic properties:', {
+      write: props.write,
+      writeWithoutResponse: props.writeWithoutResponse,
+      read: props.read,
+      notify: props.notify,
+    });
+
+    // Determine if we need to use writeValue instead of writeValueWithoutResponse
+    this._useWriteWithResponse = !props.writeWithoutResponse && props.write;
+    if (this._useWriteWithResponse) {
+      console.log('Device requires writeValue (with response)');
+    }
+
     try {
       this.notifyChar = await this.service.getCharacteristic(BLE.NOTIFY_CHAR_UUID);
       await this.notifyChar.startNotifications();
@@ -332,7 +348,19 @@ export class BLETransport {
       buffer = new Uint8Array(data).buffer;
     }
 
-    await this.writeChar.writeValueWithoutResponse(buffer);
+    // Use the appropriate write method based on characteristic properties
+    if (this._useWriteWithResponse) {
+      await this.writeChar.writeValue(buffer);
+    } else {
+      try {
+        await this.writeChar.writeValueWithoutResponse(buffer);
+      } catch (e) {
+        // Fallback to writeValue if writeValueWithoutResponse fails
+        console.warn('writeValueWithoutResponse failed, trying writeValue:', e.message);
+        this._useWriteWithResponse = true;
+        await this.writeChar.writeValue(buffer);
+      }
+    }
   }
 
   /**

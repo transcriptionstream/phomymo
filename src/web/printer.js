@@ -2,7 +2,7 @@
  * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
  * Supports M-series (M02, M110, M200, M220, M260) and D-series (D30, D110)
- * v102
+ * v104
  */
 
 /**
@@ -55,6 +55,34 @@ const D_CMD = {
   END: new Uint8Array([0x1b, 0x64, 0x00]),
 };
 
+// P12-series specific commands (reverse-engineered from soburi/phomemo_p12)
+const P12_CMD = {
+  // P12 initialization sequence - must be sent before printing
+  INIT_SEQUENCE: [
+    new Uint8Array([0x1f, 0x11, 0x38]),
+    new Uint8Array([0x1f, 0x11, 0x11]),
+    new Uint8Array([0x1f, 0x11, 0x12]),
+    new Uint8Array([0x1f, 0x11, 0x09]),
+    new Uint8Array([0x1f, 0x11, 0x13]),
+    new Uint8Array([0x1f, 0x11, 0x09]),
+    new Uint8Array([0x1f, 0x11, 0x19]),
+    new Uint8Array([0x1f, 0x11, 0x11]),
+    new Uint8Array([0x1f, 0x11, 0x19]),
+    new Uint8Array([0x1f, 0x11, 0x07]),
+  ],
+  // P12 print header: ESC @ + GS v 0
+  HEADER: (widthBytes, rows) => new Uint8Array([
+    0x1b, 0x40,           // ESC @ - Initialize
+    0x1d, 0x76, 0x30, 0x00, // GS v 0 \0 - Raster bit image
+    widthBytes % 256,
+    Math.floor(widthBytes / 256),
+    rows % 256,
+    Math.floor(rows / 256),
+  ]),
+  // P12 feed: ESC d 13 (feed 13 lines)
+  FEED: new Uint8Array([0x1b, 0x64, 0x0d]),
+};
+
 /**
  * Printer width configurations
  * Width in bytes (8 pixels per byte at 203 DPI)
@@ -67,8 +95,9 @@ const PRINTER_WIDTHS = {
   'm02': 48,
   // M02 Pro (53mm at 300 DPI = 626px = 78 bytes) - uses m02 protocol
   'm02-pro': 78,
-  // M110/M120 (48mm / 384px) - standard m-series protocol
+  // M110/M120/M110S (48mm / 384px) - standard m-series protocol
   'm110': 48,
+  'm110s': 48,
   // M03/T02 (53mm / 432px)
   'm03': 54,
   // M260 (72mm / 576px)
@@ -476,10 +505,12 @@ export async function print(transport, rasterData, options = {}) {
   console.log(`Device: ${deviceName}, Model: ${printerModel}, Detected: ${printerDesc}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
-  if ((isDSeries || isP12) && isBLE) {
-    // P12 uses same rotation as D30, but needs FEED instead of D_CMD.END for continuous tape
-    const useFeedEnd = isP12;
-    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density, useFeedEnd);
+  if (isP12 && isBLE) {
+    // P12 uses its own protocol with proprietary init sequence
+    await printP12(transport, data, widthBytes, heightLines, onProgress);
+  } else if (isDSeries && isBLE) {
+    // D-series (D30, D110, etc.)
+    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isBLE) {
@@ -490,31 +521,28 @@ export async function print(transport, rasterData, options = {}) {
 }
 
 /**
- * Print via BLE for D-series and P12-series printers
- * Both use rotated printing, but P12 needs FEED instead of D_CMD.END for continuous tape
- * @param {boolean} useFeedEnd - Use CMD.FEED(8) instead of D_CMD.END (for continuous tape like P12)
+ * Print via BLE for D-series printers (D30, D110, etc.)
+ * Uses rotated printing with D-series protocol
  */
-async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6, useFeedEnd = false) {
-  console.log(`Using D-series protocol${useFeedEnd ? ' (with FEED end for continuous tape)' : ''}...`);
+async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6) {
+  console.log('Using D-series protocol...');
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
-  // Rotate for D-series/P12 (they print labels sideways)
+  // Rotate for D-series (they print labels sideways)
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
   console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
-  // Set heat/density before header (skip for P12/continuous tape to avoid gap)
-  if (!useFeedEnd) {
-    const heatTime = densityToHeatTime(density);
-    console.log(`Setting density ${density} (heat time: ${heatTime})...`);
-    await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
-    await transport.delay(30);
-  }
+  // Set heat/density before header
+  const heatTime = densityToHeatTime(density);
+  console.log(`Setting density ${density} (heat time: ${heatTime})...`);
+  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
+  await transport.delay(30);
 
-  // D-series header (includes init)
+  // Send D-series header (includes ESC @ init)
   console.log('Sending D-series header...');
   await transport.send(D_CMD.HEADER(rotated.widthBytes, rotated.heightLines));
 
-  // Send data in chunks (D-series buffers all data before printing)
+  // Send data in chunks
   console.log('Sending data...');
   const chunkSize = 128;
 
@@ -529,56 +557,47 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
     }
   }
 
-  // End command - use FEED for continuous tape (P12), D_CMD.END for discrete labels (D30)
+  // D-series end command
   await transport.delay(100);
-  if (useFeedEnd) {
-    console.log('Sending minimal feed (8 dots for continuous tape)...');
-    await transport.send(CMD.FEED(8));
-  } else {
-    console.log('Sending D-series end command...');
-    await transport.send(D_CMD.END);
-  }
+  console.log('Sending D-series end command...');
+  await transport.send(D_CMD.END);
 
   console.log('Print complete!');
 }
 
 /**
- * Print for P12-series printers (P12, P12 Pro)
- * P12 works like D30 (rotated continuous tape) but uses M-series protocol
- * - Same 90° CW rotation as D30
- * - M-series commands (INIT, RASTER_HEADER, FEED) instead of D30's combined header
+ * Print via BLE for P12-series printers (P12, P12 Pro)
+ * Uses proprietary Phomemo initialization sequence + rotated printing
+ * Protocol reverse-engineered from soburi/phomemo_p12
  */
-async function printP12(transport, data, widthBytes, heightLines, density, onProgress, isBLE = true) {
-  console.log('Using P12-series protocol (D30 rotation + M-series commands)...');
+async function printP12(transport, data, widthBytes, heightLines, onProgress) {
+  console.log('Using P12-series protocol...');
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
-  // Rotate 90° CW - same as D30 (landscape design becomes portrait for tape)
+  // Rotate for P12 (prints labels sideways like D30)
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
-  console.log(`Rotated CW: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
+  console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
-  // M-series protocol: INIT first
-  console.log('Sending init...');
-  await transport.send(CMD.INIT);
-  await transport.delay(100);
+  // Send P12 proprietary initialization sequence
+  console.log('Sending P12 init sequence...');
+  for (const cmd of P12_CMD.INIT_SEQUENCE) {
+    await transport.send(cmd);
+    await transport.delay(10);
+  }
+  await transport.delay(50);
 
-  // Set density
-  const heatTime = densityToHeatTime(density);
-  console.log(`Setting density to ${density} (heat time: ${heatTime})...`);
-  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
-  await transport.delay(30);
+  // Send P12 header (ESC @ + GS v 0 + dimensions)
+  console.log('Sending P12 header...');
+  await transport.send(P12_CMD.HEADER(rotated.widthBytes, rotated.heightLines));
 
-  // M-series raster header (with rotated dimensions)
-  console.log('Sending raster header...');
-  await transport.send(CMD.RASTER_HEADER(rotated.widthBytes, rotated.heightLines));
-
-  // Send data in chunks (128 for BLE, 512 for USB)
+  // Send data in chunks
   console.log('Sending data...');
-  const chunkSize = isBLE ? 128 : 512;
+  const chunkSize = 128;
 
   for (let i = 0; i < rotated.data.length; i += chunkSize) {
     const chunk = rotated.data.slice(i, Math.min(i + chunkSize, rotated.data.length));
     await transport.send(chunk);
-    await transport.delay(isBLE ? 20 : 10);
+    await transport.delay(20);
 
     if (onProgress) {
       const progress = Math.round((i + chunk.length) / rotated.data.length * 100);
@@ -586,11 +605,12 @@ async function printP12(transport, data, widthBytes, heightLines, density, onPro
     }
   }
 
-  // P12 uses continuous tape - minimal feed to clear print head
-  await transport.delay(300);
-  console.log('Sending minimal feed (8 dots for continuous tape)...');
-  await transport.send(CMD.FEED(8));
-  await transport.delay(500);
+  // P12 feed command (ESC d 13, twice as per protocol)
+  await transport.delay(100);
+  console.log('Sending P12 feed...');
+  await transport.send(P12_CMD.FEED);
+  await transport.delay(50);
+  await transport.send(P12_CMD.FEED);
 
   console.log('Print complete!');
 }

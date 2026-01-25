@@ -10,7 +10,7 @@
 
   <!-- SEO Meta Tags -->
   <meta name="description" content="Free browser-based label designer for Phomemo thermal printers. Create custom labels with text, barcodes, QR codes, and images. No drivers needed - connects via Bluetooth. Works with M02, M03, M110, M120, M200, M220, M260, D30, D35, D50, Q30 and more.">
-  <meta name="keywords" content="Phomemo, label printer, thermal printer, label designer, barcode generator, QR code, P12, P12 Pro, M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M250, M260, D30, D35, D50, Q30, Q30S, T02, bluetooth printer, label maker, free label software, Phomemo alternative, thermal label printer software">
+  <meta name="keywords" content="Phomemo, label printer, thermal printer, label designer, barcode generator, QR code, P12, P12 Pro, M02, M02S, M02X, M02 Pro, M03, M04S, M110, M110S, M120, M200, M220, M250, M260, D30, D35, D50, Q30, Q30S, T02, bluetooth printer, label maker, free label software, Phomemo alternative, thermal label printer software">
   <meta name="author" content="Phomymo">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://phomymo.affordablemagic.net/">
@@ -1182,6 +1182,7 @@
             </optgroup>
             <optgroup label="M110 Series">
               <option value="m110">M110 / M120 (48mm)</option>
+              <option value="m110s">M110S (48mm)</option>
             </optgroup>
             <optgroup label="M200 Series">
               <option value="m200">M200 (75mm)</option>
@@ -1284,6 +1285,9 @@
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M110 Series</div>
         <button data-model="m110" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
           M110 / M120 (48mm)
+        </button>
+        <button data-model="m110s" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          M110S (48mm)
         </button>
 
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M200 Series</div>
@@ -1962,7 +1966,7 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-  <script type="module" src="app.js?v=102"></script>
+  <script type="module" src="app.js?v=104"></script>
   <script>
     // Show body once styles are ready
     requestAnimationFrame(() => {

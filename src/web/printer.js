@@ -55,6 +55,19 @@ const D_CMD = {
   END: new Uint8Array([0x1b, 0x64, 0x00]),
 };
 
+// M110-series specific commands (based on phomemo-tools project)
+// These commands are tested and working for M110/M110S printers
+const M110_CMD = {
+  // ESC N 0x0D <speed> - Set print speed (default 5)
+  SPEED: (speed) => new Uint8Array([0x1b, 0x4e, 0x0d, speed]),
+  // ESC N 0x04 <density> - Set print density (range ~1-15, default 10)
+  DENSITY: (density) => new Uint8Array([0x1b, 0x4e, 0x04, density]),
+  // 1F 11 <type> - Set media type (10 = labels with gaps)
+  MEDIA_TYPE: (type) => new Uint8Array([0x1f, 0x11, type]),
+  // Footer sequence to finalize print
+  FOOTER: new Uint8Array([0x1f, 0xf0, 0x05, 0x00, 0x1f, 0xf0, 0x03, 0x00]),
+};
+
 // P12-series specific commands
 const P12_CMD = {
   // P12 status query sequence - these appear to reset print positioning as a side effect
@@ -135,10 +148,10 @@ const DEVICE_PATTERNS = [
   // M03 and T02 (53mm / 432px)
   { pattern: 'M03', width: 54, protocol: 'm-series', dpi: 203 },
   { pattern: 'T02', width: 54, protocol: 'm-series', dpi: 203 },
-  // M-series narrow (48mm)
+  // M110-series (48mm) - uses M110 protocol from phomemo-tools
   // Note: M110S uses Q-prefix pattern (e.g., Q199E5797220037), detected by M110S_PATTERN regex
-  { pattern: 'M110', width: 48, protocol: 'm-series', dpi: 203 },
-  { pattern: 'M120', width: 48, protocol: 'm-series', dpi: 203 },
+  { pattern: 'M110', width: 48, protocol: 'm110', dpi: 203 },
+  { pattern: 'M120', width: 48, protocol: 'm110', dpi: 203 },
   // M-series mid (75mm)
   { pattern: 'M200', width: 76, protocol: 'm-series', dpi: 203 },
   { pattern: 'M250', width: 76, protocol: 'm-series', dpi: 203 },
@@ -177,7 +190,7 @@ function detectPrinterConfig(deviceName) {
 
   // Check for M110S pattern first (Q + 3 digits + letter + 10 digits)
   if (M110S_PATTERN.test(deviceName)) {
-    return { width: 48, protocol: 'm-series', dpi: 203, recognized: true, matchedPattern: 'M110S' };
+    return { width: 48, protocol: 'm110', dpi: 203, recognized: true, matchedPattern: 'M110S' };
   }
 
   for (const { pattern, width, protocol, dpi } of DEVICE_PATTERNS) {
@@ -231,6 +244,11 @@ function getOverrideConfig(modelOverride) {
   // M02 Pro uses special protocol and 300 DPI
   if (modelOverride === 'm02-pro') {
     return { width: PRINTER_WIDTHS['m02-pro'], protocol: 'm02', dpi: 300 };
+  }
+
+  // M110/M110S uses M110 protocol from phomemo-tools
+  if (modelOverride === 'm110' || modelOverride === 'm110s') {
+    return { width: PRINTER_WIDTHS[modelOverride], protocol: 'm110', dpi: 203 };
   }
 
   const width = PRINTER_WIDTHS[modelOverride];
@@ -305,6 +323,29 @@ export function isP12Printer(deviceName, modelOverride = 'auto') {
 }
 
 /**
+ * Detect if device is M110-series based on name or override
+ * M110/M110S/M120 use the phomemo-tools protocol with specific commands
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+function isM110Printer(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'm110' || modelOverride === 'm110s') {
+    return true;
+  }
+
+  // For other overrides, use the override's protocol
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) {
+    return overrideConfig.protocol === 'm110';
+  }
+
+  // Auto-detect from device name
+  const config = detectPrinterConfig(deviceName);
+  return config.protocol === 'm110';
+}
+
+/**
  * Detect if device is a rotated printer (D-series or P12-series)
  * These printers print labels sideways and need raw raster data with rotation
  * @param {string} deviceName - BLE device name
@@ -375,10 +416,12 @@ export function getPrinterDescription(deviceName, modelOverride = 'auto') {
   if (isP12) return 'P12-series (12mm)';
 
   const isM02 = isM02Printer(deviceName, modelOverride);
+  const isM110 = isM110Printer(deviceName, modelOverride);
   const width = getPrinterWidthBytes(deviceName, modelOverride);
   const widthMm = Math.round(width * 8 / 8); // bytes * 8 pixels / 8 px per mm
 
   if (isM02) return `M02-series (${widthMm}mm)`;
+  if (isM110) return `M110-series (${widthMm}mm)`;
   return `M-series (${widthMm}mm)`;
 }
 
@@ -498,6 +541,7 @@ export async function print(transport, rasterData, options = {}) {
   const isDSeries = isDSeriesPrinter(deviceName, printerModel);
   const isP12 = isP12Printer(deviceName, printerModel);
   const isM02 = isM02Printer(deviceName, printerModel);
+  const isM110 = isM110Printer(deviceName, printerModel);
   const printerDesc = getPrinterDescription(deviceName, printerModel);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
   console.log(`Device: ${deviceName}, Model: ${printerModel}, Detected: ${printerDesc}`);
@@ -511,6 +555,9 @@ export async function print(transport, rasterData, options = {}) {
     await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
+  } else if (isM110 && isBLE) {
+    // M110/M110S/M120 uses phomemo-tools protocol
+    await printM110(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isBLE) {
     await printBLE(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else {
@@ -657,6 +704,61 @@ async function printM02(transport, data, widthBytes, heightLines, density, onPro
   await transport.delay(300);
   console.log('Sending minimal feed (8 dots for continuous paper)...');
   await transport.send(CMD.FEED(8));
+  await transport.delay(500);
+
+  console.log('Print complete!');
+}
+
+/**
+ * Print via BLE transport for M110/M110S/M120 printers
+ * Uses the phomemo-tools protocol which is tested and working
+ */
+async function printM110(transport, data, widthBytes, heightLines, density, onProgress) {
+  console.log('Using M110 protocol (phomemo-tools)...');
+
+  // Map our density (1-8) to M110 density (~1-15, default 10)
+  // Our scale: 1=lightest, 8=darkest
+  // M110 scale: higher = darker, default 10
+  const m110Density = Math.round(5 + density * 1.25); // Maps 1-8 to ~6-15
+
+  // Set speed (default 5)
+  console.log('Setting speed...');
+  await transport.send(M110_CMD.SPEED(5));
+  await transport.delay(30);
+
+  // Set density
+  console.log(`Setting density to ${density} (M110 value: ${m110Density})...`);
+  await transport.send(M110_CMD.DENSITY(m110Density));
+  await transport.delay(30);
+
+  // Set media type (10 = labels with gaps)
+  console.log('Setting media type...');
+  await transport.send(M110_CMD.MEDIA_TYPE(10));
+  await transport.delay(30);
+
+  // Raster header (same format as standard M-series)
+  console.log('Sending header...');
+  await transport.send(CMD.RASTER_HEADER(widthBytes, heightLines));
+
+  // Send data in 128-byte chunks
+  console.log('Sending data...');
+  const chunkSize = 128;
+
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
+    await transport.send(chunk);
+    await transport.delay(20);
+
+    if (onProgress) {
+      const progress = Math.round((i + chunk.length) / data.length * 100);
+      onProgress(progress);
+    }
+  }
+
+  // Send footer to finalize print
+  await transport.delay(300);
+  console.log('Sending footer...');
+  await transport.send(M110_CMD.FOOTER);
   await transport.delay(500);
 
   console.log('Print complete!');

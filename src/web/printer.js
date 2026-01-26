@@ -2,7 +2,7 @@
  * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
  * Supports M-series (M02, M110, M200, M220, M260) and D-series (D30, D110)
- * v104
+ * v106
  */
 
 /**
@@ -55,9 +55,9 @@ const D_CMD = {
   END: new Uint8Array([0x1b, 0x64, 0x00]),
 };
 
-// P12-series specific commands (reverse-engineered from soburi/phomemo_p12)
+// P12-series specific commands
 const P12_CMD = {
-  // P12 initialization sequence - must be sent before printing
+  // P12 status query sequence - these appear to reset print positioning as a side effect
   INIT_SEQUENCE: [
     new Uint8Array([0x1f, 0x11, 0x38]),
     new Uint8Array([0x1f, 0x11, 0x11]),
@@ -70,7 +70,7 @@ const P12_CMD = {
     new Uint8Array([0x1f, 0x11, 0x19]),
     new Uint8Array([0x1f, 0x11, 0x07]),
   ],
-  // P12 print header: ESC @ + GS v 0
+  // P12 print header: ESC @ + GS v 0 + dimensions
   HEADER: (widthBytes, rows) => new Uint8Array([
     0x1b, 0x40,           // ESC @ - Initialize
     0x1d, 0x76, 0x30, 0x00, // GS v 0 \0 - Raster bit image
@@ -79,8 +79,6 @@ const P12_CMD = {
     rows % 256,
     Math.floor(rows / 256),
   ]),
-  // P12 feed: ESC d 13 (feed 13 lines)
-  FEED: new Uint8Array([0x1b, 0x64, 0x0d]),
 };
 
 /**
@@ -567,8 +565,7 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
 
 /**
  * Print via BLE for P12-series printers (P12, P12 Pro)
- * Uses proprietary Phomemo initialization sequence + rotated printing
- * Protocol reverse-engineered from soburi/phomemo_p12
+ * Continuous tape printer - uses proprietary init sequence to fix print positioning
  */
 async function printP12(transport, data, widthBytes, heightLines, onProgress) {
   console.log('Using P12-series protocol...');
@@ -578,7 +575,7 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
   console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
-  // Send P12 proprietary initialization sequence
+  // Send P12 init sequence (status queries that fix print positioning as side effect)
   console.log('Sending P12 init sequence...');
   for (const cmd of P12_CMD.INIT_SEQUENCE) {
     await transport.send(cmd);
@@ -605,12 +602,10 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
     }
   }
 
-  // P12 feed command (ESC d 13, twice as per protocol)
+  // Minimal feed to clear print head (8 dots ~1mm)
   await transport.delay(100);
-  console.log('Sending P12 feed...');
-  await transport.send(P12_CMD.FEED);
-  await transport.delay(50);
-  await transport.send(P12_CMD.FEED);
+  console.log('Sending minimal feed...');
+  await transport.send(CMD.FEED(8));
 
   console.log('Print complete!');
 }

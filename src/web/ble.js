@@ -364,6 +364,37 @@ export class BLETransport {
   }
 
   /**
+   * Wait for a response from the printer (BLE notification)
+   * Used by P12 protocol to wait for status query responses
+   * @param {number} timeout - Maximum time to wait in ms (default 500)
+   * @returns {Promise<DataView|null>} Response data or null if timeout
+   */
+  async waitForResponse(timeout = 500) {
+    if (!this.notifyChar) {
+      // No notification characteristic, use delay fallback
+      await this.delay(timeout);
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.notifyChar.removeEventListener('characteristicvaluechanged', handler);
+        resolve(null);
+      }, timeout);
+
+      const handler = (event) => {
+        clearTimeout(timer);
+        this.notifyChar.removeEventListener('characteristicvaluechanged', handler);
+        const data = new Uint8Array(event.target.value.buffer);
+        console.log('[BLE Response]', Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' '));
+        resolve(event.target.value);
+      };
+
+      this.notifyChar.addEventListener('characteristicvaluechanged', handler);
+    });
+  }
+
+  /**
    * Send data in chunks with delays
    */
   async sendChunked(data, onProgress = null) {

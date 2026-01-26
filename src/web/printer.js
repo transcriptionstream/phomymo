@@ -2,7 +2,7 @@
  * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
  * Supports M-series (M02, M110, M200, M220, M260) and D-series (D30, D110)
- * v106
+ * v109
  */
 
 /**
@@ -68,18 +68,15 @@ const M110_CMD = {
   FOOTER: new Uint8Array([0x1f, 0xf0, 0x05, 0x00, 0x1f, 0xf0, 0x03, 0x00]),
 };
 
-// P12-series specific commands
+// P12-series specific commands (based on soburi/phomemo_p12 protocol)
 const P12_CMD = {
-  // P12 status query sequence - these appear to reset print positioning as a side effect
+  // P12 init sequence - grouped into 6 packets as per soburi protocol
+  // Each packet should be followed by waiting for printer response
   INIT_SEQUENCE: [
     new Uint8Array([0x1f, 0x11, 0x38]),
-    new Uint8Array([0x1f, 0x11, 0x11]),
-    new Uint8Array([0x1f, 0x11, 0x12]),
+    new Uint8Array([0x1f, 0x11, 0x11, 0x1f, 0x11, 0x12, 0x1f, 0x11, 0x09, 0x1f, 0x11, 0x13]),
     new Uint8Array([0x1f, 0x11, 0x09]),
-    new Uint8Array([0x1f, 0x11, 0x13]),
-    new Uint8Array([0x1f, 0x11, 0x09]),
-    new Uint8Array([0x1f, 0x11, 0x19]),
-    new Uint8Array([0x1f, 0x11, 0x11]),
+    new Uint8Array([0x1f, 0x11, 0x19, 0x1f, 0x11, 0x11]),
     new Uint8Array([0x1f, 0x11, 0x19]),
     new Uint8Array([0x1f, 0x11, 0x07]),
   ],
@@ -92,6 +89,8 @@ const P12_CMD = {
     rows % 256,
     Math.floor(rows / 256),
   ]),
+  // P12 feed: ESC d 13 (feed 13 lines)
+  FEED: new Uint8Array([0x1b, 0x64, 0x0d]),
 };
 
 /**
@@ -622,13 +621,19 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
   console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
-  // Send P12 init sequence (status queries that fix print positioning as side effect)
+  // Send P12 init sequence with response waiting (as per soburi protocol)
   console.log('Sending P12 init sequence...');
-  for (const cmd of P12_CMD.INIT_SEQUENCE) {
+  for (let i = 0; i < P12_CMD.INIT_SEQUENCE.length; i++) {
+    const cmd = P12_CMD.INIT_SEQUENCE[i];
+    console.log(`  Init packet ${i + 1}/${P12_CMD.INIT_SEQUENCE.length}...`);
     await transport.send(cmd);
-    await transport.delay(10);
+    // Wait for printer response before sending next packet
+    if (transport.waitForResponse) {
+      await transport.waitForResponse(500);
+    } else {
+      await transport.delay(100); // Fallback delay if no waitForResponse
+    }
   }
-  await transport.delay(50);
 
   // Send P12 header (ESC @ + GS v 0 + dimensions)
   console.log('Sending P12 header...');
@@ -649,10 +654,12 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
     }
   }
 
-  // Minimal feed to clear print head (8 dots ~1mm)
+  // P12 feed command (ESC d 13, twice as per soburi protocol)
   await transport.delay(100);
-  console.log('Sending minimal feed...');
-  await transport.send(CMD.FEED(8));
+  console.log('Sending P12 feed...');
+  await transport.send(P12_CMD.FEED);
+  await transport.delay(50);
+  await transport.send(P12_CMD.FEED);
 
   console.log('Print complete!');
 }

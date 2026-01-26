@@ -1,7 +1,7 @@
 /**
  * Phomymo Label Designer Application
  * Multi-element label editor with drag, resize, and rotate
- * v107
+ * v108
  */
 
 import { CanvasRenderer } from './canvas.js?v=100';

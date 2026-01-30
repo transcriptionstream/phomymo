@@ -142,6 +142,7 @@ const state = {
   transport: null,
   renderer: null,
   canPrint: true,   // Set to false if browser doesn't support Bluetooth/USB
+  currentDesignName: null,  // Name of the currently loaded design
   // Drag state
   isDragging: false,
   dragType: null, // 'move', 'resize', 'rotate'
@@ -494,9 +495,30 @@ function updateConnectionStatus(connected) {
   const dot = $('#status-dot');
   const dotStandalone = $('#status-dot-standalone');
   const printerInfoBtn = $('#printer-info-btn');
+  const mobileDot = $('#mobile-status-dot');
+  const mobileConnectBtn = $('#mobile-connect-btn');
+  const mobileDisconnectBtn = $('#mobile-disconnect-btn');
 
   dot.classList.toggle('bg-green-500', connected);
   dot.classList.toggle('bg-gray-400', !connected);
+
+  // Update mobile status dot
+  if (mobileDot) {
+    mobileDot.classList.toggle('bg-green-500', connected);
+    mobileDot.classList.toggle('bg-gray-400', !connected);
+  }
+
+  // Update mobile connect button text and disconnect button visibility
+  if (mobileConnectBtn) {
+    mobileConnectBtn.textContent = connected ? 'Connected' : 'Connect';
+  }
+  if (mobileDisconnectBtn) {
+    if (connected) {
+      mobileDisconnectBtn.classList.remove('hidden');
+    } else {
+      mobileDisconnectBtn.classList.add('hidden');
+    }
+  }
 
   // Show/hide printer info button vs standalone dot
   if (connected) {
@@ -536,6 +558,16 @@ function updatePrinterInfoUI(deviceName, printerModel) {
     summaryParts.push(`${battery}%`);
   }
   $('#printer-info-summary').textContent = summaryParts.length ? summaryParts.join(' | ') : deviceName?.substring(0, 8) || '--';
+}
+
+/**
+ * Update the mobile label name display
+ */
+function updateMobileLabelName() {
+  const mobileLabelName = $('#mobile-label-name');
+  if (mobileLabelName) {
+    mobileLabelName.textContent = state.currentDesignName || 'Untitled Label';
+  }
 }
 
 /**
@@ -1638,7 +1670,7 @@ function modifyElement(id, changes) {
   state.elements = updateElement(state.elements, id, changes);
 
   // Only clear cache if content or size changed (not just position/rotation)
-  const contentKeys = ['width', 'height', 'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textDecoration', 'background', 'noWrap', 'clipOverflow', 'autoScale', 'verticalAlign', 'imageData', 'barcodeData', 'barcodeFormat', 'qrData'];
+  const contentKeys = ['width', 'height', 'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textDecoration', 'background', 'noWrap', 'clipOverflow', 'autoScale', 'verticalAlign', 'imageData', 'barcodeData', 'barcodeFormat', 'qrData', 'brightness', 'contrast', 'dither', 'showText', 'textFontSize', 'textBold'];
   const needsCacheClear = Object.keys(changes).some(key => contentKeys.includes(key));
   if (needsCacheClear) {
     state.renderer.clearCache(id);
@@ -1853,12 +1885,21 @@ function updatePropertiesPanel() {
       $('#prop-image-scale').value = currentScale;
       $('#prop-image-scale-input').value = currentScale;
       $('#prop-image-lock-ratio').checked = element.lockAspectRatio !== false;
+      $('#prop-image-dither').value = element.dither || 'floyd-steinberg';
+      $('#prop-image-brightness').value = element.brightness || 0;
+      $('#prop-image-brightness-input').value = element.brightness || 0;
+      $('#prop-image-contrast').value = element.contrast || 0;
+      $('#prop-image-contrast-input').value = element.contrast || 0;
       break;
 
     case 'barcode':
       $('#props-barcode').classList.remove('hidden');
       $('#prop-barcode-data').value = element.barcodeData || '';
       $('#prop-barcode-format').value = element.barcodeFormat || 'CODE128';
+      $('#prop-barcode-showtext').checked = element.showText !== false;
+      $('#prop-barcode-fontsize').value = element.textFontSize || 12;
+      $('#prop-barcode-bold').checked = element.textBold || false;
+      $('#barcode-text-options')?.classList.toggle('hidden', element.showText === false);
       break;
 
     case 'qr':
@@ -4300,6 +4341,10 @@ function handleSave() {
     saveDesign(name, designData);
     hideSaveDialog();
 
+    // Update current design name and mobile display
+    state.currentDesignName = name;
+    updateMobileLabelName();
+
     const templateInfo = state.templateData.length > 0
       ? ` (with ${state.templateData.length} data records)`
       : '';
@@ -4491,6 +4536,8 @@ function handleImportFile(file) {
       hideLoadDialog();
 
       const name = data.name || 'Imported design';
+      state.currentDesignName = name;
+      updateMobileLabelName();
       setStatus(`Imported: ${name}`);
     } catch (err) {
       logError(err, 'importDesign');
@@ -4653,6 +4700,10 @@ function handleLoad(name) {
 
   // Detect template fields from loaded elements
   detectTemplateFields();
+
+  // Set current design name and update mobile display
+  state.currentDesignName = name;
+  updateMobileLabelName();
 
   render();
 
@@ -5209,6 +5260,25 @@ function initMobileUI() {
     handleConnect(e);
   });
 
+  // Mobile disconnect button
+  $('#mobile-disconnect-btn')?.addEventListener('click', async () => {
+    closeMobileMenu();
+    if (state.transport) {
+      try {
+        await state.transport.disconnect();
+      } catch (e) {
+        console.warn('Disconnect error:', e.message);
+      }
+      state.transport = null;
+    }
+    updateConnectionStatus(false);
+    const btn = $('#connect-btn');
+    btn.textContent = 'Connect';
+    btn.classList.remove('bg-green-100', 'text-green-800', 'border-green-300');
+    btn.classList.add('bg-white', 'hover:bg-gray-50');
+    setStatus('Disconnected');
+  });
+
   // Fixed toolbar - add element buttons
   $('#mobile-add-text')?.addEventListener('click', () => addTextElement());
   $('#mobile-add-image')?.addEventListener('click', () => $('#image-file-input').click());
@@ -5465,6 +5535,23 @@ function populateMobileProps() {
           </button>
         </div>
       </div>
+      <div class="prop-group">
+        <div class="prop-label">Text Options</div>
+        <div class="flex flex-wrap gap-x-4 gap-y-2">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="mobile-prop-noWrap" class="w-5 h-5" ${selected.noWrap ? 'checked' : ''}>
+            <span class="text-sm">No wrap</span>
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="mobile-prop-clipOverflow" class="w-5 h-5" ${selected.clipOverflow ? 'checked' : ''}>
+            <span class="text-sm">Clip</span>
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="mobile-prop-autoScale" class="w-5 h-5" ${selected.autoScale ? 'checked' : ''}>
+            <span class="text-sm">Auto-fit</span>
+          </label>
+        </div>
+      </div>
     `;
   } else if (selected.type === 'barcode') {
     html += `
@@ -5495,6 +5582,19 @@ function populateMobileProps() {
           <input type="checkbox" id="mobile-prop-showText" class="w-5 h-5" ${selected.showText !== false ? 'checked' : ''}>
           <span class="text-sm">Show text below barcode</span>
         </label>
+      </div>
+      <div class="prop-group ${selected.showText === false ? 'hidden' : ''}" id="mobile-barcode-text-options">
+        <div class="prop-label">Text Style</div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">Size:</label>
+            <input type="number" id="mobile-prop-textFontSize" class="w-16 px-2 py-1.5 text-sm border border-gray-200 rounded" value="${selected.textFontSize || 12}">
+          </div>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="mobile-prop-textBold" class="w-5 h-5" ${selected.textBold ? 'checked' : ''}>
+            <span class="text-sm font-bold">B</span>
+          </label>
+        </div>
       </div>
     `;
   } else if (selected.type === 'qr') {
@@ -5735,6 +5835,11 @@ function wireUpMobilePropHandlers(element) {
     });
   });
 
+  // Text options checkboxes (wrap/clip/fit)
+  $('#mobile-prop-noWrap')?.addEventListener('change', (e) => updateProp('noWrap', e.target.checked));
+  $('#mobile-prop-clipOverflow')?.addEventListener('change', (e) => updateProp('clipOverflow', e.target.checked));
+  $('#mobile-prop-autoScale')?.addEventListener('change', (e) => updateProp('autoScale', e.target.checked));
+
   // Barcode/QR properties - use live update for typing
   const valueInput = $('#mobile-prop-value');
   if (valueInput) {
@@ -5751,7 +5856,16 @@ function wireUpMobilePropHandlers(element) {
     updateProp('format', e.target.value);
     element.barcodeFormat = e.target.value; // Also update legacy property
   });
-  $('#mobile-prop-showText')?.addEventListener('change', (e) => updateProp('showText', e.target.checked));
+  $('#mobile-prop-showText')?.addEventListener('change', (e) => {
+    updateProp('showText', e.target.checked);
+    // Show/hide text options
+    const textOptions = $('#mobile-barcode-text-options');
+    if (textOptions) {
+      textOptions.classList.toggle('hidden', !e.target.checked);
+    }
+  });
+  $('#mobile-prop-textFontSize')?.addEventListener('change', (e) => updateProp('textFontSize', parseInt(e.target.value) || 12));
+  $('#mobile-prop-textBold')?.addEventListener('change', (e) => updateProp('textBold', e.target.checked));
 
   // Mobile field insertion buttons
   $$('.mobile-field-btn').forEach(btn => {
@@ -5766,6 +5880,31 @@ function wireUpMobilePropHandlers(element) {
     });
   });
 
+  // Helper to insert field text and update element property
+  const insertFieldText = (target, fieldText, targetId) => {
+    const start = target.selectionStart || target.value.length;
+    const end = target.selectionEnd || target.value.length;
+    target.value = target.value.slice(0, start) + fieldText + target.value.slice(end);
+    target.focus();
+    target.selectionStart = target.selectionEnd = start + fieldText.length;
+
+    // Directly update the element property based on target ID
+    if (targetId === 'mobile-prop-text' && element.type === 'text') {
+      element.text = target.value;
+      state.renderer.clearCache(element.id);
+      render();
+    } else if (targetId === 'mobile-prop-value') {
+      element.value = target.value;
+      if (element.type === 'barcode') element.barcodeData = target.value;
+      if (element.type === 'qr') element.qrData = target.value;
+      state.renderer.clearCache(element.id);
+      render();
+    }
+
+    // Detect template fields
+    detectTemplateFields();
+  };
+
   // Insert existing field
   $$('[data-insert-field]').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -5773,13 +5912,7 @@ function wireUpMobilePropHandlers(element) {
       const targetId = btn.dataset.target;
       const target = $(`#${targetId}`);
       if (target) {
-        const fieldText = `{{${fieldName}}}`;
-        const start = target.selectionStart || target.value.length;
-        const end = target.selectionEnd || target.value.length;
-        target.value = target.value.slice(0, start) + fieldText + target.value.slice(end);
-        target.focus();
-        target.selectionStart = target.selectionEnd = start + fieldText.length;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
+        insertFieldText(target, `{{${fieldName}}}`, targetId);
       }
       btn.closest('.mobile-field-dropdown')?.classList.add('hidden');
     });
@@ -5787,23 +5920,25 @@ function wireUpMobilePropHandlers(element) {
 
   // Add new field from input
   $$('.mobile-new-field-input').forEach(input => {
+    let isInserting = false; // Prevent double insertion from Enter + change events
+
     // Helper to insert the field
     const insertNewField = () => {
+      if (isInserting) return; // Prevent double execution
       if (!input.value.trim()) return;
+
+      isInserting = true;
       const fieldName = input.value.trim();
       const targetId = input.dataset.target;
       const target = $(`#${targetId}`);
       if (target) {
-        const fieldText = `{{${fieldName}}}`;
-        const start = target.selectionStart || target.value.length;
-        const end = target.selectionEnd || target.value.length;
-        target.value = target.value.slice(0, start) + fieldText + target.value.slice(end);
-        target.focus();
-        target.selectionStart = target.selectionEnd = start + fieldText.length;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
+        insertFieldText(target, `{{${fieldName}}}`, targetId);
       }
       input.value = '';
       input.closest('.mobile-field-dropdown')?.classList.add('hidden');
+
+      // Reset flag after a short delay to allow for next insertion
+      setTimeout(() => { isInserting = false; }, 100);
     };
 
     // Enter key (desktop + some mobile keyboards)
@@ -6561,6 +6696,103 @@ function init() {
     }
   });
 
+  // Dithering select
+  $('#prop-image-dither').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'image') {
+      saveHistory();
+      modifyElement(element.id, { dither: e.target.value });
+    }
+  });
+
+  // Brightness slider
+  let brightnessSnapshot = null;
+  $('#prop-image-brightness').addEventListener('mousedown', () => {
+    if (state.selectedIds[0]) {
+      brightnessSnapshot = JSON.parse(JSON.stringify(state.elements));
+    }
+  });
+  $('#prop-image-brightness').addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    $('#prop-image-brightness-input').value = value;
+    const element = getSelected();
+    if (element && element.type === 'image') {
+      modifyElement(element.id, { brightness: value });
+    }
+  });
+  $('#prop-image-brightness').addEventListener('mouseup', () => {
+    if (brightnessSnapshot) {
+      const currentState = JSON.stringify(state.elements);
+      if (currentState !== JSON.stringify(brightnessSnapshot)) {
+        if (state.historyIndex < state.history.length - 1) {
+          state.history = state.history.slice(0, state.historyIndex + 1);
+        }
+        state.history.push(brightnessSnapshot);
+        if (state.history.length > HISTORY.MAX_SIZE) {
+          state.history.shift();
+        } else {
+          state.historyIndex++;
+        }
+        updateUndoRedoButtons();
+      }
+      brightnessSnapshot = null;
+    }
+  });
+  trackInputForHistory('#prop-image-brightness-input');
+  $('#prop-image-brightness-input').addEventListener('change', (e) => {
+    const value = Math.max(-100, Math.min(100, parseInt(e.target.value) || 0));
+    $('#prop-image-brightness').value = value;
+    $('#prop-image-brightness-input').value = value;
+    const element = getSelected();
+    if (element && element.type === 'image') {
+      modifyElement(element.id, { brightness: value });
+    }
+  });
+
+  // Contrast slider
+  let contrastSnapshot = null;
+  $('#prop-image-contrast').addEventListener('mousedown', () => {
+    if (state.selectedIds[0]) {
+      contrastSnapshot = JSON.parse(JSON.stringify(state.elements));
+    }
+  });
+  $('#prop-image-contrast').addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    $('#prop-image-contrast-input').value = value;
+    const element = getSelected();
+    if (element && element.type === 'image') {
+      modifyElement(element.id, { contrast: value });
+    }
+  });
+  $('#prop-image-contrast').addEventListener('mouseup', () => {
+    if (contrastSnapshot) {
+      const currentState = JSON.stringify(state.elements);
+      if (currentState !== JSON.stringify(contrastSnapshot)) {
+        if (state.historyIndex < state.history.length - 1) {
+          state.history = state.history.slice(0, state.historyIndex + 1);
+        }
+        state.history.push(contrastSnapshot);
+        if (state.history.length > HISTORY.MAX_SIZE) {
+          state.history.shift();
+        } else {
+          state.historyIndex++;
+        }
+        updateUndoRedoButtons();
+      }
+      contrastSnapshot = null;
+    }
+  });
+  trackInputForHistory('#prop-image-contrast-input');
+  $('#prop-image-contrast-input').addEventListener('change', (e) => {
+    const value = Math.max(-100, Math.min(100, parseInt(e.target.value) || 0));
+    $('#prop-image-contrast').value = value;
+    $('#prop-image-contrast-input').value = value;
+    const element = getSelected();
+    if (element && element.type === 'image') {
+      modifyElement(element.id, { contrast: value });
+    }
+  });
+
   // Properties panel - barcode
   trackInputForHistory('#prop-barcode-data');
   $('#prop-barcode-data').addEventListener('input', (e) => {
@@ -6590,6 +6822,36 @@ function init() {
       setStatus(result.error);
     } else {
       dataInput.classList.remove('border-red-300');
+    }
+  });
+
+  // Show text checkbox
+  $('#prop-barcode-showtext').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'barcode') {
+      saveHistory();
+      modifyElement(element.id, { showText: e.target.checked });
+      // Show/hide text options
+      $('#barcode-text-options')?.classList.toggle('hidden', !e.target.checked);
+    }
+  });
+
+  // Barcode text font size
+  trackInputForHistory('#prop-barcode-fontsize');
+  $('#prop-barcode-fontsize').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'barcode') {
+      const size = parseInt(e.target.value) || 12;
+      modifyElement(element.id, { textFontSize: size });
+    }
+  });
+
+  // Barcode text bold
+  $('#prop-barcode-bold').addEventListener('change', (e) => {
+    const element = getSelected();
+    if (element && element.type === 'barcode') {
+      saveHistory();
+      modifyElement(element.id, { textBold: e.target.checked });
     }
   });
 

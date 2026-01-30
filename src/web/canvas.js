@@ -918,7 +918,25 @@ export class CanvasRenderer {
     }
 
     if (img.complete && img.naturalWidth > 0) {
+      // Apply brightness and contrast filters if set
+      const brightness = element.brightness || 0;
+      const contrast = element.contrast || 0;
+      const hasFilters = brightness !== 0 || contrast !== 0;
+
+      if (hasFilters) {
+        // Convert from -100..100 to filter values
+        // Brightness: 0 = 100% (no change), -100 = 0%, +100 = 200%
+        const brightnessValue = 1 + (brightness / 100);
+        // Contrast: 0 = 100% (no change), -100 = 0%, +100 = 200%
+        const contrastValue = 1 + (contrast / 100);
+        this.ctx.filter = `brightness(${brightnessValue}) contrast(${contrastValue})`;
+      }
+
       this.ctx.drawImage(img, -width / 2, -height / 2, width, height);
+
+      if (hasFilters) {
+        this.ctx.filter = 'none';
+      }
     }
   }
 
@@ -930,19 +948,26 @@ export class CanvasRenderer {
 
     if (!barcodeData || !barcodeData.trim()) return;
 
-    const cacheKey = `barcode_${element.id}_${barcodeData}_${barcodeFormat}_${width}_${height}`;
+    const showText = element.showText !== false;
+    const textFontSize = element.textFontSize || 12;
+    const textBold = element.textBold || false;
+    const cacheKey = `barcode_${element.id}_${barcodeData}_${barcodeFormat}_${width}_${height}_${showText}_${textFontSize}_${textBold}`;
     let cachedCanvas = this._getFromRenderCache(cacheKey);
 
     if (!cachedCanvas) {
       try {
-        // Create SVG barcode
+        // Calculate space for text
+        const textHeight = showText ? textFontSize + 8 : 0;
+        const barcodeHeight = height - textHeight;
+
+        // Create SVG barcode WITHOUT text (we'll draw text separately)
+        // This ensures barcode width is consistent regardless of text size
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         JsBarcode(svg, barcodeData, {
           format: barcodeFormat || 'CODE128',
           width: 2,
-          height: Math.round(height * 0.7),
-          displayValue: true,
-          fontSize: 12,
+          height: Math.round(barcodeHeight * 0.85),
+          displayValue: false,  // We'll draw text ourselves
           margin: 5,
         });
 
@@ -958,16 +983,41 @@ export class CanvasRenderer {
           cachedCanvas.height = height;
           const tempCtx = cachedCanvas.getContext('2d');
 
-          // Scale to fit
-          const scale = Math.min(width / tempImg.width, height / tempImg.height) * 0.95;
+          // Clip to element bounds so nothing overflows
+          tempCtx.beginPath();
+          tempCtx.rect(0, 0, width, height);
+          tempCtx.clip();
+
+          // Fill white background
+          tempCtx.fillStyle = 'white';
+          tempCtx.fillRect(0, 0, width, height);
+
+          // Calculate available space for barcode (leave room for text if shown)
+          const textSpace = showText ? textFontSize + 6 : 0;
+          const availableHeight = height - textSpace;
+
+          // Scale barcode to fit width, but also cap height to available space
+          const widthScale = (width / tempImg.width) * 0.95;
+          const heightScale = availableHeight / tempImg.height;
+          const scale = Math.min(widthScale, heightScale);
           const scaledW = tempImg.width * scale;
           const scaledH = tempImg.height * scale;
           const dx = (width - scaledW) / 2;
-          const dy = (height - scaledH) / 2;
+          const dy = 2;  // Small top margin
 
-          tempCtx.fillStyle = 'white';
-          tempCtx.fillRect(0, 0, width, height);
           tempCtx.drawImage(tempImg, dx, dy, scaledW, scaledH);
+
+          // Draw text below barcode if enabled (and if it fits)
+          if (showText) {
+            const textY = dy + scaledH + 2;
+            if (textY < height) {  // Only draw if there's room
+              tempCtx.fillStyle = 'black';
+              tempCtx.font = `${textBold ? 'bold ' : ''}${textFontSize}px monospace`;
+              tempCtx.textAlign = 'center';
+              tempCtx.textBaseline = 'top';
+              tempCtx.fillText(barcodeData, width / 2, textY);
+            }
+          }
 
           this._addToRenderCache(cacheKey, cachedCanvas);
           URL.revokeObjectURL(url);

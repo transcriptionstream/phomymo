@@ -71,6 +71,11 @@ export class CanvasRenderer {
       zones: [],           // Array of zone boundaries { x, y, width, height }
     };
     this.activeZone = 0;   // Currently active zone for editing
+
+    // Dither preview mode - shows how images will look when printed
+    this.ditherPreview = false;
+    // Cache for dithered preview canvases
+    this.ditherPreviewCache = new Map();
   }
 
   /**
@@ -126,6 +131,201 @@ export class CanvasRenderer {
     } else {
       this.setDimensions(this.widthMm, this.heightMm, zoom);
     }
+  }
+
+  /**
+   * Enable or disable dither preview mode
+   * When enabled, shows exact print output (all elements dithered to black & white)
+   * @param {boolean} enabled - Whether to show dithered preview
+   */
+  setDitherPreview(enabled) {
+    if (this.ditherPreview !== enabled) {
+      this.ditherPreview = enabled;
+      // Clear cache when toggling to force regeneration
+      this.ditherPreviewCache.clear();
+      this.fullLabelPreviewCache = null;
+    }
+  }
+
+  /**
+   * Clear dither preview cache for a specific element
+   * @param {string} elementId - Element ID to clear cache for
+   */
+  clearDitherPreviewCache(elementId) {
+    if (elementId) {
+      // Clear all cache entries starting with this element ID
+      for (const key of this.ditherPreviewCache.keys()) {
+        if (key.startsWith(elementId)) {
+          this.ditherPreviewCache.delete(key);
+        }
+      }
+    } else {
+      this.ditherPreviewCache.clear();
+    }
+    // Also invalidate full label preview
+    this.fullLabelPreviewCache = null;
+  }
+
+  /**
+   * Invalidate full label preview cache (call when any element changes)
+   */
+  invalidateFullLabelPreview() {
+    this.fullLabelPreviewCache = null;
+  }
+
+  /**
+   * Generate full-label dithered preview
+   * Renders all elements at print resolution and applies dithering
+   * @param {Array} elements - All elements to render
+   * @param {string} ditherMode - Dithering algorithm to use
+   * @returns {HTMLCanvasElement} Canvas with dithered preview at print resolution
+   */
+  generateFullLabelPreview(elements, ditherMode = 'floyd-steinberg') {
+    // Create cache key from element states
+    const cacheKey = JSON.stringify(elements.map(e => ({
+      id: e.id, x: e.x, y: e.y, width: e.width, height: e.height,
+      rotation: e.rotation, type: e.type, text: e.text,
+      imageData: e.imageData?.substring(0, 50), // Just enough to detect changes
+      barcodeData: e.barcodeData, qrData: e.qrData,
+      brightness: e.brightness, contrast: e.contrast, dither: e.dither,
+    }))) + `_${ditherMode}_${this.labelWidth}_${this.labelHeight}`;
+
+    // Check cache
+    if (this.fullLabelPreviewCache && this.fullLabelPreviewCacheKey === cacheKey) {
+      return this.fullLabelPreviewCache;
+    }
+
+    // Render all elements to pixels at print resolution
+    const { pixels, width, height } = this._renderToPixels(elements);
+
+    // Convert to grayscale
+    const grayscale = this._rgbaToGrayscale(pixels, width, height, 1.3);
+
+    // Apply dithering
+    let dithered;
+    if (ditherMode === 'none' || ditherMode === 'threshold') {
+      dithered = new Uint8Array(width * height);
+      for (let i = 0; i < grayscale.length; i++) {
+        dithered[i] = grayscale[i] < 128 ? 1 : 0;
+      }
+    } else if (ditherMode === 'atkinson') {
+      dithered = this._atkinsonDither(grayscale, width, height);
+    } else if (ditherMode === 'ordered') {
+      dithered = this._orderedDither(grayscale, width, height);
+    } else {
+      dithered = this._floydSteinbergDither(grayscale, width, height);
+    }
+
+    // Create output canvas
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = width;
+    outputCanvas.height = height;
+    const outputCtx = outputCanvas.getContext('2d');
+    const outputData = outputCtx.createImageData(width, height);
+
+    // Convert dithered to RGBA
+    for (let i = 0; i < dithered.length; i++) {
+      const color = dithered[i] === 1 ? 0 : 255; // 1 = black, 0 = white
+      const idx = i * 4;
+      outputData.data[idx] = color;
+      outputData.data[idx + 1] = color;
+      outputData.data[idx + 2] = color;
+      outputData.data[idx + 3] = 255;
+    }
+
+    outputCtx.putImageData(outputData, 0, 0);
+
+    // Cache result
+    this.fullLabelPreviewCache = outputCanvas;
+    this.fullLabelPreviewCacheKey = cacheKey;
+
+    return outputCanvas;
+  }
+
+  /**
+   * Generate dithered preview canvas for an image element
+   * Generates at actual print resolution (203 DPI) for accurate preview
+   * @param {HTMLImageElement} img - Source image
+   * @param {number} width - Target width in printer pixels (not display pixels)
+   * @param {number} height - Target height in printer pixels (not display pixels)
+   * @param {Object} element - Element with dither settings
+   * @returns {HTMLCanvasElement} Canvas with dithered image at print resolution
+   */
+  _generateDitherPreview(img, width, height, element) {
+    const ditherMode = element.dither || 'floyd-steinberg';
+    const brightness = element.brightness || 0;
+    const contrast = element.contrast || 0;
+    const cacheKey = `${element.id}_${width}_${height}_${ditherMode}_${brightness}_${contrast}`;
+
+    // Check cache
+    let cached = this.ditherPreviewCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // Create temp canvas to draw and process the image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Apply brightness/contrast filters
+    if (brightness !== 0 || contrast !== 0) {
+      const brightnessValue = 1 + (brightness / 100);
+      const contrastValue = 1 + (contrast / 100);
+      tempCtx.filter = `brightness(${brightnessValue}) contrast(${contrastValue})`;
+    }
+
+    // Draw image
+    tempCtx.drawImage(img, 0, 0, width, height);
+    tempCtx.filter = 'none';
+
+    // Get pixel data
+    const imageData = tempCtx.getImageData(0, 0, width, height);
+    const pixels = imageData.data;
+
+    // Convert to grayscale
+    const grayscale = this._rgbaToGrayscale(pixels, width, height, 1.3);
+
+    // Apply dithering based on mode
+    let dithered;
+    if (ditherMode === 'none' || ditherMode === 'threshold') {
+      // Simple threshold
+      dithered = new Uint8Array(width * height);
+      for (let i = 0; i < grayscale.length; i++) {
+        dithered[i] = grayscale[i] < 128 ? 1 : 0;
+      }
+    } else if (ditherMode === 'atkinson') {
+      dithered = this._atkinsonDither(grayscale, width, height);
+    } else if (ditherMode === 'ordered') {
+      dithered = this._orderedDither(grayscale, width, height);
+    } else {
+      dithered = this._floydSteinbergDither(grayscale, width, height);
+    }
+
+    // Convert back to RGBA (black and white)
+    for (let i = 0; i < dithered.length; i++) {
+      const color = dithered[i] === 1 ? 0 : 255; // 1 = black, 0 = white
+      const idx = i * 4;
+      pixels[idx] = color;
+      pixels[idx + 1] = color;
+      pixels[idx + 2] = color;
+      pixels[idx + 3] = 255;
+    }
+
+    // Put processed data back
+    tempCtx.putImageData(imageData, 0, 0);
+
+    // Cache and return
+    this.ditherPreviewCache.set(cacheKey, tempCanvas);
+
+    // Limit cache size
+    if (this.ditherPreviewCache.size > MAX_IMAGE_CACHE_SIZE) {
+      const firstKey = this.ditherPreviewCache.keys().next().value;
+      this.ditherPreviewCache.delete(firstKey);
+    }
+
+    return tempCanvas;
   }
 
   /**
@@ -390,6 +590,8 @@ export class CanvasRenderer {
     ctx.scale(zoom, zoom);
 
     // Render elements in z-order (first = bottom)
+    // When ditherPreview is enabled, images will be dithered individually
+    // Text, barcodes, and QR codes render normally (crisp black)
     if (this.multiLabel.enabled) {
       // Multi-label mode: render elements with zone offsets
       for (const element of elements) {
@@ -918,7 +1120,23 @@ export class CanvasRenderer {
     }
 
     if (img.complete && img.naturalWidth > 0) {
-      // Apply brightness and contrast filters if set
+      // When dither preview is enabled, show how this image will look when printed
+      if (this.ditherPreview) {
+        // Generate dithered preview at print resolution (element dimensions are printer pixels)
+        const printWidth = Math.round(element.width);
+        const printHeight = Math.round(element.height);
+        const ditherCanvas = this._generateDitherPreview(img, printWidth, printHeight, element);
+
+        // Draw with smoothing for better display quality, then restore state
+        this.ctx.save();
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'medium';
+        this.ctx.drawImage(ditherCanvas, -width / 2, -height / 2, width, height);
+        this.ctx.restore();
+        return;
+      }
+
+      // Normal rendering: Apply brightness and contrast filters if set
       const brightness = element.brightness || 0;
       const contrast = element.contrast || 0;
       const hasFilters = brightness !== 0 || contrast !== 0;
@@ -951,24 +1169,32 @@ export class CanvasRenderer {
     const showText = element.showText !== false;
     const textFontSize = element.textFontSize || 12;
     const textBold = element.textBold || false;
-    const cacheKey = `barcode_${element.id}_${barcodeData}_${barcodeFormat}_${width}_${height}_${showText}_${textFontSize}_${textBold}`;
+
+    // Render at 3x resolution for crisp display when zoomed
+    const renderScale = 3;
+    const renderWidth = width * renderScale;
+    const renderHeight = height * renderScale;
+    const renderFontSize = textFontSize * renderScale;
+
+    const cacheKey = `barcode_${element.id}_${barcodeData}_${barcodeFormat}_${renderWidth}_${renderHeight}_${showText}_${textFontSize}_${textBold}`;
     let cachedCanvas = this._getFromRenderCache(cacheKey);
 
     if (!cachedCanvas) {
       try {
-        // Calculate space for text
-        const textHeight = showText ? textFontSize + 8 : 0;
-        const barcodeHeight = height - textHeight;
+        // Calculate space for text (at render scale)
+        const textHeightScaled = showText ? renderFontSize + (8 * renderScale) : 0;
+        const barcodeHeightScaled = renderHeight - textHeightScaled;
 
         // Create SVG barcode WITHOUT text (we'll draw text separately)
         // This ensures barcode width is consistent regardless of text size
+        // Use higher bar width for crisp rendering
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         JsBarcode(svg, barcodeData, {
           format: barcodeFormat || 'CODE128',
-          width: 2,
-          height: Math.round(barcodeHeight * 0.85),
+          width: 2 * renderScale,  // Scale bar width
+          height: Math.round(barcodeHeightScaled * 0.85),
           displayValue: false,  // We'll draw text ourselves
-          margin: 5,
+          margin: 5 * renderScale,
         });
 
         // Convert SVG to canvas
@@ -979,43 +1205,46 @@ export class CanvasRenderer {
         const tempImg = new Image();
         tempImg.onload = () => {
           cachedCanvas = document.createElement('canvas');
-          cachedCanvas.width = width;
-          cachedCanvas.height = height;
+          cachedCanvas.width = renderWidth;
+          cachedCanvas.height = renderHeight;
           const tempCtx = cachedCanvas.getContext('2d');
+
+          // Disable smoothing for crisp barcode bars
+          tempCtx.imageSmoothingEnabled = false;
 
           // Clip to element bounds so nothing overflows
           tempCtx.beginPath();
-          tempCtx.rect(0, 0, width, height);
+          tempCtx.rect(0, 0, renderWidth, renderHeight);
           tempCtx.clip();
 
           // Fill white background
           tempCtx.fillStyle = 'white';
-          tempCtx.fillRect(0, 0, width, height);
+          tempCtx.fillRect(0, 0, renderWidth, renderHeight);
 
           // Calculate available space for barcode (leave room for text if shown)
-          const textSpace = showText ? textFontSize + 6 : 0;
-          const availableHeight = height - textSpace;
+          const textSpace = showText ? renderFontSize + (6 * renderScale) : 0;
+          const availableHeight = renderHeight - textSpace;
 
           // Scale barcode to fit width, but also cap height to available space
-          const widthScale = (width / tempImg.width) * 0.95;
+          const widthScale = (renderWidth / tempImg.width) * 0.95;
           const heightScale = availableHeight / tempImg.height;
           const scale = Math.min(widthScale, heightScale);
           const scaledW = tempImg.width * scale;
           const scaledH = tempImg.height * scale;
-          const dx = (width - scaledW) / 2;
-          const dy = 2;  // Small top margin
+          const dx = (renderWidth - scaledW) / 2;
+          const dy = 2 * renderScale;  // Small top margin
 
           tempCtx.drawImage(tempImg, dx, dy, scaledW, scaledH);
 
           // Draw text below barcode if enabled (and if it fits)
           if (showText) {
-            const textY = dy + scaledH + 2;
-            if (textY < height) {  // Only draw if there's room
+            const textY = dy + scaledH + (2 * renderScale);
+            if (textY < renderHeight) {  // Only draw if there's room
               tempCtx.fillStyle = 'black';
-              tempCtx.font = `${textBold ? 'bold ' : ''}${textFontSize}px monospace`;
+              tempCtx.font = `${textBold ? 'bold ' : ''}${renderFontSize}px monospace`;
               tempCtx.textAlign = 'center';
               tempCtx.textBaseline = 'top';
-              tempCtx.fillText(barcodeData, width / 2, textY);
+              tempCtx.fillText(barcodeData, renderWidth / 2, textY);
             }
           }
 
@@ -1038,7 +1267,11 @@ export class CanvasRenderer {
     }
 
     if (cachedCanvas) {
-      this.ctx.drawImage(cachedCanvas, -width / 2, -height / 2);
+      // Draw high-res cached canvas scaled down to element size
+      // Use high quality smoothing when scaling down for crisp result
+      this.ctx.imageSmoothingEnabled = true;
+      this.ctx.imageSmoothingQuality = 'high';
+      this.ctx.drawImage(cachedCanvas, -width / 2, -height / 2, width, height);
     } else {
       // Placeholder while loading
       this.ctx.strokeStyle = '#ccc';
@@ -1088,10 +1321,14 @@ export class CanvasRenderer {
     }
 
     if (cachedCanvas && cachedCanvas.width > 0) {
+      // Disable smoothing for crisp QR code rendering
+      const prevSmoothing = this.ctx.imageSmoothingEnabled;
+      this.ctx.imageSmoothingEnabled = false;
       // Center in element bounds
       const dx = -size / 2;
       const dy = -size / 2;
       this.ctx.drawImage(cachedCanvas, dx, dy, size, size);
+      this.ctx.imageSmoothingEnabled = prevSmoothing;
     } else {
       // Placeholder
       this.ctx.strokeStyle = '#ccc';
@@ -1421,6 +1658,8 @@ export class CanvasRenderer {
         }
       }
       this.imageCache.delete(elementId);
+      // Also clear dither preview cache for this element
+      this.clearDitherPreviewCache(elementId);
       // Also clear any pending loads for this element to prevent race conditions
       for (const loadKey of this.loadingImages) {
         if (loadKey.startsWith(`${elementId}_`)) {
@@ -1431,6 +1670,7 @@ export class CanvasRenderer {
       this.renderCache.clear();
       this.imageCache.clear();
       this.loadingImages.clear();
+      this.ditherPreviewCache.clear();
     }
   }
 
@@ -1659,6 +1899,98 @@ export class CanvasRenderer {
   }
 
   /**
+   * Apply Atkinson dithering to grayscale image
+   * Lighter result than Floyd-Steinberg, good for preserving detail
+   * Only distributes 6/8 of error (loses some darkness)
+   * @param {Float32Array} grayscale - Grayscale values 0-255
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @returns {Uint8Array} 1-bit values (0 = white, 1 = black)
+   */
+  _atkinsonDither(grayscale, width, height) {
+    const pixels = new Float32Array(grayscale);
+    const output = new Uint8Array(width * height);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const oldPixel = pixels[idx];
+
+        const newPixel = oldPixel < 128 ? 0 : 255;
+        output[idx] = newPixel === 0 ? 1 : 0;
+
+        // Atkinson only distributes 6/8 of the error (intentionally loses 2/8)
+        const error = (oldPixel - newPixel) / 8;
+
+        // Distribute error to 6 neighbors (1/8 each)
+        //       X   1   1
+        //   1   1   1
+        //       1
+        if (x + 1 < width) {
+          pixels[idx + 1] += error;
+        }
+        if (x + 2 < width) {
+          pixels[idx + 2] += error;
+        }
+        if (y + 1 < height) {
+          if (x > 0) {
+            pixels[(y + 1) * width + (x - 1)] += error;
+          }
+          pixels[(y + 1) * width + x] += error;
+          if (x + 1 < width) {
+            pixels[(y + 1) * width + (x + 1)] += error;
+          }
+        }
+        if (y + 2 < height) {
+          pixels[(y + 2) * width + x] += error;
+        }
+      }
+    }
+
+    return output;
+  }
+
+  /**
+   * Apply ordered (Bayer) dithering to grayscale image
+   * Creates regular pattern, good for graphics and when consistency matters
+   * @param {Float32Array} grayscale - Grayscale values 0-255
+   * @param {number} width - Image width
+   * @param {number} height - Image height
+   * @returns {Uint8Array} 1-bit values (0 = white, 1 = black)
+   */
+  _orderedDither(grayscale, width, height) {
+    const output = new Uint8Array(width * height);
+
+    // 8x8 Bayer matrix (normalized to 0-63, we scale to 0-255)
+    const bayer8x8 = [
+       0, 32,  8, 40,  2, 34, 10, 42,
+      48, 16, 56, 24, 50, 18, 58, 26,
+      12, 44,  4, 36, 14, 46,  6, 38,
+      60, 28, 52, 20, 62, 30, 54, 22,
+       3, 35, 11, 43,  1, 33,  9, 41,
+      51, 19, 59, 27, 49, 17, 57, 25,
+      15, 47,  7, 39, 13, 45,  5, 37,
+      63, 31, 55, 23, 61, 29, 53, 21
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const gray = grayscale[idx];
+
+        // Get threshold from Bayer matrix (scale from 0-63 to 0-255)
+        const bayerIdx = (y % 8) * 8 + (x % 8);
+        const threshold = (bayer8x8[bayerIdx] / 64) * 255;
+
+        // Compare pixel to threshold
+        output[idx] = gray < threshold ? 1 : 0;
+      }
+    }
+
+    return output;
+  }
+
+  /**
    * Detect if image likely contains photos or gradients that benefit from dithering
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
@@ -1746,20 +2078,33 @@ export class CanvasRenderer {
   }
 
   /**
-   * Convert pixel data to raster bytes using Floyd-Steinberg dithering
+   * Convert pixel data to raster bytes using dithering
    * Best for images with gradients, photos, or many colors
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
    * @param {number} height - Image height
    * @param {number} outputWidthBytes - Output width in bytes (for centering)
    * @param {boolean} center - Whether to center output in outputWidthBytes
+   * @param {string} algorithm - Dithering algorithm ('floyd-steinberg', 'atkinson', 'ordered')
    */
-  _pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center = false) {
+  _pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center = false, algorithm = 'floyd-steinberg') {
     // Convert to grayscale with gamma correction
     const grayscale = this._rgbaToGrayscale(pixels, width, height, 1.3);
 
-    // Apply Floyd-Steinberg dithering
-    const dithered = this._floydSteinbergDither(grayscale, width, height);
+    // Apply selected dithering algorithm
+    let dithered;
+    switch (algorithm) {
+      case 'atkinson':
+        dithered = this._atkinsonDither(grayscale, width, height);
+        break;
+      case 'ordered':
+        dithered = this._orderedDither(grayscale, width, height);
+        break;
+      case 'floyd-steinberg':
+      default:
+        dithered = this._floydSteinbergDither(grayscale, width, height);
+        break;
+    }
 
     // Pack into bytes
     const canvasBytesPerRow = Math.ceil(width / 8);
@@ -1790,22 +2135,34 @@ export class CanvasRenderer {
   }
 
   /**
-   * Convert pixel data to raster bytes (auto-selects best method)
+   * Convert pixel data to raster bytes
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
    * @param {number} height - Image height
    * @param {number} outputWidthBytes - Output width in bytes (for centering)
    * @param {boolean} center - Whether to center output in outputWidthBytes
+   * @param {string} ditherMode - Dither mode: 'auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered'
    */
-  _pixelsToRaster(pixels, width, height, outputWidthBytes, center = false) {
+  _pixelsToRaster(pixels, width, height, outputWidthBytes, center = false, ditherMode = 'auto') {
+    // Handle explicit modes
+    if (ditherMode === 'none' || ditherMode === 'threshold') {
+      console.log('Using threshold method for crisp output');
+      return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center);
+    }
+
+    if (ditherMode === 'floyd-steinberg' || ditherMode === 'atkinson' || ditherMode === 'ordered') {
+      console.log(`Using ${ditherMode} dithering`);
+      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center, ditherMode);
+    }
+
     // Auto-detect whether to use dithering based on image content
     const useDithering = this._shouldUseDithering(pixels, width, height);
 
     if (useDithering) {
-      console.log('Using Floyd-Steinberg dithering for better image quality');
-      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center);
+      console.log('Auto: Using Floyd-Steinberg dithering for better image quality');
+      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center, 'floyd-steinberg');
     } else {
-      console.log('Using threshold method for crisp text/graphics');
+      console.log('Auto: Using threshold method for crisp text/graphics');
       return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center);
     }
   }
@@ -1816,8 +2173,9 @@ export class CanvasRenderer {
    * @param {Array} elements - Elements to render
    * @param {number} printerWidthBytes - Printer width in bytes (48 for M110/M200, 72 for M260)
    * @param {number} printerDpi - Printer DPI (203 for most, 300 for M02 Pro)
+   * @param {string} ditherMode - Dither mode: 'auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered'
    */
-  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203) {
+  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto') {
     let { pixels, width, height } = this._renderToPixels(elements);
 
     // Scale up for higher DPI printers (e.g., M02 Pro at 300 DPI)
@@ -1854,7 +2212,7 @@ export class CanvasRenderer {
 
       // For high-DPI printers, use the specified printer width but left-align
       // (no centering) to avoid white gaps at the start edge
-      const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, false);
+      const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, false, ditherMode);
 
       return {
         data,
@@ -1863,7 +2221,7 @@ export class CanvasRenderer {
       };
     }
 
-    const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, true);
+    const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, true, ditherMode);
 
     return {
       data,
@@ -1878,11 +2236,13 @@ export class CanvasRenderer {
    *
    * Note: D30 has thermal limits - high black content (>60%) may cause
    * print failures. Use dithered grays instead of solid black for large fills.
+   * @param {Array} elements - Elements to render
+   * @param {string} ditherMode - Dither mode: 'auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered'
    */
-  getRasterDataRaw(elements) {
+  getRasterDataRaw(elements, ditherMode = 'auto') {
     const { pixels, width, height } = this._renderToPixels(elements);
     const widthBytes = Math.ceil(width / 8);
-    const data = this._pixelsToRaster(pixels, width, height, widthBytes, false);
+    const data = this._pixelsToRaster(pixels, width, height, widthBytes, false, ditherMode);
 
     return {
       data,

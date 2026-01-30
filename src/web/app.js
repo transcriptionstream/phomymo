@@ -1,10 +1,10 @@
 /**
  * Phomymo Label Designer Application
  * Multi-element label editor with drag, resize, and rotate
- * v109
+ * v114
  */
 
-import { CanvasRenderer } from './canvas.js?v=100';
+import { CanvasRenderer } from './canvas.js?v=109';
 import { BLETransport } from './ble.js?v=102';
 import { USBTransport } from './usb.js?v=101';
 import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=109';
@@ -62,7 +62,9 @@ import {
   substituteFieldsByZone,
   parseCSV,
   createEmptyRecord,
-} from './templates.js?v=100';
+  hasExpressions,
+  evaluateExpressions,
+} from './templates.js?v=101';
 import {
   ZOOM,
   TEXT,
@@ -154,6 +156,8 @@ const state = {
   dragStartAngle: 0,        // For group rotation
   // Zoom state
   zoom: 1,
+  // Dither preview mode (shows how images will look when printed)
+  ditherPreview: false,
   // Print settings
   printSettings: {
     density: 6,       // 1-8 (darkness)
@@ -254,6 +258,21 @@ function getSavedDeviceModel(deviceName) {
  */
 function setStatus(message) {
   $('#status-message').textContent = message;
+}
+
+/**
+ * Detect dither mode from elements
+ * Uses first image element's dither setting, or 'auto' if none
+ * @param {Array} elements - Array of label elements
+ * @returns {string} Dither mode ('auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered')
+ */
+function getDitherMode(elements) {
+  for (const el of elements) {
+    if (el.type === 'image' && el.dither) {
+      return el.dither;
+    }
+  }
+  return 'auto';
 }
 
 /**
@@ -495,6 +514,9 @@ function updateConnectionStatus(connected) {
   const dot = $('#status-dot');
   const dotStandalone = $('#status-dot-standalone');
   const printerInfoBtn = $('#printer-info-btn');
+  const ditherPreviewBtn = $('#dither-preview-btn');
+  const connectBtn = $('#connect-btn');
+  const connType = $('#conn-type');
   const mobileDot = $('#mobile-status-dot');
   const mobileConnectBtn = $('#mobile-connect-btn');
   const mobileDisconnectBtn = $('#mobile-disconnect-btn');
@@ -508,25 +530,37 @@ function updateConnectionStatus(connected) {
     mobileDot.classList.toggle('bg-gray-400', !connected);
   }
 
-  // Update mobile connect button text and disconnect button visibility
+  // Hide/show desktop connect button and connection type selector
+  if (connectBtn) {
+    connectBtn.classList.toggle('hidden', connected);
+  }
+  if (connType) {
+    connType.classList.toggle('hidden', connected);
+    // On small screens conn-type is already hidden, so only toggle for larger screens
+    if (!connected) {
+      connType.classList.add('hidden', 'sm:block');
+    }
+  }
+
+  // Hide/show mobile connect button
   if (mobileConnectBtn) {
-    mobileConnectBtn.textContent = connected ? 'Connected' : 'Connect';
+    mobileConnectBtn.classList.toggle('hidden', connected);
   }
   if (mobileDisconnectBtn) {
-    if (connected) {
-      mobileDisconnectBtn.classList.remove('hidden');
-    } else {
-      mobileDisconnectBtn.classList.add('hidden');
-    }
+    mobileDisconnectBtn.classList.toggle('hidden', !connected);
   }
 
   // Show/hide printer info button vs standalone dot
   if (connected) {
     printerInfoBtn.classList.remove('hidden');
     dotStandalone.classList.add('hidden');
+    // When printer info button is visible, it has rounded-l-lg, so dither preview shouldn't
+    ditherPreviewBtn.classList.remove('rounded-l-lg');
   } else {
     printerInfoBtn.classList.add('hidden');
     dotStandalone.classList.remove('hidden');
+    // When printer info button is hidden, dither preview needs rounded-l-lg
+    ditherPreviewBtn.classList.add('rounded-l-lg');
     // Hide popup if open
     $('#printer-info-popup').classList.add('hidden');
   }
@@ -654,11 +688,20 @@ function updateLabelSizeDropdown(isDSeries) {
   customOption.textContent = 'Custom...';
   select.appendChild(customOption);
 
+  // Add multi-label option
+  const multiLabelOption = document.createElement('option');
+  multiLabelOption.value = 'multi-label';
+  multiLabelOption.textContent = 'Multi-Label Roll...';
+  select.appendChild(multiLabelOption);
+
   // Try to restore current size or pick a sensible default
   const currentKey = currentSize.round
     ? `${currentSize.width}mm Round`
     : `${currentSize.width}x${currentSize.height}`;
-  if (LABEL_SIZES[currentKey]) {
+  if (currentValue === 'multi-label') {
+    // Keep multi-label mode if already in it
+    select.value = 'multi-label';
+  } else if (LABEL_SIZES[currentKey]) {
     select.value = currentKey;
     $('#custom-size').classList.add('hidden');
   } else if (currentValue === 'custom') {
@@ -675,6 +718,65 @@ function updateLabelSizeDropdown(isDSeries) {
     render();
     $('#custom-size').classList.add('hidden');
   }
+
+  // Also update mobile dropdown
+  updateMobileLabelSizeDropdown(isDSeries);
+}
+
+/**
+ * Update mobile label size dropdown to match desktop
+ * @param {boolean} isDSeries - Whether the connected printer is D-series
+ */
+function updateMobileLabelSizeDropdown(isDSeries) {
+  const mobileSelect = $('#mobile-label-size');
+  const desktopSelect = $('#label-size');
+  if (!mobileSelect) return;
+
+  const rectSizes = isDSeries ? D_SERIES_LABEL_SIZES : M_SERIES_LABEL_SIZES;
+  const roundSizes = isDSeries ? D_SERIES_ROUND_LABELS : M_SERIES_ROUND_LABELS;
+
+  // Clear and rebuild mobile dropdown
+  while (mobileSelect.options.length > 0) {
+    mobileSelect.remove(0);
+  }
+
+  // Add rectangular labels
+  for (const [key, size] of Object.entries(rectSizes)) {
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = `${size.width}x${size.height}mm`;
+    mobileSelect.appendChild(option);
+  }
+
+  // Add round labels
+  if (Object.keys(roundSizes).length > 0) {
+    const separator = document.createElement('option');
+    separator.disabled = true;
+    separator.textContent = '── Round ──';
+    mobileSelect.appendChild(separator);
+
+    for (const [key, size] of Object.entries(roundSizes)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = key;
+      mobileSelect.appendChild(option);
+    }
+  }
+
+  // Add custom option
+  const customOption = document.createElement('option');
+  customOption.value = 'custom';
+  customOption.textContent = 'Custom...';
+  mobileSelect.appendChild(customOption);
+
+  // Add multi-label option
+  const multiLabelOption = document.createElement('option');
+  multiLabelOption.value = 'multi-label';
+  multiLabelOption.textContent = 'Multi-Label...';
+  mobileSelect.appendChild(multiLabelOption);
+
+  // Sync with desktop selection
+  mobileSelect.value = desktopSelect.value;
 }
 
 /**
@@ -778,7 +880,11 @@ function zoomReset() {
  * Render the canvas
  */
 function render() {
-  state.renderer.renderAll(state.elements, state.selectedIds, state.alignmentGuides);
+  // In print preview mode, evaluate expressions so users see actual values
+  const elementsToRender = state.ditherPreview
+    ? evaluateExpressions(state.elements)
+    : state.elements;
+  state.renderer.renderAll(elementsToRender, state.selectedIds, state.alignmentGuides);
 }
 
 /**
@@ -1310,8 +1416,9 @@ function renderPreviewThumbnail(canvas, recordIndex) {
   const record = state.templateData[recordIndex];
   if (!record) return;
 
-  // Substitute fields
-  const mergedElements = substituteFields(state.elements, record);
+  // Substitute fields and evaluate expressions
+  const substitutedElements = substituteFields(state.elements, record);
+  const mergedElements = evaluateExpressions(substitutedElements);
 
   // Create a temporary renderer at smaller scale
   const scale = 0.5;
@@ -1335,7 +1442,8 @@ function showFullPreview(recordIndex) {
   state.currentPreviewIndex = recordIndex;
 
   const record = state.templateData[recordIndex];
-  const mergedElements = substituteFields(state.elements, record);
+  const substitutedElements = substituteFields(state.elements, record);
+  const mergedElements = evaluateExpressions(substitutedElements);
 
   // Render to full preview canvas
   const canvas = $('#full-preview-canvas');
@@ -1440,7 +1548,7 @@ async function handleBatchPrint() {
         break;
       }
 
-      let mergedElements;
+      let substitutedElements;
 
       if (isMultiLabel && !cloneMode) {
         // Clone mode OFF: Different record per zone
@@ -1454,7 +1562,7 @@ async function handleBatchPrint() {
           }
           // If no more records, zone will be empty (no substitution)
         }
-        mergedElements = substituteFieldsByZone(state.elements, rowRecords, labelsAcross);
+        substitutedElements = substituteFieldsByZone(state.elements, rowRecords, labelsAcross);
 
         updatePrintProgress(rowIndex + 1, totalRows, `Printing row ${rowIndex + 1}...`);
         btn.textContent = `Printing row ${rowIndex + 1}/${totalRows}...`;
@@ -1462,18 +1570,22 @@ async function handleBatchPrint() {
         // Clone mode ON or single-label: Same data for all zones
         const recordIndex = recordsToPrint[rowIndex];
         const record = state.templateData[recordIndex];
-        mergedElements = substituteFields(state.elements, record);
+        substitutedElements = substituteFields(state.elements, record);
 
         updatePrintProgress(rowIndex + 1, totalRows, `Printing label ${rowIndex + 1}...`);
         btn.textContent = `Printing ${rowIndex + 1}/${totalRows}...`;
       }
 
+      // Evaluate instant expressions (date/time, etc.)
+      const mergedElements = evaluateExpressions(substitutedElements);
+
       // Render to raster (use raw format for rotated printers like D-series and P12)
       const deviceName = state.transport.getDeviceName?.() || '';
       const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+      const ditherMode = getDitherMode(mergedElements);
       const rasterData = isRotatedPrinter(deviceName, printerModel)
-        ? state.renderer.getRasterDataRaw(mergedElements)
-        : state.renderer.getRasterData(mergedElements, printerWidth);
+        ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
+        : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode);
 
       // Print
       await print(state.transport, rasterData, {
@@ -1544,15 +1656,17 @@ async function handlePrintSinglePreview() {
       }
     }
 
-    // Substitute fields
-    const mergedElements = substituteFields(state.elements, record);
+    // Substitute fields and evaluate expressions
+    const substitutedElements = substituteFields(state.elements, record);
+    const mergedElements = evaluateExpressions(substitutedElements);
 
     // Render to raster (use raw format for rotated printers like D-series and P12)
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+    const ditherMode = getDitherMode(mergedElements);
     const rasterData = isRotatedPrinter(deviceName, printerModel)
-      ? state.renderer.getRasterDataRaw(mergedElements)
-      : state.renderer.getRasterData(mergedElements, printerWidth);
+      ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
+      : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode);
 
     // Print
     await print(state.transport, rasterData, {
@@ -4140,9 +4254,6 @@ async function handleConnect(event) {
     }
 
     updateConnectionStatus(true);
-    btn.textContent = 'Connected';
-    btn.classList.remove('bg-white', 'hover:bg-gray-50');
-    btn.classList.add('bg-green-100', 'text-green-800', 'border-green-300');
 
     // Check device recognition and handle accordingly
     const deviceName = state.transport.getDeviceName?.() || '';
@@ -4226,13 +4337,17 @@ async function handlePrint() {
 
     btn.textContent = 'Printing...';
 
+    // Evaluate instant expressions (date/time, etc.)
+    const elementsToRender = evaluateExpressions(state.elements);
+
     // Render to raster (use raw format for rotated printers like D-series and P12)
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
     const printerDpi = getPrinterDpi(deviceName, printerModel);
+    const ditherMode = getDitherMode(elementsToRender);
     const rasterData = isRotatedPrinter(deviceName, printerModel)
-      ? state.renderer.getRasterDataRaw(state.elements)
-      : state.renderer.getRasterData(state.elements, printerWidth, printerDpi);
+      ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
+      : state.renderer.getRasterData(elementsToRender, printerWidth, printerDpi, ditherMode);
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {
@@ -5147,6 +5262,29 @@ function initMobileUI() {
   });
   $('#mobile-print-btn')?.addEventListener('click', handlePrint);
 
+  // Mobile dither preview toggle
+  $('#mobile-dither-preview-btn')?.addEventListener('click', () => {
+    state.ditherPreview = !state.ditherPreview;
+    state.renderer.setDitherPreview(state.ditherPreview);
+
+    // Update both buttons
+    const desktopBtn = $('#dither-preview-btn');
+    const mobileBtn = $('#mobile-dither-preview-btn');
+    if (state.ditherPreview) {
+      desktopBtn?.classList.remove('bg-gray-100', 'text-gray-700');
+      desktopBtn?.classList.add('bg-blue-500', 'text-white');
+      mobileBtn?.classList.remove('bg-gray-100', 'text-gray-700');
+      mobileBtn?.classList.add('bg-blue-500', 'text-white');
+    } else {
+      desktopBtn?.classList.remove('bg-blue-500', 'text-white');
+      desktopBtn?.classList.add('bg-gray-100', 'text-gray-700');
+      mobileBtn?.classList.remove('bg-blue-500', 'text-white');
+      mobileBtn?.classList.add('bg-gray-100', 'text-gray-700');
+    }
+    setStatus(state.ditherPreview ? 'Print preview: ON' : 'Print preview: OFF');
+    render();
+  });
+
   // Mobile template buttons
   $('#mobile-template-manage')?.addEventListener('click', () => {
     closeMobileMenu();
@@ -5272,10 +5410,6 @@ function initMobileUI() {
       state.transport = null;
     }
     updateConnectionStatus(false);
-    const btn = $('#connect-btn');
-    btn.textContent = 'Connect';
-    btn.classList.remove('bg-green-100', 'text-green-800', 'border-green-300');
-    btn.classList.add('bg-white', 'hover:bg-gray-50');
     setStatus('Disconnected');
   });
 
@@ -5679,8 +5813,9 @@ function populateMobileProps() {
       <div class="prop-group">
         <div class="prop-label">Dithering</div>
         <select id="mobile-prop-dither" class="prop-input">
-          <option value="none" ${selected.dither === 'none' ? 'selected' : ''}>None</option>
-          <option value="threshold" ${selected.dither === 'threshold' ? 'selected' : ''}>Threshold</option>
+          <option value="none" ${selected.dither === 'none' ? 'selected' : ''}>None (Threshold)</option>
+          <option value="ordered" ${selected.dither === 'ordered' ? 'selected' : ''}>Ordered (Bayer)</option>
+          <option value="atkinson" ${selected.dither === 'atkinson' ? 'selected' : ''}>Atkinson</option>
           <option value="floyd-steinberg" ${(selected.dither === 'floyd-steinberg' || !selected.dither) ? 'selected' : ''}>Floyd-Steinberg</option>
         </select>
       </div>
@@ -6210,10 +6345,6 @@ function init() {
       state.transport = null;
     }
     updateConnectionStatus(false);
-    const btn = $('#connect-btn');
-    btn.textContent = 'Connect';
-    btn.classList.remove('bg-green-100', 'text-green-800', 'border-green-300');
-    btn.classList.add('bg-white', 'hover:bg-gray-50');
     setStatus('Disconnected');
   });
 
@@ -6251,6 +6382,31 @@ function init() {
       printerModelSelect.value = state.printSettings.printerModel || 'auto';
     }
   }
+
+  // Dither preview toggle (shows exact print output for all elements)
+  const ditherPreviewBtn = $('#dither-preview-btn');
+  const updatePreviewButtonState = () => {
+    const mobileBtn = $('#mobile-dither-preview-btn');
+    if (state.ditherPreview) {
+      ditherPreviewBtn?.classList.remove('bg-gray-100', 'text-gray-700');
+      ditherPreviewBtn?.classList.add('bg-blue-500', 'text-white');
+      mobileBtn?.classList.remove('bg-gray-100', 'text-gray-700');
+      mobileBtn?.classList.add('bg-blue-500', 'text-white');
+    } else {
+      ditherPreviewBtn?.classList.remove('bg-blue-500', 'text-white');
+      ditherPreviewBtn?.classList.add('bg-gray-100', 'text-gray-700');
+      mobileBtn?.classList.remove('bg-blue-500', 'text-white');
+      mobileBtn?.classList.add('bg-gray-100', 'text-gray-700');
+    }
+  };
+
+  ditherPreviewBtn?.addEventListener('click', () => {
+    state.ditherPreview = !state.ditherPreview;
+    state.renderer.setDitherPreview(state.ditherPreview);
+    updatePreviewButtonState();
+    setStatus(state.ditherPreview ? 'Print preview: ON' : 'Print preview: OFF');
+    render();
+  });
 
   $('#print-settings-btn').addEventListener('click', () => {
     // Update dialog with current values
@@ -7005,6 +7161,41 @@ function init() {
   document.addEventListener('click', (e) => {
     if (!e.target.closest('[id^="field-dropdown-"]') && !e.target.closest('[id^="insert-field-"]')) {
       $$('[id^="field-dropdown-"]').forEach(d => d.classList.add('hidden'));
+    }
+  });
+
+  // Expression insertion dropdown (date/time)
+  $('#insert-expr-text')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dropdown = $('#expr-dropdown-text');
+    // Close field dropdowns
+    $$('[id^="field-dropdown-"]').forEach(d => d.classList.add('hidden'));
+    dropdown.classList.toggle('hidden');
+  });
+
+  // Handle expression option clicks
+  $$('#expr-dropdown-text .expr-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const expr = btn.dataset.expr;
+      const textarea = $('#prop-text-content');
+      if (textarea && expr) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+        textarea.value = text.substring(0, start) + expr + text.substring(end);
+        textarea.setSelectionRange(start + expr.length, start + expr.length);
+        textarea.focus();
+        // Trigger change event to update element
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      $('#expr-dropdown-text').classList.add('hidden');
+    });
+  });
+
+  // Close expression dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#expr-dropdown-text') && !e.target.closest('#insert-expr-text')) {
+      $('#expr-dropdown-text')?.classList.add('hidden');
     }
   });
 

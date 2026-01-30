@@ -320,3 +320,148 @@ export function generateSampleData(fields, count = 3) {
   }
   return records;
 }
+
+// =============================================================================
+// INSTANT EXPRESSIONS - [[expression]] syntax for runtime evaluation
+// =============================================================================
+
+// Expression pattern: [[expression]] or [[expression|format]]
+const EXPRESSION_PATTERN = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
+
+/**
+ * Check if elements contain any instant expressions
+ * @param {Array} elements - Array of label elements
+ * @returns {boolean}
+ */
+export function hasExpressions(elements) {
+  for (const el of elements) {
+    if (el.text && EXPRESSION_PATTERN.test(el.text)) return true;
+    if (el.barcodeData && EXPRESSION_PATTERN.test(el.barcodeData)) return true;
+    if (el.qrData && EXPRESSION_PATTERN.test(el.qrData)) return true;
+    // Reset lastIndex after each test
+    EXPRESSION_PATTERN.lastIndex = 0;
+  }
+  return false;
+}
+
+/**
+ * Evaluate instant expressions in elements
+ * Replaces [[expression]] with evaluated values at call time
+ * @param {Array} elements - Array of label elements
+ * @returns {Array} - New array of elements with evaluated expressions
+ */
+export function evaluateExpressions(elements) {
+  return elements.map(el => {
+    const clone = { ...el };
+
+    if (clone.text) {
+      clone.text = evaluateExpressionsInString(clone.text);
+    }
+    if (clone.barcodeData) {
+      clone.barcodeData = evaluateExpressionsInString(clone.barcodeData);
+    }
+    if (clone.qrData) {
+      clone.qrData = evaluateExpressionsInString(clone.qrData);
+    }
+
+    return clone;
+  });
+}
+
+/**
+ * Evaluate expressions in a string
+ * @param {string} str - String with [[expression]] placeholders
+ * @returns {string} - String with evaluated values
+ */
+function evaluateExpressionsInString(str) {
+  EXPRESSION_PATTERN.lastIndex = 0;
+  return str.replace(EXPRESSION_PATTERN, (match, expr, format) => {
+    const expression = expr.trim().toLowerCase();
+    const formatStr = format?.trim() || null;
+
+    switch (expression) {
+      case 'dt':
+      case 'datetime':
+        return formatDateTime(new Date(), formatStr || 'YYYY-MM-DD HH:mm:ss');
+
+      case 'date':
+        return formatDateTime(new Date(), formatStr || 'YYYY-MM-DD');
+
+      case 'time':
+        return formatDateTime(new Date(), formatStr || 'HH:mm:ss');
+
+      case 'timestamp':
+      case 'ts':
+        return Date.now().toString();
+
+      case 'year':
+        return new Date().getFullYear().toString();
+
+      case 'month':
+        return String(new Date().getMonth() + 1).padStart(2, '0');
+
+      case 'day':
+        return String(new Date().getDate()).padStart(2, '0');
+
+      case 'hour':
+        return String(new Date().getHours()).padStart(2, '0');
+
+      case 'minute':
+      case 'min':
+        return String(new Date().getMinutes()).padStart(2, '0');
+
+      case 'second':
+      case 'sec':
+        return String(new Date().getSeconds()).padStart(2, '0');
+
+      default:
+        // Unknown expression, keep original
+        return match;
+    }
+  });
+}
+
+/**
+ * Format a date using a format string
+ * Supports: YYYY, YY, MM, M, DD, D, HH, H, hh, h, mm, m, ss, s, A, a, Z
+ * @param {Date} date - Date to format
+ * @param {string} format - Format string
+ * @returns {string} - Formatted date string
+ */
+function formatDateTime(date, format) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours24 = date.getHours();
+  const hours12 = hours24 % 12 || 12;
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ampm = hours24 < 12 ? 'AM' : 'PM';
+
+  // Get timezone offset in ±HH:mm format
+  const tzOffset = date.getTimezoneOffset();
+  const tzSign = tzOffset <= 0 ? '+' : '-';
+  const tzHours = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, '0');
+  const tzMins = String(Math.abs(tzOffset) % 60).padStart(2, '0');
+  const timezone = `${tzSign}${tzHours}:${tzMins}`;
+
+  // Replace tokens (order matters - longer tokens first)
+  return format
+    .replace(/YYYY/g, year)
+    .replace(/YY/g, String(year).slice(-2))
+    .replace(/MM/g, String(month).padStart(2, '0'))
+    .replace(/M/g, month)
+    .replace(/DD/g, String(day).padStart(2, '0'))
+    .replace(/D/g, day)
+    .replace(/HH/g, String(hours24).padStart(2, '0'))
+    .replace(/H/g, hours24)
+    .replace(/hh/g, String(hours12).padStart(2, '0'))
+    .replace(/h/g, hours12)
+    .replace(/mm/g, String(minutes).padStart(2, '0'))
+    .replace(/m/g, minutes)
+    .replace(/ss/g, String(seconds).padStart(2, '0'))
+    .replace(/s/g, seconds)
+    .replace(/A/g, ampm)
+    .replace(/a/g, ampm.toLowerCase())
+    .replace(/Z/g, timezone);
+}

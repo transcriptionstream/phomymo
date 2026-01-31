@@ -175,6 +175,17 @@ export const D_SERIES_ROUND_LABELS = {
   '14mm Round': { width: 14, height: 14, round: true },
 };
 
+// PM-241 series printers (PM-241-BT) - 4-inch (102mm) shipping label printer
+// Standard shipping label sizes in mm
+export const PM241_LABEL_SIZES = {
+  '102x152': { width: 102, height: 152 },  // 4x6" - standard shipping label
+  '102x102': { width: 102, height: 102 },  // 4x4" - square label
+  '102x76': { width: 102, height: 76 },    // 4x3" - smaller shipping label
+  '102x51': { width: 102, height: 51 },    // 4x2" - return address label
+  '100x150': { width: 100, height: 150 },  // Common metric size
+  '100x100': { width: 100, height: 100 },  // Square metric
+};
+
 // =============================================================================
 // DEFAULT ELEMENT VALUES
 // =============================================================================

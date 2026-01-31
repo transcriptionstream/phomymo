@@ -2039,13 +2039,20 @@ export class CanvasRenderer {
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
    * @param {number} height - Image height
-   * @param {number} outputWidthBytes - Output width in bytes (for centering)
-   * @param {boolean} center - Whether to center output in outputWidthBytes
+   * @param {number} outputWidthBytes - Output width in bytes (for alignment)
+   * @param {'left' | 'center' | 'right'} alignment - How to align output within outputWidthBytes
    */
-  _pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center = false) {
+  _pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, alignment = 'left') {
     const canvasBytesPerRow = Math.ceil(width / 8);
     const output = new Uint8Array(outputWidthBytes * height);
-    const offset = center ? Math.floor((outputWidthBytes - canvasBytesPerRow) / 2) : 0;
+
+    // Calculate offset based on alignment
+    let offset = 0;
+    if (alignment === 'center') {
+      offset = Math.floor((outputWidthBytes - canvasBytesPerRow) / 2);
+    } else if (alignment === 'right') {
+      offset = outputWidthBytes - canvasBytesPerRow;
+    }
 
     for (let y = 0; y < height; y++) {
       for (let byteX = 0; byteX < canvasBytesPerRow; byteX++) {
@@ -2083,11 +2090,11 @@ export class CanvasRenderer {
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
    * @param {number} height - Image height
-   * @param {number} outputWidthBytes - Output width in bytes (for centering)
-   * @param {boolean} center - Whether to center output in outputWidthBytes
+   * @param {number} outputWidthBytes - Output width in bytes (for alignment)
+   * @param {'left' | 'center' | 'right'} alignment - How to align output within outputWidthBytes
    * @param {string} algorithm - Dithering algorithm ('floyd-steinberg', 'atkinson', 'ordered')
    */
-  _pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center = false, algorithm = 'floyd-steinberg') {
+  _pixelsToRasterDithered(pixels, width, height, outputWidthBytes, alignment = 'left', algorithm = 'floyd-steinberg') {
     // Convert to grayscale with gamma correction
     const grayscale = this._rgbaToGrayscale(pixels, width, height, 1.3);
 
@@ -2109,7 +2116,14 @@ export class CanvasRenderer {
     // Pack into bytes
     const canvasBytesPerRow = Math.ceil(width / 8);
     const output = new Uint8Array(outputWidthBytes * height);
-    const offset = center ? Math.floor((outputWidthBytes - canvasBytesPerRow) / 2) : 0;
+
+    // Calculate offset based on alignment
+    let offset = 0;
+    if (alignment === 'center') {
+      offset = Math.floor((outputWidthBytes - canvasBytesPerRow) / 2);
+    } else if (alignment === 'right') {
+      offset = outputWidthBytes - canvasBytesPerRow;
+    }
 
     for (let y = 0; y < height; y++) {
       for (let byteX = 0; byteX < canvasBytesPerRow; byteX++) {
@@ -2139,20 +2153,20 @@ export class CanvasRenderer {
    * @param {Uint8ClampedArray} pixels - RGBA pixel data
    * @param {number} width - Image width
    * @param {number} height - Image height
-   * @param {number} outputWidthBytes - Output width in bytes (for centering)
-   * @param {boolean} center - Whether to center output in outputWidthBytes
+   * @param {number} outputWidthBytes - Output width in bytes (for alignment)
+   * @param {'left' | 'center' | 'right'} alignment - How to align output within outputWidthBytes
    * @param {string} ditherMode - Dither mode: 'auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered'
    */
-  _pixelsToRaster(pixels, width, height, outputWidthBytes, center = false, ditherMode = 'auto') {
+  _pixelsToRaster(pixels, width, height, outputWidthBytes, alignment = 'left', ditherMode = 'auto') {
     // Handle explicit modes
     if (ditherMode === 'none' || ditherMode === 'threshold') {
       console.log('Using threshold method for crisp output');
-      return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center);
+      return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, alignment);
     }
 
     if (ditherMode === 'floyd-steinberg' || ditherMode === 'atkinson' || ditherMode === 'ordered') {
       console.log(`Using ${ditherMode} dithering`);
-      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center, ditherMode);
+      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, alignment, ditherMode);
     }
 
     // Auto-detect whether to use dithering based on image content
@@ -2160,10 +2174,10 @@ export class CanvasRenderer {
 
     if (useDithering) {
       console.log('Auto: Using Floyd-Steinberg dithering for better image quality');
-      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, center, 'floyd-steinberg');
+      return this._pixelsToRasterDithered(pixels, width, height, outputWidthBytes, alignment, 'floyd-steinberg');
     } else {
       console.log('Auto: Using threshold method for crisp text/graphics');
-      return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, center);
+      return this._pixelsToRasterThreshold(pixels, width, height, outputWidthBytes, alignment);
     }
   }
 
@@ -2174,8 +2188,9 @@ export class CanvasRenderer {
    * @param {number} printerWidthBytes - Printer width in bytes (48 for M110/M200, 72 for M260)
    * @param {number} printerDpi - Printer DPI (203 for most, 300 for M02 Pro)
    * @param {string} ditherMode - Dither mode: 'auto', 'none', 'threshold', 'floyd-steinberg', 'atkinson', 'ordered'
+   * @param {'left' | 'center' | 'right'} alignment - How to align label within printer width (default: 'center')
    */
-  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto') {
+  getRasterData(elements, printerWidthBytes = DEFAULT_PRINTER_WIDTH_BYTES, printerDpi = 203, ditherMode = 'auto', alignment = 'center') {
     let { pixels, width, height } = this._renderToPixels(elements);
 
     // Scale up for higher DPI printers (e.g., M02 Pro at 300 DPI)
@@ -2212,7 +2227,7 @@ export class CanvasRenderer {
 
       // For high-DPI printers, use the specified printer width but left-align
       // (no centering) to avoid white gaps at the start edge
-      const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, false, ditherMode);
+      const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, 'left', ditherMode);
 
       return {
         data,
@@ -2221,7 +2236,7 @@ export class CanvasRenderer {
       };
     }
 
-    const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, true, ditherMode);
+    const data = this._pixelsToRaster(pixels, width, height, printerWidthBytes, alignment, ditherMode);
 
     return {
       data,

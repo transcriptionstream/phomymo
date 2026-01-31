@@ -1,13 +1,13 @@
 /**
  * Phomymo Label Designer Application
  * Multi-element label editor with drag, resize, and rotate
- * v114
+ * v116
  */
 
-import { CanvasRenderer } from './canvas.js?v=109';
+import { CanvasRenderer } from './canvas.js?v=110';
 import { BLETransport } from './ble.js?v=102';
 import { USBTransport } from './usb.js?v=101';
-import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=109';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isPM241Printer, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=111';
 import {
   createTextElement,
   createImageElement,
@@ -81,7 +81,8 @@ import {
   M_SERIES_ROUND_LABELS,
   D_SERIES_LABEL_SIZES,
   D_SERIES_ROUND_LABELS,
-} from './constants.js?v=100';
+  PM241_LABEL_SIZES,
+} from './constants.js?v=101';
 import {
   bindCheckbox,
   bindToggleButton,
@@ -642,16 +643,36 @@ function updatePrinterInfoFromQuery(field, value, allInfo) {
 
 /**
  * Update label size dropdown options based on connected printer type
- * @param {boolean} isDSeries - Whether the connected printer is D-series
+ * @param {string} deviceName - BLE device name (optional)
+ * @param {string} model - Printer model override (optional)
  */
-function updateLabelSizeDropdown(isDSeries) {
+function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
   const select = $('#label-size');
   const currentValue = select.value;
   const currentSize = state.labelSize;
 
-  // Update the active label sizes (combine rectangular and round labels)
-  const rectSizes = isDSeries ? D_SERIES_LABEL_SIZES : M_SERIES_LABEL_SIZES;
-  const roundSizes = isDSeries ? D_SERIES_ROUND_LABELS : M_SERIES_ROUND_LABELS;
+  // Determine printer type and appropriate sizes
+  const isRotated = isRotatedPrinter(deviceName, model);
+  const isPM241 = isPM241Printer(deviceName, model);
+
+  let rectSizes, roundSizes, defaultKey;
+  if (isRotated) {
+    // D-series and P12 use rotated (narrow) label sizes
+    rectSizes = D_SERIES_LABEL_SIZES;
+    roundSizes = D_SERIES_ROUND_LABELS;
+    defaultKey = '40x12';
+  } else if (isPM241) {
+    // PM-241 shipping label sizes (4-inch width)
+    rectSizes = PM241_LABEL_SIZES;
+    roundSizes = {}; // No round labels for shipping printer
+    defaultKey = '102x152'; // 4x6" default
+  } else {
+    // Standard M-series label sizes
+    rectSizes = M_SERIES_LABEL_SIZES;
+    roundSizes = M_SERIES_ROUND_LABELS;
+    defaultKey = '40x30';
+  }
+
   LABEL_SIZES = { ...rectSizes, ...roundSizes };
 
   // Clear existing options (except custom)
@@ -709,31 +730,46 @@ function updateLabelSizeDropdown(isDSeries) {
     $('#custom-size').classList.remove('hidden');
   } else {
     // Pick default based on printer type
-    const defaultKey = isDSeries ? '40x12' : '40x30';
     select.value = defaultKey;
     state.labelSize = { ...LABEL_SIZES[defaultKey] };
     state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
     state.renderer.clearCache();
     updatePrintSize();
+    // Auto zoom-to-fit if label is too large at 100% zoom
+    zoomToFitIfNeeded();
     render();
     $('#custom-size').classList.add('hidden');
   }
 
   // Also update mobile dropdown
-  updateMobileLabelSizeDropdown(isDSeries);
+  updateMobileLabelSizeDropdown(deviceName, model);
 }
 
 /**
  * Update mobile label size dropdown to match desktop
- * @param {boolean} isDSeries - Whether the connected printer is D-series
+ * @param {string} deviceName - BLE device name (optional)
+ * @param {string} model - Printer model override (optional)
  */
-function updateMobileLabelSizeDropdown(isDSeries) {
+function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
   const mobileSelect = $('#mobile-label-size');
   const desktopSelect = $('#label-size');
   if (!mobileSelect) return;
 
-  const rectSizes = isDSeries ? D_SERIES_LABEL_SIZES : M_SERIES_LABEL_SIZES;
-  const roundSizes = isDSeries ? D_SERIES_ROUND_LABELS : M_SERIES_ROUND_LABELS;
+  // Determine printer type and appropriate sizes
+  const isRotated = isRotatedPrinter(deviceName, model);
+  const isPM241 = isPM241Printer(deviceName, model);
+
+  let rectSizes, roundSizes;
+  if (isRotated) {
+    rectSizes = D_SERIES_LABEL_SIZES;
+    roundSizes = D_SERIES_ROUND_LABELS;
+  } else if (isPM241) {
+    rectSizes = PM241_LABEL_SIZES;
+    roundSizes = {};
+  } else {
+    rectSizes = M_SERIES_LABEL_SIZES;
+    roundSizes = M_SERIES_ROUND_LABELS;
+  }
 
   // Clear and rebuild mobile dropdown
   while (mobileSelect.options.length > 0) {
@@ -874,6 +910,73 @@ function zoomReset() {
   state.zoom = 1;
   updateZoom();
   resetPanOffset();
+}
+
+/**
+ * Zoom to fit label within visible canvas area
+ * Calculates optimal zoom level so the entire label is visible
+ */
+function zoomToFit() {
+  // Get the canvas area container (parent of canvas-container)
+  const canvasArea = $('#canvas-container')?.parentElement;
+  if (!canvasArea) return;
+
+  // Get available space (with some padding)
+  const padding = 48; // px padding on each side
+  const availableWidth = canvasArea.clientWidth - padding * 2;
+  const availableHeight = canvasArea.clientHeight - padding * 2;
+
+  // Get label dimensions in pixels (from renderer)
+  const dims = state.renderer.getDimensions();
+  if (!dims.width || !dims.height) return;
+
+  // Calculate zoom to fit both dimensions
+  const zoomX = availableWidth / dims.width;
+  const zoomY = availableHeight / dims.height;
+  let fitZoom = Math.min(zoomX, zoomY);
+
+  // Clamp to valid zoom range
+  fitZoom = Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, fitZoom));
+
+  // Round to nearest step for cleaner display
+  fitZoom = Math.round(fitZoom / ZOOM.STEP) * ZOOM.STEP;
+  fitZoom = Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, fitZoom));
+
+  state.zoom = fitZoom;
+  updateZoom();
+  resetPanOffset();
+}
+
+/**
+ * Zoom to fit only if current label doesn't fit at 100% zoom
+ * Preserves zoom if label already fits, adjusts if too large
+ */
+function zoomToFitIfNeeded() {
+  // Get the canvas area container (parent of canvas-container)
+  const canvasArea = $('#canvas-container')?.parentElement;
+  if (!canvasArea) return;
+
+  // Get available space (with some padding)
+  const padding = 48;
+  const availableWidth = canvasArea.clientWidth - padding * 2;
+  const availableHeight = canvasArea.clientHeight - padding * 2;
+
+  // Get label dimensions in pixels
+  const dims = state.renderer.getDimensions();
+  if (!dims.width || !dims.height) return;
+
+  // Check if label fits at 100% zoom
+  const fitsAt100 = dims.width <= availableWidth && dims.height <= availableHeight;
+
+  if (fitsAt100) {
+    // Label fits at 100%, reset to default zoom
+    state.zoom = 1;
+    updateZoom();
+    resetPanOffset();
+  } else {
+    // Label too large, zoom to fit
+    zoomToFit();
+  }
 }
 
 /**
@@ -1582,10 +1685,11 @@ async function handleBatchPrint() {
       // Render to raster (use raw format for rotated printers like D-series and P12)
       const deviceName = state.transport.getDeviceName?.() || '';
       const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+      const printerAlignment = getPrinterAlignment(deviceName, printerModel);
       const ditherMode = getDitherMode(mergedElements);
       const rasterData = isRotatedPrinter(deviceName, printerModel)
         ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
-        : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode);
+        : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode, printerAlignment);
 
       // Print
       await print(state.transport, rasterData, {
@@ -1663,10 +1767,11 @@ async function handlePrintSinglePreview() {
     // Render to raster (use raw format for rotated printers like D-series and P12)
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
+    const printerAlignment = getPrinterAlignment(deviceName, printerModel);
     const ditherMode = getDitherMode(mergedElements);
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
-      : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode);
+      : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode, printerAlignment);
 
     // Print
     await print(state.transport, rasterData, {
@@ -2086,6 +2191,10 @@ function handleLabelSizeChange() {
 
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
   updatePrintSize();
+
+  // Auto zoom-to-fit if label is too large at 100% zoom
+  zoomToFitIfNeeded();
+
   render();
 }
 
@@ -2112,6 +2221,10 @@ function handleCustomSizeChange() {
   state.labelSize = { width: w, height: h, round: isRound };
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, isRound);
   updatePrintSize();
+
+  // Auto zoom-to-fit if label is too large at 100% zoom
+  zoomToFitIfNeeded();
+
   render();
 
   // Sync to mobile custom inputs
@@ -4188,8 +4301,8 @@ function showPrinterModelPrompt(deviceName) {
     const modelDesc = getPrinterDescription(deviceName, model);
     setStatus(`Connected: ${deviceName} (${modelDesc})`);
 
-    // Update label sizes for rotated printers (D-series and P12)
-    updateLabelSizeDropdown(isRotatedPrinter(deviceName, model));
+    // Update label sizes based on printer type
+    updateLabelSizeDropdown(deviceName, model);
     updateLengthAdjustButtons();
 
     // Close dialog
@@ -4284,8 +4397,8 @@ async function handleConnect(event) {
       showPrinterModelPrompt(deviceName);
     }
 
-    // Update label sizes for rotated printers (D-series and P12)
-    updateLabelSizeDropdown(isRotatedPrinter(deviceName, effectiveModel));
+    // Update label sizes based on printer type
+    updateLabelSizeDropdown(deviceName, effectiveModel);
     updateLengthAdjustButtons();
 
     // Update printer info UI
@@ -4344,10 +4457,11 @@ async function handlePrint() {
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
     const printerDpi = getPrinterDpi(deviceName, printerModel);
+    const printerAlignment = getPrinterAlignment(deviceName, printerModel);
     const ditherMode = getDitherMode(elementsToRender);
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
-      : state.renderer.getRasterData(elementsToRender, printerWidth, printerDpi, ditherMode);
+      : state.renderer.getRasterData(elementsToRender, printerWidth, printerDpi, ditherMode, printerAlignment);
 
     // Print multiple copies if requested
     for (let copy = 1; copy <= copies; copy++) {
@@ -4584,6 +4698,97 @@ function handleExport() {
   URL.revokeObjectURL(url);
 
   setStatus('Design exported');
+}
+
+/**
+ * Export current design to PDF
+ */
+function handleExportPDF() {
+  if (state.elements.length === 0) {
+    setStatus('Nothing to export');
+    return;
+  }
+
+  // Evaluate expressions (date/time substitutions)
+  const elementsToRender = evaluateExpressions(state.elements);
+
+  // Render to temporary canvas at high DPI for quality
+  const scale = 4; // 4x scale for 300 DPI quality
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = state.renderer.labelWidth * scale;
+  tempCanvas.height = state.renderer.labelHeight * scale;
+  const tempCtx = tempCanvas.getContext('2d');
+
+  // Scale context and fill white background
+  tempCtx.scale(scale, scale);
+  tempCtx.fillStyle = 'white';
+  tempCtx.fillRect(0, 0, state.renderer.labelWidth, state.renderer.labelHeight);
+
+  // Render elements (reuse existing render logic)
+  state.renderer.renderAllToContext(tempCtx, elementsToRender, []);
+
+  // Get label dimensions in mm
+  const widthMm = state.labelSize.width;
+  const heightMm = state.labelSize.height;
+
+  // Create PDF with exact label dimensions
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({
+    orientation: widthMm > heightMm ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: [widthMm, heightMm]
+  });
+
+  // Add canvas as image to PDF
+  const imgData = tempCanvas.toDataURL('image/png');
+  pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm);
+
+  // Download PDF
+  const filename = state.currentDesignName
+    ? `${state.currentDesignName}.pdf`
+    : `label-${Date.now()}.pdf`;
+  pdf.save(filename);
+
+  setStatus('PDF exported');
+}
+
+/**
+ * Export current design to PNG
+ */
+function handleExportPNG() {
+  if (state.elements.length === 0) {
+    setStatus('Nothing to export');
+    return;
+  }
+
+  const elementsToRender = evaluateExpressions(state.elements);
+
+  // Render at 4x scale for quality
+  const scale = 4;
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = state.renderer.labelWidth * scale;
+  tempCanvas.height = state.renderer.labelHeight * scale;
+  const tempCtx = tempCanvas.getContext('2d');
+
+  tempCtx.scale(scale, scale);
+  tempCtx.fillStyle = 'white';
+  tempCtx.fillRect(0, 0, state.renderer.labelWidth, state.renderer.labelHeight);
+  state.renderer.renderAllToContext(tempCtx, elementsToRender, []);
+
+  // Download as PNG
+  tempCanvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = state.currentDesignName
+      ? `${state.currentDesignName}.png`
+      : `label-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('PNG exported');
+  }, 'image/png');
 }
 
 /**
@@ -5248,6 +5453,18 @@ function initMobileUI() {
   $('#mobile-load-btn')?.addEventListener('click', () => {
     closeMobileMenu();
     showLoadDialog();
+  });
+  $('#mobile-export-json-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    handleExport();
+  });
+  $('#mobile-export-pdf-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    handleExportPDF();
+  });
+  $('#mobile-export-png-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    handleExportPNG();
   });
   $('#mobile-undo-btn')?.addEventListener('click', () => undo());
   $('#mobile-redo-btn')?.addEventListener('click', () => redo());
@@ -6253,7 +6470,7 @@ function init() {
     btn.classList.add('bg-white', 'hover:bg-gray-50');
     updateConnectionStatus(false);
     // Reset to M-series sizes when disconnecting/changing connection
-    updateLabelSizeDropdown(false);
+    updateLabelSizeDropdown('', 'auto');
     updateLengthAdjustButtons();
   });
 
@@ -6446,7 +6663,7 @@ function init() {
 
     // Update UI based on printer model (for P12 length buttons and label sizes)
     const deviceName = state.transport?.getDeviceName?.() || '';
-    updateLabelSizeDropdown(isRotatedPrinter(deviceName, state.printSettings.printerModel));
+    updateLabelSizeDropdown(deviceName, state.printSettings.printerModel);
     updateLengthAdjustButtons();
 
     printSettingsDialog.classList.add('hidden');
@@ -6606,8 +6823,28 @@ function init() {
     }
   });
 
-  // Export button
-  $('#export-btn').addEventListener('click', handleExport);
+  // Export dropdown toggle
+  $('#export-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#elements-dropdown').classList.add('hidden'); // Close other dropdown
+    $('#export-dropdown').classList.toggle('hidden');
+  });
+
+  // Export options
+  $('#export-json-btn').addEventListener('click', () => {
+    $('#export-dropdown').classList.add('hidden');
+    handleExport(); // existing JSON export
+  });
+
+  $('#export-pdf-btn').addEventListener('click', () => {
+    $('#export-dropdown').classList.add('hidden');
+    handleExportPDF();
+  });
+
+  $('#export-png-btn').addEventListener('click', () => {
+    $('#export-dropdown').classList.add('hidden');
+    handleExportPNG();
+  });
 
   // Print progress cancel button
   $('#progress-cancel').addEventListener('click', () => {
@@ -6618,14 +6855,18 @@ function init() {
   // Elements dropdown
   $('#elements-btn').addEventListener('click', (e) => {
     e.stopPropagation();
+    $('#export-dropdown').classList.add('hidden'); // Close other dropdown
     updateElementsList();
     $('#elements-dropdown').classList.toggle('hidden');
   });
 
-  // Close elements dropdown when clicking outside
+  // Close dropdowns when clicking outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#elements-btn') && !e.target.closest('#elements-dropdown')) {
       $('#elements-dropdown').classList.add('hidden');
+    }
+    if (!e.target.closest('#export-btn') && !e.target.closest('#export-dropdown')) {
+      $('#export-dropdown').classList.add('hidden');
     }
   });
 

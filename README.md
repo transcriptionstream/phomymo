@@ -6,7 +6,7 @@ A free, browser-based label designer for Phomemo thermal printers. No drivers ne
 
 ![Phomymo Label Designer](screenshot.png)
 
-Supports Phomemo P12-series (P12, P12 Pro), M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02) and D-series (D30, D35, D50, D110, Q30, Q30S) thermal printers.
+Supports Phomemo P12-series (P12, P12 Pro), M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02), D-series (D30, D35, D50, D110, Q30, Q30S), and PM-241 (4-inch shipping labels) thermal printers.
 
 ## Features
 
@@ -50,9 +50,11 @@ Full-featured mobile UI with touch support (activates automatically on screens <
 ### Label Sizes
 - **M-series presets**: 12x40, 15x30, 20x30, 25x50, 30x20, 30x40, 40x30, 40x60, 50x25, 50x30, 50x80, 60x40
 - **D-series presets**: 40x12, 30x12, 22x12, 12x12, 30x14, 22x14, 40x15, 30x15
+- **PM-241 presets**: 102x152 (4x6"), 102x102 (4x4"), 102x76 (4x3"), 102x51 (4x2"), 100x150, 100x100
 - **Round labels**: 20mm, 30mm, 40mm, 50mm (M-series), 14mm (D-series) - circular design boundary with clipped print output
 - Custom dimensions with live preview (includes round option)
-- **Auto-detection**: Label size options automatically switch when connecting to D-series printers
+- **Auto-detection**: Label size options automatically switch based on connected printer type
+- **Auto-zoom**: Large labels (like PM-241) automatically zoom to fit on screen
 
 ### Multi-Label Rolls
 - **Configure multi-up layouts** - Define individual label width, height, number across, and gap between labels
@@ -68,7 +70,21 @@ Full-featured mobile UI with touch support (activates automatically on screens <
 ### File Operations
 - **Save/Load** - Persist designs to browser localStorage
 - **Export/Import** - Share designs as JSON files
+- **Export to PDF** - Download label as PDF with exact dimensions (full color/grayscale)
+- **Export to PNG** - Download label as high-resolution PNG image
 - **Print settings** - Density control, multiple copies, feed adjustment
+
+### Print Preview
+- **Dither preview** - Toggle to see exact print output with dithering applied
+- **Real-time preview** - See how your label will actually print on the thermal printer
+- **Toggle button** - Quick access in toolbar to switch between design and print preview modes
+
+### Instant Expressions
+Dynamic values that evaluate at print/export time using `[[expression]]` syntax:
+- **Date/Time**: `[[date]]`, `[[time]]`, `[[datetime]]`, `[[timestamp]]`
+- **Components**: `[[year]]`, `[[month]]`, `[[day]]`, `[[hour]]`, `[[minute]]`, `[[second]]`
+- **Custom formats**: `[[date|MM/DD/YYYY]]`, `[[time|hh:mm A]]`, `[[datetime|YYYY-MM-DD HH:mm]]`
+- Works in text, barcodes, and QR codes
 
 ### Printer Info Panel
 - **Live status** - View battery level, paper status, firmware version, and serial number
@@ -116,11 +132,24 @@ D-series printers use a different protocol and print labels rotated 90°. The ap
 - Rotates image data for correct orientation
 - Uses the appropriate print protocol
 
+### PM-241 Series (Shipping Labels)
+
+| Model | Print Width | Notes |
+|-------|-------------|-------|
+| PM-241 / PM-241-BT | 102mm (4 inches) | Shipping label printer |
+
+**Supported label sizes:**
+- 102x152mm (4x6") - Standard shipping label
+- 102x102mm (4x4") - Square label
+- 102x76mm (4x3") - Smaller shipping label
+- 102x51mm (4x2") - Return address label
+- 100x150mm, 100x100mm - Common metric sizes
+
 ### Auto-Detection
 
 The app automatically detects your printer model from the Bluetooth device name and configures the correct:
-- Print width (12-110mm depending on model)
-- Protocol (P12-series, M02-series with prefix, M-series ESC/POS, or D-series rotated)
+- Print width (12-102mm depending on model)
+- Protocol (P12-series, M02-series with prefix, M-series ESC/POS, D-series rotated, or PM-241)
 - Label size presets
 - DPI (203 standard, 300 for M02 Pro)
 
@@ -213,6 +242,7 @@ Libraries used:
 
 - [JsBarcode](https://github.com/lindell/JsBarcode) - Barcode generation
 - [QRCode.js](https://github.com/davidshimjs/qrcodejs) - QR code generation
+- [jsPDF](https://github.com/parallax/jsPDF) - PDF export
 
 ## License
 

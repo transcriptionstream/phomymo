@@ -121,6 +121,8 @@ const PRINTER_WIDTHS = {
   'm04s-53': 54,
   'm04s-80': 81,
   'm04s-110': 110,
+  // PM-241 series (4 inch / 102mm / 812px) - shipping label printer
+  'pm241': 102,
   // D-series uses raw label width
   'd-series': null,
 };
@@ -161,6 +163,10 @@ const DEVICE_PATTERNS = [
   { pattern: 'M260', width: 72, protocol: 'm-series', dpi: 203 },
   // M04 series (variable width, default to 54mm)
   { pattern: 'M04', width: 54, protocol: 'm-series', dpi: 203 },
+  // PM-241 series (4 inch / 102mm shipping label printer)
+  { pattern: 'PM-241', width: 102, protocol: 'm-series', dpi: 203 },
+  { pattern: 'PM241', width: 102, protocol: 'm-series', dpi: 203 },
+  { pattern: 'PM 241', width: 102, protocol: 'm-series', dpi: 203 },
   // D-series (rotated protocol)
   { pattern: 'D30', width: null, protocol: 'd-series', dpi: 203 },
   { pattern: 'D35', width: null, protocol: 'd-series', dpi: 203 },
@@ -322,6 +328,28 @@ export function isP12Printer(deviceName, modelOverride = 'auto') {
 }
 
 /**
+ * Detect if device is PM-241 series (4-inch shipping label printer)
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isPM241Printer(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'pm241') {
+    return true;
+  }
+
+  // For other overrides, check the width (PM-241 is 102 bytes = 4 inch)
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) {
+    return overrideConfig.width === 102;
+  }
+
+  // Auto-detect from device name - check for PM-241 pattern
+  const config = detectPrinterConfig(deviceName);
+  return config.width === 102;
+}
+
+/**
  * Detect if device is M110-series based on name or override
  * M110/M110S/M120 use the phomemo-tools protocol with specific commands
  * @param {string} deviceName - BLE device name
@@ -362,6 +390,28 @@ export function isRotatedPrinter(deviceName, modelOverride = 'auto') {
 export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
   const width = getPrinterWidthBytes(deviceName, modelOverride);
   return width === 48;
+}
+
+/**
+ * Get print alignment for a printer
+ * M110S has labels right-aligned in the printer (not centered like regular M110)
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ * @returns {'left' | 'center' | 'right'} Alignment for print data
+ */
+export function getPrinterAlignment(deviceName, modelOverride = 'auto') {
+  // Manual M110S override
+  if (modelOverride === 'm110s') {
+    return 'right';
+  }
+
+  // Auto-detect M110S from device name pattern (Q + digits + letter + digits)
+  if (M110S_PATTERN.test(deviceName)) {
+    return 'right';
+  }
+
+  // All other printers use centered alignment
+  return 'center';
 }
 
 /**
@@ -413,6 +463,9 @@ export function getPrinterDescription(deviceName, modelOverride = 'auto') {
 
   const isP12 = isP12Printer(deviceName, modelOverride);
   if (isP12) return 'P12-series (12mm)';
+
+  const isPM241 = isPM241Printer(deviceName, modelOverride);
+  if (isPM241) return 'PM-241 (4-inch shipping)';
 
   const isM02 = isM02Printer(deviceName, modelOverride);
   const isM110 = isM110Printer(deviceName, modelOverride);

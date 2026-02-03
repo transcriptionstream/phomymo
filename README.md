@@ -6,7 +6,7 @@ A free, browser-based label designer for Phomemo thermal printers. No drivers ne
 
 ![Phomymo Label Designer](screenshot.png)
 
-Supports Phomemo P12-series (P12, P12 Pro), M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02), D-series (D30, D35, D50, D110, Q30, Q30S), and PM-241 (4-inch shipping labels) thermal printers.
+Supports Phomemo tape printers (P12, P12 Pro, A30), M02-series (M02, M02S, M02X, M02 Pro), M-series (M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02), D-series (D30, D35, D50, D110, Q30, Q30S), and PM-241 (4-inch shipping labels) thermal printers.
 
 ## Features
 
@@ -94,11 +94,14 @@ Dynamic values that evaluate at print/export time using `[[expression]]` syntax:
 
 ## Supported Printers
 
-### P12-series (Experimental)
+### Tape Printers (P12/A30 Series)
 
-| Model | Print Width | Notes |
-|-------|-------------|-------|
-| P12 / P12 Pro | 12mm tape | Tape-based label maker (beta support, assumes M02-like protocol) |
+| Model | Tape Width | Notes |
+|-------|------------|-------|
+| P12 / P12 Pro | 12mm | Continuous tape label maker |
+| A30 | 12-15mm | Wider tape support, faster print speed (20mm/s) |
+
+Tape width is selectable in the toolbar when a tape printer is connected. The app remembers your tape width preference per device.
 
 ### M02-series (ESC/POS with Prefix)
 

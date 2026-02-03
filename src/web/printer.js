@@ -93,14 +93,51 @@ const P12_CMD = {
   FEED: new Uint8Array([0x1b, 0x64, 0x0d]),
 };
 
+// TSPL commands for shipping label printers (PM-241, etc.)
+// TSPL is a text-based protocol used by many Chinese thermal label printers
+const TSPL = {
+  // Helper to create command string with CRLF
+  cmd: (str) => new TextEncoder().encode(str + '\r\n'),
+
+  // Set label size in mm
+  SIZE: (widthMm, heightMm) => new TextEncoder().encode(`SIZE ${widthMm} mm, ${heightMm} mm\r\n`),
+
+  // Set gap between labels (0 for continuous)
+  GAP: (gapMm) => new TextEncoder().encode(`GAP ${gapMm} mm, 0 mm\r\n`),
+
+  // Set print density (0-15)
+  DENSITY: (level) => new TextEncoder().encode(`DENSITY ${level}\r\n`),
+
+  // Set print speed (1-10)
+  SPEED: (speed) => new TextEncoder().encode(`SPEED ${speed}\r\n`),
+
+  // Set print direction (0=normal, 1=reversed)
+  DIRECTION: (dir) => new TextEncoder().encode(`DIRECTION ${dir}\r\n`),
+
+  // Clear image buffer
+  CLS: () => new TextEncoder().encode('CLS\r\n'),
+
+  // BITMAP header: x, y, widthBytes, heightDots, mode (0=overwrite)
+  // Binary data follows immediately after this
+  BITMAP_HEADER: (x, y, widthBytes, heightDots) =>
+    new TextEncoder().encode(`BITMAP ${x},${y},${widthBytes},${heightDots},0,`),
+
+  // Print n copies
+  PRINT: (copies = 1) => new TextEncoder().encode(`PRINT ${copies}\r\n`),
+
+  // End command
+  END: () => new TextEncoder().encode('END\r\n'),
+};
+
 /**
  * Printer width configurations
  * Width in bytes (8 pixels per byte at 203 DPI)
  * Keys match the dropdown values in index.html
  */
 const PRINTER_WIDTHS = {
-  // P12 series (12mm tape / ~96px) - uses m02 protocol (assumed)
-  'p12': 12,
+  // Tape printers (continuous tape with variable widths)
+  'p12': 12,  // P12 series (12mm tape)
+  'a30': 15,  // A30 series (12-15mm tape, default 15mm)
   // M02 series (48mm / 384px) - uses m02 protocol
   'm02': 48,
   // M02 Pro (53mm at 300 DPI = 626px = 78 bytes) - uses m02 protocol
@@ -135,6 +172,8 @@ const PRINTER_WIDTHS = {
  * DPI: Most printers are 203 DPI, but M02 Pro is 300 DPI
  */
 const DEVICE_PATTERNS = [
+  // A30 series (12-15mm tape) - uses P12 protocol with rotation
+  { pattern: 'A30', width: 15, protocol: 'p12', dpi: 203 },
   // P12 series (12mm tape / ~96px at 203 DPI) - M-series protocol with rotation like D30
   { pattern: 'P12 PRO', width: 12, protocol: 'p12', dpi: 203 },
   { pattern: 'P12PRO', width: 12, protocol: 'p12', dpi: 203 },
@@ -164,9 +203,11 @@ const DEVICE_PATTERNS = [
   // M04 series (variable width, default to 54mm)
   { pattern: 'M04', width: 54, protocol: 'm-series', dpi: 203 },
   // PM-241 series (4 inch / 102mm shipping label printer)
-  { pattern: 'PM-241', width: 102, protocol: 'm-series', dpi: 203 },
-  { pattern: 'PM241', width: 102, protocol: 'm-series', dpi: 203 },
-  { pattern: 'PM 241', width: 102, protocol: 'm-series', dpi: 203 },
+  // Variants: PM-241-BT, PM-241Z-BT, PM241, etc.
+  // Uses TSPL protocol (common for Chinese shipping label printers)
+  { pattern: 'PM-241', width: 102, protocol: 'tspl', dpi: 203 },
+  { pattern: 'PM241', width: 102, protocol: 'tspl', dpi: 203 },
+  { pattern: 'PM 241', width: 102, protocol: 'tspl', dpi: 203 },
   // D-series (rotated protocol)
   { pattern: 'D30', width: null, protocol: 'd-series', dpi: 203 },
   { pattern: 'D35', width: null, protocol: 'd-series', dpi: 203 },
@@ -236,9 +277,14 @@ function getOverrideConfig(modelOverride) {
     return { width: null, protocol: 'd-series', dpi: 203 };
   }
 
-  // P12 uses M-series protocol with rotation
+  // P12 uses P12 protocol with rotation
   if (modelOverride === 'p12') {
     return { width: PRINTER_WIDTHS['p12'], protocol: 'p12', dpi: 203 };
+  }
+
+  // A30 uses P12 protocol with rotation (supports 12-15mm tape)
+  if (modelOverride === 'a30') {
+    return { width: 15, protocol: 'p12', dpi: 203 };
   }
 
   // M02 uses special protocol
@@ -254,6 +300,11 @@ function getOverrideConfig(modelOverride) {
   // M110/M110S uses M110 protocol from phomemo-tools
   if (modelOverride === 'm110' || modelOverride === 'm110s') {
     return { width: PRINTER_WIDTHS[modelOverride], protocol: 'm110', dpi: 203 };
+  }
+
+  // PM-241 uses TSPL protocol (shipping label printer)
+  if (modelOverride === 'pm241') {
+    return { width: 102, protocol: 'tspl', dpi: 203 };
   }
 
   const width = PRINTER_WIDTHS[modelOverride];
@@ -328,6 +379,33 @@ export function isP12Printer(deviceName, modelOverride = 'auto') {
 }
 
 /**
+ * Detect if device is A30-series based on name or override
+ * A30 uses P12 protocol but supports wider tape (12-15mm)
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isA30Printer(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'a30') {
+    return true;
+  }
+
+  // Auto-detect from device name
+  const upperName = (deviceName || '').toUpperCase();
+  return upperName.startsWith('A30');
+}
+
+/**
+ * Detect if device is a tape printer (P12 or A30 series)
+ * These use continuous tape and support variable tape widths
+ * @param {string} deviceName - BLE device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isTapePrinter(deviceName, modelOverride = 'auto') {
+  return isP12Printer(deviceName, modelOverride) || isA30Printer(deviceName, modelOverride);
+}
+
+/**
  * Detect if device is PM-241 series (4-inch shipping label printer)
  * @param {string} deviceName - BLE device name
  * @param {string} modelOverride - Manual model selection
@@ -347,6 +425,28 @@ export function isPM241Printer(deviceName, modelOverride = 'auto') {
   // Auto-detect from device name - check for PM-241 pattern
   const config = detectPrinterConfig(deviceName);
   return config.width === 102;
+}
+
+/**
+ * Detect if device uses TSPL protocol (shipping label printers)
+ * @param {string} deviceName - Device name
+ * @param {string} modelOverride - Manual model selection
+ */
+export function isTSPLPrinter(deviceName, modelOverride = 'auto') {
+  // Manual override takes precedence
+  if (modelOverride === 'pm241' || modelOverride === 'tspl') {
+    return true;
+  }
+
+  // For other overrides, use the override's protocol
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) {
+    return overrideConfig.protocol === 'tspl';
+  }
+
+  // Auto-detect from device name
+  const config = detectPrinterConfig(deviceName);
+  return config.protocol === 'tspl';
 }
 
 /**
@@ -373,13 +473,13 @@ function isM110Printer(deviceName, modelOverride = 'auto') {
 }
 
 /**
- * Detect if device is a rotated printer (D-series or P12-series)
+ * Detect if device is a rotated printer (D-series or tape printers like P12/A30)
  * These printers print labels sideways and need raw raster data with rotation
  * @param {string} deviceName - BLE device name
  * @param {string} modelOverride - Manual model selection
  */
 export function isRotatedPrinter(deviceName, modelOverride = 'auto') {
-  return isDSeriesPrinter(deviceName, modelOverride) || isP12Printer(deviceName, modelOverride);
+  return isDSeriesPrinter(deviceName, modelOverride) || isTapePrinter(deviceName, modelOverride);
 }
 
 /**
@@ -461,8 +561,11 @@ export function getPrinterDescription(deviceName, modelOverride = 'auto') {
   const isDSeries = isDSeriesPrinter(deviceName, modelOverride);
   if (isDSeries) return 'D-series';
 
+  const isA30 = isA30Printer(deviceName, modelOverride);
+  if (isA30) return 'A30-series (12-15mm tape)';
+
   const isP12 = isP12Printer(deviceName, modelOverride);
-  if (isP12) return 'P12-series (12mm)';
+  if (isP12) return 'P12-series (12mm tape)';
 
   const isPM241 = isPM241Printer(deviceName, modelOverride);
   if (isPM241) return 'PM-241 (4-inch shipping)';
@@ -594,12 +697,19 @@ export async function print(transport, rasterData, options = {}) {
   const isP12 = isP12Printer(deviceName, printerModel);
   const isM02 = isM02Printer(deviceName, printerModel);
   const isM110 = isM110Printer(deviceName, printerModel);
+  const isTSPL = isTSPLPrinter(deviceName, printerModel);
   const printerDesc = getPrinterDescription(deviceName, printerModel);
   console.log(`Printing: ${widthBytes}x${heightLines} (${data.length} bytes)`);
   console.log(`Device: ${deviceName}, Model: ${printerModel}, Detected: ${printerDesc}`);
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
-  if (isP12 && isBLE) {
+  if (isTSPL) {
+    // TSPL protocol for shipping label printers (PM-241, etc.)
+    // Get label dimensions in mm from raster data
+    const labelWidthMm = Math.round(widthBytes * 8 / 8); // 8 dots/mm at 203 DPI
+    const labelHeightMm = Math.round(heightLines / 8);
+    await printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress);
+  } else if (isP12 && isBLE) {
     // P12 uses its own protocol with proprietary init sequence
     await printP12(transport, data, widthBytes, heightLines, onProgress);
   } else if (isDSeries && isBLE) {
@@ -916,6 +1026,91 @@ async function printUSB(transport, data, widthBytes, heightLines, density, feed,
   await transport.send(CMD.FEED(feed));
 
   console.log('Print complete!');
+}
+
+/**
+ * Print via TSPL protocol (for shipping label printers like PM-241)
+ * TSPL is a text-based command language used by many Chinese thermal label printers
+ */
+async function printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress) {
+  console.log('Using TSPL protocol...');
+  console.log(`Label size: ${labelWidthMm}mm x ${labelHeightMm}mm`);
+  console.log(`Raster: ${widthBytes} bytes wide x ${heightLines} rows`);
+
+  // Map density 1-8 to TSPL density 0-15
+  const tsplDensity = Math.round((density / 8) * 15);
+
+  // Build TSPL command sequence
+  console.log('Sending TSPL setup commands...');
+
+  // SIZE command - label dimensions
+  await transport.send(TSPL.SIZE(labelWidthMm, labelHeightMm));
+  await transport.delay(50);
+
+  // GAP command - gap between labels (3mm typical for die-cut labels)
+  await transport.send(TSPL.GAP(3));
+  await transport.delay(50);
+
+  // OFFSET command - shift print down to center on label (1mm adjustment)
+  await transport.send(new TextEncoder().encode('OFFSET 1 mm\r\n'));
+  await transport.delay(50);
+
+  // DENSITY command
+  console.log(`Setting TSPL density to ${tsplDensity}...`);
+  await transport.send(TSPL.DENSITY(tsplDensity));
+  await transport.delay(50);
+
+  // SPEED command (use moderate speed)
+  await transport.send(TSPL.SPEED(4));
+  await transport.delay(50);
+
+  // DIRECTION command (normal direction)
+  await transport.send(TSPL.DIRECTION(0));
+  await transport.delay(50);
+
+  // CLS - clear image buffer
+  await transport.send(TSPL.CLS());
+  await transport.delay(50);
+
+  // BITMAP command header
+  console.log('Sending BITMAP header...');
+  await transport.send(TSPL.BITMAP_HEADER(0, 0, widthBytes, heightLines));
+
+  // Invert bitmap data - TSPL expects 0=black, 1=white (opposite of our format)
+  console.log('Inverting bitmap data for TSPL...');
+  const invertedData = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) {
+    invertedData[i] = data[i] ^ 0xFF;
+  }
+
+  // Send binary bitmap data in chunks
+  console.log('Sending bitmap data...');
+  const chunkSize = 512;
+
+  for (let i = 0; i < invertedData.length; i += chunkSize) {
+    const chunk = invertedData.slice(i, Math.min(i + chunkSize, invertedData.length));
+    await transport.send(chunk);
+    await transport.delay(10);
+
+    if (onProgress) {
+      const progress = Math.round((i + chunk.length) / invertedData.length * 100);
+      onProgress(progress);
+    }
+  }
+
+  // Need CRLF after bitmap data
+  await transport.send(new TextEncoder().encode('\r\n'));
+  await transport.delay(50);
+
+  // PRINT command
+  console.log('Sending PRINT command...');
+  await transport.send(TSPL.PRINT(1));
+  await transport.delay(50);
+
+  // END command
+  await transport.send(TSPL.END());
+
+  console.log('TSPL print complete!');
 }
 
 /**

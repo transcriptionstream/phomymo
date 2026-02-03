@@ -383,10 +383,19 @@
             <option value="custom">Custom...</option>
             <option value="multi-label">Multi-Label Roll...</option>
           </select>
-          <!-- P12 length adjust buttons (hidden by default, shown for P12 continuous tape) -->
+          <!-- P12/A30 length adjust buttons (hidden by default, shown for tape printers) -->
           <div id="label-length-adjust" class="hidden flex items-center gap-1 ml-1">
             <button id="length-minus" class="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold" title="Decrease length by 5mm">−</button>
             <button id="length-plus" class="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-sm font-bold" title="Increase length by 5mm">+</button>
+          </div>
+          <!-- Tape width selector (hidden by default, shown for tape printers like P12/A30) -->
+          <div id="tape-width-selector" class="hidden flex items-center gap-1 ml-2">
+            <span class="text-xs text-gray-500">Tape:</span>
+            <select id="tape-width" class="text-xs px-1.5 py-1 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-400">
+              <option value="12">12mm</option>
+              <option value="14">14mm</option>
+              <option value="15">15mm</option>
+            </select>
           </div>
           <!-- Custom size inputs (hidden by default) -->
           <div id="custom-size" class="hidden flex items-center gap-1">
@@ -1242,8 +1251,9 @@
           <div class="prop-label">Printer Model</div>
           <select id="printer-model" class="prop-input">
             <option value="auto">Auto-detect</option>
-            <optgroup label="P12 Series">
+            <optgroup label="Tape Printers">
               <option value="p12">P12 / P12 Pro (12mm tape)</option>
+              <option value="a30">A30 (12-15mm tape)</option>
             </optgroup>
             <optgroup label="M02 Series">
               <option value="m02">M02 / M02S / M02X (48mm)</option>
@@ -1336,9 +1346,12 @@
       </div>
 
       <div class="space-y-2">
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">P12 Series</div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Tape Printers</div>
         <button data-model="p12" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
           P12 / P12 Pro (12mm tape)
+        </button>
+        <button data-model="a30" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
+          A30 (12-15mm tape)
         </button>
 
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M02 Series</div>
@@ -1824,11 +1837,20 @@
               <option value="custom">Custom...</option>
               <option value="multi-label">Multi-Label Roll...</option>
             </select>
-            <!-- P12 length adjust buttons (hidden by default, shown for P12 continuous tape) -->
+            <!-- P12/A30 length adjust buttons (hidden by default, shown for tape printers) -->
             <div id="mobile-label-length-adjust" class="hidden flex items-center gap-2">
               <button id="mobile-length-minus" class="w-8 h-8 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-lg font-bold">−</button>
               <button id="mobile-length-plus" class="w-8 h-8 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-lg font-bold">+</button>
             </div>
+          </div>
+          <!-- Tape width selector (hidden by default, shown for tape printers like P12/A30) -->
+          <div id="mobile-tape-width-selector" class="hidden mt-2">
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tape Width</label>
+            <select id="mobile-tape-width" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+              <option value="12">12mm</option>
+              <option value="14">14mm</option>
+              <option value="15">15mm</option>
+            </select>
           </div>
           <!-- Custom size inputs (hidden by default) -->
           <div id="mobile-custom-size" class="hidden mt-2">
@@ -2073,7 +2095,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="app.js?v=128"></script>
+  <script type="module" src="app.js?v=130"></script>
   <script>
     // Show body once styles are ready
     requestAnimationFrame(() => {

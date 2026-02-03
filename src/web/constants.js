@@ -113,6 +113,14 @@ export const BLE = {
   SERVICE_UUID: 0xff00,
   WRITE_CHAR_UUID: 0xff02,
   NOTIFY_CHAR_UUID: 0xff03,
+  // Alternative service UUIDs for different printer models (PM-241, etc.)
+  ALT_SERVICE_UUIDS: [
+    0xff00,           // Standard Phomemo
+    0xffe0,           // Common thermal printer service
+    0xae30,           // Some label printers
+    '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISS (Issc) service
+    '0000ff00-0000-1000-8000-00805f9b34fb', // Full UUID variant
+  ],
   CHUNK_SIZE: 128,
   CHUNK_DELAY_MS: 20,
   MAX_RETRIES: 1,
@@ -173,6 +181,26 @@ export const D_SERIES_LABEL_SIZES = {
 // Round/circle labels for D-series printers - diameter in mm
 export const D_SERIES_ROUND_LABELS = {
   '14mm Round': { width: 14, height: 14, round: true },
+};
+
+// Tape printers (P12, A30) - continuous tape with variable widths
+// Height = tape width (12mm, 14mm, 15mm), Width = label length
+export const TAPE_LABEL_SIZES = {
+  // 12mm tape
+  '40x12': { width: 40, height: 12, tapeWidth: 12 },
+  '30x12': { width: 30, height: 12, tapeWidth: 12 },
+  '22x12': { width: 22, height: 12, tapeWidth: 12 },
+  '12x12': { width: 12, height: 12, tapeWidth: 12 },
+  // 14mm tape
+  '40x14': { width: 40, height: 14, tapeWidth: 14 },
+  '30x14': { width: 30, height: 14, tapeWidth: 14 },
+  '22x14': { width: 22, height: 14, tapeWidth: 14 },
+  '14x14': { width: 14, height: 14, tapeWidth: 14 },
+  // 15mm tape
+  '40x15': { width: 40, height: 15, tapeWidth: 15 },
+  '30x15': { width: 30, height: 15, tapeWidth: 15 },
+  '22x15': { width: 22, height: 15, tapeWidth: 15 },
+  '15x15': { width: 15, height: 15, tapeWidth: 15 },
 };
 
 // PM-241 series printers (PM-241-BT) - 4-inch (102mm) shipping label printer

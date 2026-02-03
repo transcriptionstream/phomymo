@@ -5,9 +5,9 @@
  */
 
 import { CanvasRenderer } from './canvas.js?v=110';
-import { BLETransport } from './ble.js?v=102';
+import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
-import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isPM241Printer, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=111';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=116';
 import {
   createTextElement,
   createImageElement,
@@ -81,8 +81,9 @@ import {
   M_SERIES_ROUND_LABELS,
   D_SERIES_LABEL_SIZES,
   D_SERIES_ROUND_LABELS,
+  TAPE_LABEL_SIZES,
   PM241_LABEL_SIZES,
-} from './constants.js?v=101';
+} from './constants.js?v=103';
 import {
   bindCheckbox,
   bindToggleButton,
@@ -140,6 +141,7 @@ let LABEL_SIZES = { ...M_SERIES_LABEL_SIZES, ...M_SERIES_ROUND_LABELS };
 const state = {
   connectionType: 'ble',
   labelSize: { width: 40, height: 30 },
+  tapeWidth: 12,  // Tape width in mm for tape printers (P12/A30), default 12mm
   elements: [],
   selectedIds: [],  // Array of selected element IDs (supports multi-select)
   transport: null,
@@ -652,12 +654,23 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
   const currentSize = state.labelSize;
 
   // Determine printer type and appropriate sizes
-  const isRotated = isRotatedPrinter(deviceName, model);
+  const isTape = isTapePrinter(deviceName, model);
+  const isDSeries = isDSeriesPrinter(deviceName, model);
   const isPM241 = isPM241Printer(deviceName, model);
 
+  // Show/hide tape width selector
+  updateTapeWidthVisibility(isTape);
+
   let rectSizes, roundSizes, defaultKey;
-  if (isRotated) {
-    // D-series and P12 use rotated (narrow) label sizes
+  if (isTape) {
+    // Tape printers (P12/A30) - filter by selected tape width
+    rectSizes = Object.fromEntries(
+      Object.entries(TAPE_LABEL_SIZES).filter(([key, size]) => size.tapeWidth === state.tapeWidth)
+    );
+    roundSizes = {}; // No round labels for tape printers
+    defaultKey = `40x${state.tapeWidth}`;
+  } else if (isDSeries) {
+    // D-series uses fixed narrow label sizes
     rectSizes = D_SERIES_LABEL_SIZES;
     roundSizes = D_SERIES_ROUND_LABELS;
     defaultKey = '40x12';
@@ -756,11 +769,18 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
   if (!mobileSelect) return;
 
   // Determine printer type and appropriate sizes
-  const isRotated = isRotatedPrinter(deviceName, model);
+  const isTape = isTapePrinter(deviceName, model);
+  const isDSeries = isDSeriesPrinter(deviceName, model);
   const isPM241 = isPM241Printer(deviceName, model);
 
   let rectSizes, roundSizes;
-  if (isRotated) {
+  if (isTape) {
+    // Tape printers - filter by selected tape width
+    rectSizes = Object.fromEntries(
+      Object.entries(TAPE_LABEL_SIZES).filter(([key, size]) => size.tapeWidth === state.tapeWidth)
+    );
+    roundSizes = {};
+  } else if (isDSeries) {
     rectSizes = D_SERIES_LABEL_SIZES;
     roundSizes = D_SERIES_ROUND_LABELS;
   } else if (isPM241) {
@@ -816,23 +836,91 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
 }
 
 /**
- * Check if the currently connected printer is a continuous tape printer (P12)
- * @returns {boolean} True if P12 printer is connected
+ * Check if the currently connected printer is a continuous tape printer (P12/A30)
+ * @returns {boolean} True if tape printer is connected
  */
 function isContinuousTapePrinter() {
   const deviceName = state.transport?.getDeviceName?.() || '';
   const printerModel = state.printSettings.printerModel;
-  return isP12Printer(deviceName, printerModel);
+  return isTapePrinter(deviceName, printerModel);
 }
 
 /**
  * Show or hide the label length adjust buttons based on printer type
- * Only shown for P12 continuous tape printers
+ * Only shown for tape printers (P12/A30)
  */
 function updateLengthAdjustButtons() {
   const show = isContinuousTapePrinter();
   $('#label-length-adjust')?.classList.toggle('hidden', !show);
   $('#mobile-label-length-adjust')?.classList.toggle('hidden', !show);
+}
+
+/**
+ * Show or hide the tape width selector based on printer type
+ * @param {boolean} show - Whether to show the tape width selector
+ */
+function updateTapeWidthVisibility(show) {
+  $('#tape-width-selector')?.classList.toggle('hidden', !show);
+  $('#mobile-tape-width-selector')?.classList.toggle('hidden', !show);
+}
+
+/**
+ * Handle tape width change from dropdown
+ * @param {number} width - New tape width in mm
+ */
+function setTapeWidth(width) {
+  state.tapeWidth = width;
+
+  // Sync both dropdowns
+  const desktopSelect = $('#tape-width');
+  const mobileSelect = $('#mobile-tape-width');
+  if (desktopSelect) desktopSelect.value = width;
+  if (mobileSelect) mobileSelect.value = width;
+
+  // Save tape width preference for this device
+  saveTapeWidthForDevice();
+
+  // Refresh label size options to match new tape width
+  const deviceName = state.transport?.getDeviceName?.() || '';
+  const printerModel = state.printSettings.printerModel;
+  updateLabelSizeDropdown(deviceName, printerModel);
+}
+
+/**
+ * Save tape width preference for the current device
+ */
+function saveTapeWidthForDevice() {
+  const deviceName = state.transport?.getDeviceName?.();
+  if (!deviceName) return;
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.DEVICE_MAPPING) || '{}';
+    const mapping = JSON.parse(stored);
+
+    if (!mapping[deviceName]) {
+      mapping[deviceName] = {};
+    }
+    mapping[deviceName].tapeWidth = state.tapeWidth;
+
+    localStorage.setItem(STORAGE_KEYS.DEVICE_MAPPING, JSON.stringify(mapping));
+  } catch (e) {
+    console.warn('Failed to save tape width preference:', e);
+  }
+}
+
+/**
+ * Load tape width preference for a device
+ * @param {string} deviceName - Device name
+ * @returns {number} Tape width in mm (default 12)
+ */
+function loadTapeWidthForDevice(deviceName) {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.DEVICE_MAPPING) || '{}';
+    const mapping = JSON.parse(stored);
+    return mapping[deviceName]?.tapeWidth || 12;
+  } catch (e) {
+    return 12;
+  }
 }
 
 /**
@@ -1686,7 +1774,11 @@ async function handleBatchPrint() {
       const deviceName = state.transport.getDeviceName?.() || '';
       const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
       const printerAlignment = getPrinterAlignment(deviceName, printerModel);
-      const ditherMode = getDitherMode(mergedElements);
+      // Force threshold mode for TSPL printers (shipping labels need crisp barcodes)
+      let ditherMode = getDitherMode(mergedElements);
+      if (ditherMode === 'auto' && isTSPLPrinter(deviceName, printerModel)) {
+        ditherMode = 'threshold';
+      }
       const rasterData = isRotatedPrinter(deviceName, printerModel)
         ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
         : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode, printerAlignment);
@@ -1768,7 +1860,11 @@ async function handlePrintSinglePreview() {
     const deviceName = state.transport.getDeviceName?.() || '';
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
     const printerAlignment = getPrinterAlignment(deviceName, printerModel);
-    const ditherMode = getDitherMode(mergedElements);
+    // Force threshold mode for TSPL printers (shipping labels need crisp barcodes)
+    let ditherMode = getDitherMode(mergedElements);
+    if (ditherMode === 'auto' && isTSPLPrinter(deviceName, printerModel)) {
+      ditherMode = 'threshold';
+    }
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(mergedElements, ditherMode)
       : state.renderer.getRasterData(mergedElements, printerWidth, 203, ditherMode, printerAlignment);
@@ -4301,6 +4397,15 @@ function showPrinterModelPrompt(deviceName) {
     const modelDesc = getPrinterDescription(deviceName, model);
     setStatus(`Connected: ${deviceName} (${modelDesc})`);
 
+    // Initialize tape width for tape printers
+    if (isTapePrinter(deviceName, model)) {
+      const savedTapeWidth = loadTapeWidthForDevice(deviceName);
+      const defaultWidth = isA30Printer(deviceName, model) ? 15 : 12;
+      state.tapeWidth = savedTapeWidth || defaultWidth;
+      $('#tape-width').value = state.tapeWidth;
+      $('#mobile-tape-width').value = state.tapeWidth;
+    }
+
     // Update label sizes based on printer type
     updateLabelSizeDropdown(deviceName, model);
     updateLengthAdjustButtons();
@@ -4397,6 +4502,15 @@ async function handleConnect(event) {
       showPrinterModelPrompt(deviceName);
     }
 
+    // Initialize tape width for tape printers
+    if (isTapePrinter(deviceName, effectiveModel)) {
+      const savedTapeWidth = loadTapeWidthForDevice(deviceName);
+      const defaultWidth = isA30Printer(deviceName, effectiveModel) ? 15 : 12;
+      state.tapeWidth = savedTapeWidth || defaultWidth;
+      $('#tape-width').value = state.tapeWidth;
+      $('#mobile-tape-width').value = state.tapeWidth;
+    }
+
     // Update label sizes based on printer type
     updateLabelSizeDropdown(deviceName, effectiveModel);
     updateLengthAdjustButtons();
@@ -4458,7 +4572,13 @@ async function handlePrint() {
     const printerWidth = getPrinterWidthBytes(deviceName, printerModel);
     const printerDpi = getPrinterDpi(deviceName, printerModel);
     const printerAlignment = getPrinterAlignment(deviceName, printerModel);
-    const ditherMode = getDitherMode(elementsToRender);
+    // Force threshold mode for TSPL printers (shipping labels need crisp barcodes)
+    // Auto-detection can incorrectly choose dithering due to anti-aliased edges
+    let ditherMode = getDitherMode(elementsToRender);
+    if (ditherMode === 'auto' && isTSPLPrinter(deviceName, printerModel)) {
+      ditherMode = 'threshold';
+      console.log('TSPL printer: forcing threshold mode for crisp barcodes');
+    }
     const rasterData = isRotatedPrinter(deviceName, printerModel)
       ? state.renderer.getRasterDataRaw(elementsToRender, ditherMode)
       : state.renderer.getRasterData(elementsToRender, printerWidth, printerDpi, ditherMode, printerAlignment);
@@ -6450,11 +6570,19 @@ function init() {
   $('#custom-height').addEventListener('change', handleCustomSizeChange);
   $('#custom-round').addEventListener('change', handleCustomSizeChange);
 
-  // P12 label length adjust buttons
+  // P12/A30 label length adjust buttons
   $('#length-plus')?.addEventListener('click', () => adjustLabelLength(5));
   $('#length-minus')?.addEventListener('click', () => adjustLabelLength(-5));
   $('#mobile-length-plus')?.addEventListener('click', () => adjustLabelLength(5));
   $('#mobile-length-minus')?.addEventListener('click', () => adjustLabelLength(-5));
+
+  // Tape width selector (for P12/A30 tape printers)
+  $('#tape-width')?.addEventListener('change', (e) => {
+    setTapeWidth(parseInt(e.target.value, 10));
+  });
+  $('#mobile-tape-width')?.addEventListener('change', (e) => {
+    setTapeWidth(parseInt(e.target.value, 10));
+  });
 
   // Connection type
   const connType = $('#conn-type');

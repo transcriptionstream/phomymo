@@ -2,9 +2,15 @@
  * WebUSB transport for Phomymo
  */
 
-// Default USB IDs for Phomemo printers
-const DEFAULT_VENDOR_ID = 0x0483;
-const DEFAULT_PRODUCT_ID = 0x5740;
+// Known USB IDs for Phomemo printers
+const USB_DEVICE_FILTERS = [
+  // Standard Phomemo printers (M110, M220, etc.)
+  { vendorId: 0x0483, productId: 0x5740 },
+  { vendorId: 0x0483 }, // Any device from this vendor
+  // PM-241 shipping label printer
+  { vendorId: 0x2e3c, productId: 0x5750 },
+  { vendorId: 0x2e3c }, // Any device from this vendor
+];
 
 // Chunk size and delay for USB transfers
 const CHUNK_SIZE = 512;
@@ -57,8 +63,11 @@ export class USBTransport {
       const devices = await navigator.usb.getDevices();
       console.log('Found authorized USB devices:', devices.length);
 
+      // Get known vendor IDs from filter list
+      const knownVendorIds = [...new Set(USB_DEVICE_FILTERS.map(f => f.vendorId))];
+
       for (const device of devices) {
-        if (device.vendorId === DEFAULT_VENDOR_ID) {
+        if (knownVendorIds.includes(device.vendorId)) {
           console.log('Found authorized Phomemo device:', device.productName);
           try {
             await this.connectToDevice(device);
@@ -93,10 +102,7 @@ export class USBTransport {
       // Request device - show picker
       console.log('Requesting USB device...');
       this.device = await navigator.usb.requestDevice({
-        filters: [
-          { vendorId: DEFAULT_VENDOR_ID, productId: DEFAULT_PRODUCT_ID },
-          { vendorId: DEFAULT_VENDOR_ID },
-        ]
+        filters: USB_DEVICE_FILTERS
       });
 
       console.log(`Selected device: ${this.device.productName || 'USB Device'}`);

@@ -106,12 +106,15 @@ export class BLETransport {
     for (let pickerAttempt = 0; pickerAttempt < 3; pickerAttempt++) {
       console.log('Showing device picker...');
 
+      // Include all potential service UUIDs for different printer models
+      const optionalServices = BLE.ALT_SERVICE_UUIDS || [BLE.SERVICE_UUID];
+
       if (showAllDevices) {
         // User requested to see all devices (Shift+Click on Connect)
         console.log('Showing ALL Bluetooth devices (filter bypassed)');
         this.device = await navigator.bluetooth.requestDevice({
           acceptAllDevices: true,
-          optionalServices: [BLE.SERVICE_UUID],
+          optionalServices,
         });
       } else {
         // Use name prefix filter to show Phomemo printers
@@ -121,19 +124,20 @@ export class BLETransport {
             filters: [
               { namePrefix: 'M' },      // M110, M220, M260, etc.
               { namePrefix: 'D' },      // D30, D110, etc.
-              { namePrefix: 'P' },      // P12, P12 Pro
+              { namePrefix: 'P' },      // P12, P12 Pro, PM-241
               { namePrefix: 'Q' },      // M110S (advertises as Q199E... pattern)
               { namePrefix: 'T' },      // T02
+              { namePrefix: 'A' },      // A30
               { namePrefix: 'Mr.in' },  // Mr.in series
               { namePrefix: 'Phomemo' },
             ],
-            optionalServices: [BLE.SERVICE_UUID],
+            optionalServices,
           });
         } catch (filterError) {
           console.log('Name filter failed, trying acceptAllDevices:', filterError.message);
           this.device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true,
-            optionalServices: [BLE.SERVICE_UUID],
+            optionalServices,
           });
         }
       }
@@ -262,8 +266,26 @@ export class BLETransport {
     // This helps with timing issues on some devices
     await this.delay(100);
 
+    // Try to find a working service (some printers use different UUIDs)
     console.log('Getting service...');
-    this.service = await this.server.getPrimaryService(BLE.SERVICE_UUID);
+    const servicesToTry = BLE.ALT_SERVICE_UUIDS || [BLE.SERVICE_UUID];
+    let lastError = null;
+
+    for (const serviceUuid of servicesToTry) {
+      try {
+        console.log(`Trying service UUID: ${typeof serviceUuid === 'number' ? '0x' + serviceUuid.toString(16) : serviceUuid}`);
+        this.service = await this.server.getPrimaryService(serviceUuid);
+        console.log('Service found!');
+        break;
+      } catch (e) {
+        lastError = e;
+        console.log(`Service ${typeof serviceUuid === 'number' ? '0x' + serviceUuid.toString(16) : serviceUuid} not found`);
+      }
+    }
+
+    if (!this.service) {
+      throw new Error(`No compatible Bluetooth service found. Last error: ${lastError?.message}`);
+    }
 
     console.log('Getting characteristics...');
     this.writeChar = await this.service.getCharacteristic(BLE.WRITE_CHAR_UUID);

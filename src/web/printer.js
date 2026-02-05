@@ -1051,8 +1051,8 @@ async function printTSPL(transport, data, widthBytes, heightLines, labelWidthMm,
   await transport.send(TSPL.GAP(3));
   await transport.delay(50);
 
-  // OFFSET command - shift print down to center on label (1mm adjustment)
-  await transport.send(new TextEncoder().encode('OFFSET 1 mm\r\n'));
+  // OFFSET command - shift print down to center on label (negative = down)
+  await transport.send(new TextEncoder().encode('OFFSET -2 mm\r\n'));
   await transport.delay(50);
 
   // DENSITY command

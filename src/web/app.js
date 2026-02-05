@@ -83,7 +83,7 @@ import {
   D_SERIES_ROUND_LABELS,
   TAPE_LABEL_SIZES,
   PM241_LABEL_SIZES,
-} from './constants.js?v=103';
+} from './constants.js?v=104';
 import {
   bindCheckbox,
   bindToggleButton,
@@ -182,6 +182,9 @@ const state = {
   alignmentGuides: [],    // Array of { type: 'h'|'v', pos: number, label?: string }
   // Clipboard for copy/paste
   clipboard: [],          // Array of copied elements
+  // Local fonts from system
+  localFonts: [],         // Array of { family, fullName, style }
+  localFontsEnabled: false, // Whether local fonts have been loaded
   // Multi-label roll configuration
   multiLabel: {
     enabled: false,
@@ -261,6 +264,116 @@ function getSavedDeviceModel(deviceName) {
  */
 function setStatus(message) {
   $('#status-message').textContent = message;
+}
+
+/**
+ * Check if Local Font Access API is available
+ */
+function isLocalFontAccessAvailable() {
+  return 'queryLocalFonts' in window;
+}
+
+/**
+ * Load locally installed system fonts using Local Font Access API
+ * Requires user permission (Chrome/Edge 103+)
+ */
+async function loadLocalFonts() {
+  if (!isLocalFontAccessAvailable()) {
+    console.log('Local Font Access API not available');
+    setStatus('System fonts not supported in this browser');
+    return false;
+  }
+
+  try {
+    setStatus('Requesting font access...');
+    const fonts = await window.queryLocalFonts();
+
+    // Deduplicate by family name, keep unique families
+    const familyMap = new Map();
+    for (const font of fonts) {
+      if (!familyMap.has(font.family)) {
+        familyMap.set(font.family, font);
+      }
+    }
+
+    state.localFonts = Array.from(familyMap.values())
+      .sort((a, b) => a.family.localeCompare(b.family));
+    state.localFontsEnabled = true;
+
+    // Persist preference
+    localStorage.setItem(STORAGE_KEYS.LOCAL_FONTS_ENABLED, 'true');
+
+    // Update all font dropdowns
+    updateFontDropdowns();
+
+    setStatus(`Loaded ${state.localFonts.length} system fonts`);
+    console.log(`Loaded ${state.localFonts.length} local fonts`);
+    return true;
+  } catch (err) {
+    console.error('Failed to load local fonts:', err);
+    if (err.name === 'NotAllowedError') {
+      setStatus('Font access denied. Enable in browser settings.');
+    } else {
+      setStatus('Failed to load system fonts');
+    }
+    return false;
+  }
+}
+
+/**
+ * Update all font dropdowns with local fonts
+ */
+function updateFontDropdowns() {
+  const dropdown = $('#prop-font-family');
+  if (!dropdown) return;
+
+  // Remove existing "System Fonts" optgroup if present
+  const existing = dropdown.querySelector('optgroup[label="System Fonts"]');
+  if (existing) existing.remove();
+
+  // Add new optgroup with local fonts
+  if (state.localFonts.length > 0) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = 'System Fonts';
+
+    for (const font of state.localFonts) {
+      const option = document.createElement('option');
+      option.value = font.family;
+      option.textContent = font.family;
+      option.style.fontFamily = font.family;
+      optgroup.appendChild(option);
+    }
+
+    dropdown.appendChild(optgroup);
+  }
+
+  // Hide "Add System Fonts" button
+  const btn = $('#add-system-fonts-btn');
+  if (btn) btn.classList.add('hidden');
+}
+
+/**
+ * Initialize local fonts UI - show button if API available, auto-load if previously enabled
+ */
+async function initLocalFonts() {
+  const btn = $('#add-system-fonts-btn');
+  if (!btn) return;
+
+  if (!isLocalFontAccessAvailable()) {
+    // API not available, keep button hidden
+    return;
+  }
+
+  // Check if user previously enabled local fonts
+  const wasEnabled = localStorage.getItem(STORAGE_KEYS.LOCAL_FONTS_ENABLED) === 'true';
+
+  if (wasEnabled) {
+    // Auto-load fonts (permission should be remembered)
+    await loadLocalFonts();
+  } else {
+    // Show the button so user can opt-in
+    btn.classList.remove('hidden');
+  }
 }
 
 /**
@@ -5947,7 +6060,15 @@ function populateMobileProps() {
                 <option value="Roboto Mono, monospace" ${fontFamily === 'Roboto Mono, monospace' ? 'selected' : ''}>Roboto Mono</option>
                 <option value="Courier New, monospace" ${fontFamily === 'Courier New, monospace' ? 'selected' : ''}>Courier New</option>
               </optgroup>
+              ${state.localFonts.length > 0 ? `
+              <optgroup label="System Fonts">
+                ${state.localFonts.map(f => `<option value="${f.family}" ${fontFamily === f.family ? 'selected' : ''}>${f.family}</option>`).join('')}
+              </optgroup>
+              ` : ''}
             </select>
+            ${!state.localFontsEnabled && isLocalFontAccessAvailable() ? `
+            <button id="mobile-add-system-fonts-btn" class="w-full mt-1 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded">+ Add System Fonts</button>
+            ` : ''}
           </div>
           <div class="w-20">
             <div class="prop-label">Size</div>
@@ -6261,6 +6382,12 @@ function wireUpMobilePropHandlers(element) {
   $('#mobile-prop-fontSize')?.addEventListener('change', (e) => updateProp('fontSize', parseInt(e.target.value)));
   $('#mobile-prop-fontFamily')?.addEventListener('change', (e) => updateProp('fontFamily', e.target.value));
 
+  // Mobile add system fonts button
+  $('#mobile-add-system-fonts-btn')?.addEventListener('click', async () => {
+    await loadLocalFonts();
+    populateMobileProps(); // Refresh to show new fonts
+  });
+
   // Horizontal alignment
   $$('[data-align]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -6545,6 +6672,9 @@ function init() {
   configureErrorHandlers({
     setStatus: setStatus,
   });
+
+  // Initialize local fonts (show button or auto-load if previously enabled)
+  initLocalFonts();
 
   // Create canvas renderer
   const canvas = $('#preview-canvas');
@@ -7052,6 +7182,11 @@ function init() {
   $('#prop-font-family').addEventListener('change', (e) => {
     const id = state.selectedIds[0];
     if (id) modifyElement(id, { fontFamily: e.target.value });
+  });
+
+  // Local fonts button
+  $('#add-system-fonts-btn')?.addEventListener('click', async () => {
+    await loadLocalFonts();
   });
   trackInputForHistory('#prop-font-size');
   $('#prop-font-size').addEventListener('input', (e) => {

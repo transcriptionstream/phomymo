@@ -1,6 +1,6 @@
 # Phomymo
 
-A free, browser-based label designer for Phomemo thermal printers. No drivers needed - connects via Bluetooth.
+A free, browser-based label designer for Phomemo thermal printers. No drivers needed - connects via Bluetooth or USB.
 
 **Try it now: https://phomymo.affordablemagic.net**
 
@@ -11,7 +11,7 @@ Supports Phomemo tape printers (P12, P12 Pro, A30), M02-series (M02, M02S, M02X,
 ## Features
 
 ### Elements
-- **Text** - Multiple fonts, sizes, bold, italic, underline, horizontal and vertical alignment, background colors
+- **Text** - Multiple fonts (including system fonts via Local Font Access API), sizes, bold, italic, underline, horizontal and vertical alignment, background colors
 - **Images** - Import with scale control and aspect ratio lock
 - **Barcodes** - Code128, EAN-13, UPC-A, Code39 formats
 - **QR Codes** - Automatic sizing and encoding
@@ -92,6 +92,12 @@ Dynamic values that evaluate at print/export time using `[[expression]]` syntax:
 - **Visual indicators** - Battery level with color coding (green/yellow/red), paper-out warning
 - **Device memory** - App remembers your printer model for each device
 
+### Local System Fonts
+- **System font access** - Use any font installed on your computer (Chrome/Edge only)
+- **One-click setup** - Click "Add System Fonts" to grant permission
+- **Persistent preference** - Fonts auto-load on future visits after first authorization
+- **Graceful fallback** - Preset fonts always available; system fonts are additive
+
 ## Supported Printers
 
 ### Tape Printers (P12/A30 Series)
@@ -139,7 +145,7 @@ D-series printers use a different protocol and print labels rotated 90°. The ap
 
 | Model | Print Width | Notes |
 |-------|-------------|-------|
-| PM-241 / PM-241-BT | 102mm (4 inches) | Shipping label printer |
+| PM-241 / PM-241-BT | 102mm (4 inches) | USB connection only (uses TSPL protocol) |
 
 **Supported label sizes:**
 - 102x152mm (4x6") - Standard shipping label
@@ -150,19 +156,21 @@ D-series printers use a different protocol and print labels rotated 90°. The ap
 
 ### Auto-Detection
 
-The app automatically detects your printer model from the Bluetooth device name and configures the correct:
+The app automatically detects your printer model from the Bluetooth device name (or USB device for PM-241) and configures the correct:
 - Print width (12-102mm depending on model)
-- Protocol (P12-series, M02-series with prefix, M-series ESC/POS, D-series rotated, or PM-241)
+- Protocol (P12-series, M02-series with prefix, M-series ESC/POS, D-series rotated, or TSPL for PM-241)
 - Label size presets
 - DPI (203 standard, 300 for M02 Pro)
 
 If auto-detection fails (e.g., printer shows serial number instead of model), you can manually select your printer model in Print Settings, or the app will prompt you to choose on first connection.
 
+**Note:** PM-241 printers use Bluetooth Classic (not BLE), which is not supported by Web Bluetooth. Use the USB connection instead.
+
 ## Quick Start
 
 **Option 1: Use the live version**
 1. Open https://phomymo.affordablemagic.net in Chrome
-2. Click **Connect** to pair with your Phomemo printer via Bluetooth
+2. Click **Connect** to pair with your Phomemo printer via Bluetooth (or **USB** for PM-241)
 3. Design your label and click **Print**
 
 **Option 2: Run locally**
@@ -192,6 +200,7 @@ If auto-detection fails (e.g., printer shows serial number instead of model), yo
 
 - Chrome, Edge, or another Chromium-based browser (desktop or Android)
 - Web Bluetooth API support (not available in Firefox or Safari)
+- WebUSB support for PM-241 printers (Linux may require udev rules)
 - HTTPS or localhost
 - **Mobile**: Android Chrome supported with full touch interface; iOS not supported (no Web Bluetooth)
 

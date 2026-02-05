@@ -5590,10 +5590,10 @@ function checkCompatibility() {
           </div>
 
           <!-- Supported Printers Info -->
-          <div class="grid grid-cols-1 gap-2">
+          <div class="grid grid-cols-2 gap-2">
             <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-green-600 uppercase tracking-wide">P-Series</span>
-              <p class="text-sm text-gray-700">P12, P12 Pro (12mm tape)</p>
+              <span class="text-xs font-medium text-green-600 uppercase tracking-wide">Tape Printers</span>
+              <p class="text-sm text-gray-700">P12, P12 Pro, A30</p>
             </div>
             <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
               <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
@@ -5602,6 +5602,10 @@ function checkCompatibility() {
             <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
               <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
               <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30, Q30S</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+              <span class="text-xs font-medium text-orange-600 uppercase tracking-wide">Shipping</span>
+              <p class="text-sm text-gray-700">PM-241, PM-241-BT (USB only)</p>
             </div>
           </div>
 

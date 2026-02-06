@@ -4,10 +4,10 @@
  * v116
  */
 
-import { CanvasRenderer } from './canvas.js?v=110';
+import { CanvasRenderer } from './canvas.js?v=111';
 import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
-import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=120';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=121';
 import {
   createTextElement,
   createImageElement,
@@ -128,7 +128,7 @@ import {
   validateCSVFile,
   validateJSONFile,
   validatePosition,
-} from './utils/validation.js?v=100';
+} from './utils/validation.js?v=101';
 
 // DOM helpers
 const $ = (sel) => document.querySelector(sel);

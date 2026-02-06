@@ -494,19 +494,25 @@ export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
 
 /**
  * Get print alignment for a printer
- * M110S has labels right-aligned in the printer (not centered like regular M110)
+ * M110S and M220 have labels right-aligned in the printer (not centered)
  * @param {string} deviceName - BLE device name
  * @param {string} modelOverride - Manual model selection
  * @returns {'left' | 'center' | 'right'} Alignment for print data
  */
 export function getPrinterAlignment(deviceName, modelOverride = 'auto') {
-  // Manual M110S override
-  if (modelOverride === 'm110s') {
+  // Manual M110S/M220 override
+  if (modelOverride === 'm110s' || modelOverride === 'm220') {
     return 'right';
   }
 
   // Auto-detect M110S from device name pattern (Q + digits + letter + digits)
   if (M110S_PATTERN.test(deviceName)) {
+    return 'right';
+  }
+
+  // Auto-detect M220/M221 from device name
+  const name = (deviceName || '').toUpperCase();
+  if (name.startsWith('M220') || name.startsWith('M221')) {
     return 'right';
   }
 

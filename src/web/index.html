@@ -473,7 +473,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
           <span class="hidden sm:inline">Shape</span>
         </button>
-        <div id="shape-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[120px]">
+        <div id="shape-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] py-1 min-w-[120px]">
           <button data-shape="rectangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" stroke-width="2"/></svg>
             Rectangle
@@ -563,7 +563,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
           <span class="hidden sm:inline">Export</span>
         </button>
-        <div id="export-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[140px]">
+        <div id="export-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] py-1 min-w-[140px]">
           <button id="export-json-btn" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100">Export as JSON</button>
           <button id="export-pdf-btn" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100">Export as PDF</button>
           <button id="export-png-btn" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100">Export as PNG</button>
@@ -578,7 +578,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
           <span class="hidden sm:inline">Elements</span>
         </button>
-        <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[180px] max-h-[300px] overflow-y-auto">
+        <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] py-1 min-w-[180px] max-h-[300px] overflow-y-auto">
           <div id="elements-list" class="text-sm">
             <div class="px-3 py-2 text-gray-400 text-center">No elements</div>
           </div>
@@ -990,7 +990,7 @@
               <input type="number" id="prop-image-contrast-input" min="-100" max="100" value="0" class="w-12 px-1.5 py-1 text-xs border border-gray-200 rounded text-center">
             </div>
           </div>
-          <input type="file" id="prop-image-input" accept="image/*" class="hidden">
+          <input type="file" id="prop-image-input" accept="image/*,.pdf" class="hidden">
         </div>
 
         <!-- Barcode Properties -->
@@ -1348,66 +1348,44 @@
         </p>
       </div>
 
-      <div class="space-y-2">
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Tape Printers</div>
-        <button data-model="p12" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          P12 / P12 Pro (12mm tape)
-        </button>
-        <button data-model="a30" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          A30 (12-15mm tape)
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M02 Series</div>
-        <button data-model="m02" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M02 / M02S / M02X / M02 Pro (48mm)
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M03 Series</div>
-        <button data-model="m03" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M03 / T02 (53mm)
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M04 Series</div>
-        <button data-model="m04s-53" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M04S - 53mm paper
-        </button>
-        <button data-model="m04s-80" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M04S - 80mm paper
-        </button>
-        <button data-model="m04s-110" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M04S - 110mm paper
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M110 Series</div>
-        <button data-model="m110" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M110 / M120 (48mm)
-        </button>
-        <button data-model="m110s" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M110S (48mm)
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">M200 Series</div>
-        <button data-model="m200" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M200 (75mm)
-        </button>
-        <button data-model="m250" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M250 (75mm)
-        </button>
-        <button data-model="m220" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M220 / M221 (80mm)
-        </button>
-        <button data-model="m260" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          M260 (72mm)
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">PM-241 Series</div>
-        <button data-model="pm241" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          PM-241-BT (4 inch / 102mm)
-        </button>
-
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 mt-3">D-Series</div>
-        <button data-model="d-series" class="w-full px-4 py-2 text-left border border-gray-200 rounded-lg hover:bg-gray-50 text-sm">
-          D30 / D35 / D50 / Q30 / Q30S
+      <div class="space-y-3">
+        <select id="prompt-model-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="" disabled selected>-- Select your printer model --</option>
+          <optgroup label="Tape Printers">
+            <option value="p12">P12 / P12 Pro (12mm tape)</option>
+            <option value="a30">A30 (12-15mm tape)</option>
+          </optgroup>
+          <optgroup label="M02 Series">
+            <option value="m02">M02 / M02S / M02X (48mm)</option>
+            <option value="m02-pro">M02 Pro (53mm, 300 DPI)</option>
+          </optgroup>
+          <optgroup label="M03 Series">
+            <option value="m03">M03 / T02 (53mm)</option>
+          </optgroup>
+          <optgroup label="M04 Series">
+            <option value="m04s-53">M04S - 53mm paper</option>
+            <option value="m04s-80">M04S - 80mm paper</option>
+            <option value="m04s-110">M04S - 110mm paper</option>
+          </optgroup>
+          <optgroup label="M110 Series">
+            <option value="m110">M110 / M120 (48mm)</option>
+            <option value="m110s">M110S (48mm)</option>
+          </optgroup>
+          <optgroup label="M200 Series">
+            <option value="m200">M200 (75mm)</option>
+            <option value="m250">M250 (75mm)</option>
+            <option value="m220">M220 / M221 (80mm)</option>
+            <option value="m260">M260 (72mm)</option>
+          </optgroup>
+          <optgroup label="PM-241 Series">
+            <option value="pm241">PM-241-BT (4 inch / 102mm)</option>
+          </optgroup>
+          <optgroup label="D-Series">
+            <option value="d-series">D30 / D35 / D50 / Q30 / Q30S</option>
+          </optgroup>
+        </select>
+        <button id="prompt-model-confirm" disabled class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+          Confirm
         </button>
       </div>
 
@@ -1418,7 +1396,7 @@
   </div>
 
   <!-- Hidden file input for adding images -->
-  <input type="file" id="image-file-input" accept="image/*" class="hidden">
+  <input type="file" id="image-file-input" accept="image/*,.pdf" class="hidden">
 
   <!-- Info Dialog -->
   <div id="info-dialog" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -2103,6 +2081,11 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module">
+    import * as pdfjsModule from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+    pdfjsModule.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+    window.pdfjsLib = pdfjsModule;
+  </script>
   <script type="module" src="app.js?v=135"></script>
   <script>
     // Show body once styles are ready

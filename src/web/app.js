@@ -4390,7 +4390,10 @@ async function addImageElement(file) {
   }
 
   try {
-    const { dataUrl, width, height } = await state.renderer.loadImageFile(file);
+    const isPDF = file.type === 'application/pdf';
+    const { dataUrl, width, height } = isPDF
+      ? await state.renderer.loadPDFFile(file)
+      : await state.renderer.loadImageFile(file);
 
     // Use native size if it fits, otherwise scale down to fit
     const dims = state.renderer.getSingleLabelDimensions();
@@ -4416,10 +4419,10 @@ async function addImageElement(file) {
     state.elements.push(element);
     autoCloneIfEnabled();
     selectElement(element.id);
-    setStatus(scale < 1 ? `Image scaled to ${Math.round(scale * 100)}%` : 'Image added');
+    setStatus(scale < 1 ? `Image scaled to ${Math.round(scale * 100)}%` : (isPDF ? 'PDF imported as image' : 'Image added'));
   } catch (e) {
     logError(e, 'addImageElement');
-    setStatus('Failed to load image');
+    setStatus(file.type === 'application/pdf' ? 'Failed to load PDF' : 'Failed to load image');
   }
 }
 
@@ -4492,16 +4495,40 @@ function showPrinterModelPrompt(deviceName) {
   const dialog = $('#printer-model-prompt');
   if (!dialog) return;
 
-  // Update dialog content
+  const select = $('#prompt-model-select');
+  const confirmBtn = $('#prompt-model-confirm');
+
+  // Reset state
+  select.value = '';
+  confirmBtn.disabled = true;
   $('#prompt-device-name').textContent = deviceName;
+
+  // Store device name for confirm handler
+  dialog._deviceName = deviceName;
 
   // Show dialog
   dialog.classList.remove('hidden');
+}
 
-  // Handle model selection
-  const handleSelect = (model) => {
+// Wire up model prompt listeners on page load
+function initPrinterModelPrompt() {
+  const dialog = $('#printer-model-prompt');
+  if (!dialog) return;
+
+  const select = $('#prompt-model-select');
+  const confirmBtn = $('#prompt-model-confirm');
+
+  select.addEventListener('change', () => {
+    confirmBtn.disabled = !select.value;
+  });
+
+  confirmBtn.addEventListener('click', () => {
+    const model = select.value;
+    const deviceName = dialog._deviceName || '';
+    if (!model) return;
+
     // Save the mapping for this device
-    saveDeviceMapping(deviceName, model);
+    if (deviceName) saveDeviceMapping(deviceName, model);
 
     // Update current print settings
     state.printSettings.printerModel = model;
@@ -4525,17 +4552,6 @@ function showPrinterModelPrompt(deviceName) {
 
     // Close dialog
     dialog.classList.add('hidden');
-
-    // Remove event listeners
-    dialog.querySelectorAll('[data-model]').forEach(btn => {
-      btn.removeEventListener('click', btn._handler);
-    });
-  };
-
-  // Attach handlers to buttons
-  dialog.querySelectorAll('[data-model]').forEach(btn => {
-    btn._handler = () => handleSelect(btn.dataset.model);
-    btn.addEventListener('click', btn._handler);
   });
 }
 
@@ -7762,6 +7778,9 @@ function init() {
 
   // Initialize mobile UI
   initMobileUI();
+
+  // Initialize printer model prompt listeners
+  initPrinterModelPrompt();
 
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {

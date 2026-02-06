@@ -4677,8 +4677,13 @@ async function handlePrint() {
 
     btn.textContent = 'Printing...';
 
+    // Substitute template fields if template data is loaded
+    const elements = state.templateData.length > 0
+      ? substituteFields(state.elements, state.templateData[0])
+      : state.elements;
+
     // Evaluate instant expressions (date/time, etc.)
-    const elementsToRender = evaluateExpressions(state.elements);
+    const elementsToRender = evaluateExpressions(elements);
 
     // Render to raster (use raw format for rotated printers like D-series and P12)
     const deviceName = state.transport.getDeviceName?.() || '';

@@ -189,7 +189,7 @@ const DEVICE_PATTERNS = [
   { pattern: 'M03', width: 54, protocol: 'm-series', dpi: 203 },
   { pattern: 'T02', width: 54, protocol: 'm-series', dpi: 203 },
   // M110-series (48mm) - uses M110 protocol from phomemo-tools
-  // Note: M110S uses Q-prefix pattern (e.g., Q199E5797220037), detected by M110S_PATTERN regex
+  // Note: M110S uses Q-prefix serial as BLE name, detected via model prompt (not auto-detect)
   { pattern: 'M110', width: 48, protocol: 'm110', dpi: 203 },
   { pattern: 'M120', width: 48, protocol: 'm110', dpi: 203 },
   // M-series mid (75mm)
@@ -221,9 +221,6 @@ const DEVICE_PATTERNS = [
 // Default configuration when no pattern matches
 const DEFAULT_CONFIG = { width: 72, protocol: 'm-series', dpi: 203 };
 
-// M110S advertises with names like Q199E5797220037 (Q + 3 digits + letter + 10 digits)
-const M110S_PATTERN = /^Q\d{3}[A-Z]\d{10}$/i;
-
 /**
  * Get printer configuration from device name
  * @param {string} deviceName - BLE device name
@@ -233,11 +230,6 @@ function detectPrinterConfig(deviceName) {
   if (!deviceName) return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
 
   const name = deviceName.toUpperCase();
-
-  // Check for M110S pattern first (Q + 3 digits + letter + 10 digits)
-  if (M110S_PATTERN.test(deviceName)) {
-    return { width: 48, protocol: 'm110', dpi: 203, recognized: true, matchedPattern: 'M110S' };
-  }
 
   for (const { pattern, width, protocol, dpi } of DEVICE_PATTERNS) {
     if (name.startsWith(pattern)) {
@@ -502,11 +494,6 @@ export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
 export function getPrinterAlignment(deviceName, modelOverride = 'auto') {
   // Manual M110S/M220 override
   if (modelOverride === 'm110s' || modelOverride === 'm220') {
-    return 'right';
-  }
-
-  // Auto-detect M110S from device name pattern (Q + digits + letter + digits)
-  if (M110S_PATTERN.test(deviceName)) {
     return 'right';
   }
 

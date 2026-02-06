@@ -1647,6 +1647,47 @@ export class CanvasRenderer {
   }
 
   /**
+   * Load a PDF file and render the first page to an image
+   * @param {File} file - PDF file
+   * @returns {Promise<{dataUrl: string, width: number, height: number}>}
+   */
+  loadPDFFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = async (e) => {
+        try {
+          const pdf = await window.pdfjsLib.getDocument({ data: e.target.result }).promise;
+          const page = await pdf.getPage(1);
+
+          // Render at 2x scale for quality (PDF default is 72 DPI, so 2x ≈ 144 DPI)
+          const scale = 2;
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          const dataUrl = canvas.toDataURL('image/png');
+          resolve({
+            dataUrl,
+            width: canvas.width,
+            height: canvas.height,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  /**
    * Clear render cache (call when elements change significantly)
    */
   clearCache(elementId = null) {

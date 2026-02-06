@@ -344,12 +344,12 @@ export function validateImageFile(file, maxSizeMB = 10) {
     return { valid: false, error: 'No file provided' };
   }
 
-  const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+  const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'application/pdf'];
 
   if (!validTypes.includes(file.type)) {
     return {
       valid: false,
-      error: 'Invalid file type. Use PNG, JPEG, GIF, WebP, or SVG'
+      error: 'Invalid file type. Use PNG, JPEG, GIF, WebP, SVG, or PDF'
     };
   }
 

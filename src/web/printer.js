@@ -152,8 +152,8 @@ const PRINTER_WIDTHS = {
   // M200/M250 (75mm / 608px)
   'm200': 76,
   'm250': 76,
-  // M220/M221 (80mm / 648px)
-  'm220': 81,
+  // M220/M221 (76mm / 608px)
+  'm220': 76,
   // M04S multi-width options
   'm04s-53': 54,
   'm04s-80': 81,
@@ -195,9 +195,9 @@ const DEVICE_PATTERNS = [
   // M-series mid (75mm)
   { pattern: 'M200', width: 76, protocol: 'm-series', dpi: 203 },
   { pattern: 'M250', width: 76, protocol: 'm-series', dpi: 203 },
-  // M-series wide (80mm)
-  { pattern: 'M220', width: 81, protocol: 'm-series', dpi: 203 },
-  { pattern: 'M221', width: 81, protocol: 'm-series', dpi: 203 },
+  // M-series wide (76mm)
+  { pattern: 'M220', width: 76, protocol: 'm-series', dpi: 203 },
+  { pattern: 'M221', width: 76, protocol: 'm-series', dpi: 203 },
   // M-series wide (72mm) - M260 and catch-all for M2xx
   { pattern: 'M260', width: 72, protocol: 'm-series', dpi: 203 },
   // M04 series (variable width, default to 54mm)

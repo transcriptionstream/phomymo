@@ -152,8 +152,10 @@ const PRINTER_WIDTHS = {
   // M200/M250 (75mm / 608px)
   'm200': 76,
   'm250': 76,
-  // M220/M221 (72mm / 576px)
+  // M220 (72mm / 576px, right-aligned label roll)
   'm220': 72,
+  // M221 (72mm / 576px, centered label roll)
+  'm221': 72,
   // M04S multi-width options
   'm04s-53': 54,
   'm04s-80': 81,
@@ -487,6 +489,7 @@ export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
 /**
  * Get print alignment for a printer
  * M110S and M220 have labels right-aligned in the printer (not centered)
+ * M221 uses centered alignment despite similar hardware
  * @param {string} deviceName - BLE device name
  * @param {string} modelOverride - Manual model selection
  * @returns {'left' | 'center' | 'right'} Alignment for print data
@@ -497,9 +500,9 @@ export function getPrinterAlignment(deviceName, modelOverride = 'auto') {
     return 'right';
   }
 
-  // Auto-detect M220/M221 from device name
+  // Auto-detect M220 from device name (M221 uses centered alignment)
   const name = (deviceName || '').toUpperCase();
-  if (name.startsWith('M220') || name.startsWith('M221')) {
+  if (name.startsWith('M220')) {
     return 'right';
   }
 

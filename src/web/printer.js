@@ -149,9 +149,10 @@ const PRINTER_WIDTHS = {
   'm03': 54,
   // M260 (72mm / 576px)
   'm260': 72,
-  // M200/M250 (75mm / 608px)
+  // M200 (75mm / 608px)
   'm200': 76,
-  'm250': 76,
+  // M250 (75mm label, 72 byte width, same as M221/M260)
+  'm250': 72,
   // M220 (72mm / 576px, right-aligned label roll)
   'm220': 72,
   // M221 (72mm / 576px, centered label roll)
@@ -196,7 +197,7 @@ const DEVICE_PATTERNS = [
   { pattern: 'M120', width: 48, protocol: 'm110', dpi: 203 },
   // M-series mid (75mm)
   { pattern: 'M200', width: 76, protocol: 'm-series', dpi: 203 },
-  { pattern: 'M250', width: 76, protocol: 'm-series', dpi: 203 },
+  { pattern: 'M250', width: 72, protocol: 'm-series', dpi: 203 },
   // M-series (72mm) - same print head width as M260
   { pattern: 'M220', width: 72, protocol: 'm-series', dpi: 203 },
   { pattern: 'M221', width: 72, protocol: 'm-series', dpi: 203 },

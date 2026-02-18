@@ -145,8 +145,10 @@ const PRINTER_WIDTHS = {
   // M110/M120/M110S (48mm / 384px) - standard m-series protocol
   'm110': 48,
   'm110s': 48,
-  // M03/T02 (53mm / 432px)
+  // M03 (53mm / 432px)
   'm03': 54,
+  // T02 (48mm / 384px) - same print head width as M02/M110
+  't02': 48,
   // M260 (72mm / 576px)
   'm260': 72,
   // M200 (75mm / 608px)
@@ -188,9 +190,10 @@ const DEVICE_PATTERNS = [
   { pattern: 'M02X', width: 48, protocol: 'm02', dpi: 203 },
   { pattern: 'M02S', width: 48, protocol: 'm02', dpi: 203 },
   { pattern: 'M02', width: 48, protocol: 'm02', dpi: 203 },
-  // M03 and T02 (53mm / 432px)
+  // M03 (53mm / 432px)
   { pattern: 'M03', width: 54, protocol: 'm-series', dpi: 203 },
-  { pattern: 'T02', width: 54, protocol: 'm-series', dpi: 203 },
+  // T02 (48mm / 384px) - same print head width as M02/M110
+  { pattern: 'T02', width: 48, protocol: 'm-series', dpi: 203 },
   // M110-series (48mm) - uses M110 protocol from phomemo-tools
   // Note: M110S uses Q-prefix serial as BLE name, detected via model prompt (not auto-detect)
   { pattern: 'M110', width: 48, protocol: 'm110', dpi: 203 },

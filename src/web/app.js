@@ -4,7 +4,7 @@
  * v116
  */
 
-import { CanvasRenderer } from './canvas.js?v=111';
+import { CanvasRenderer } from './canvas.js?v=113';
 import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
 import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=124';
@@ -5410,11 +5410,11 @@ function handleKeyDown(e) {
     }
   }
 
-  // Ctrl/Cmd + V to paste
+  // Ctrl/Cmd + V to paste — try clipboard image first, fall back to element paste
   if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
     if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       e.preventDefault();
-      pasteElements();
+      handlePaste();
     }
   }
 
@@ -5483,6 +5483,29 @@ function copyElements() {
   // Deep clone the elements
   state.clipboard = JSON.parse(JSON.stringify(selectedElements));
   showToast(`${selectedElements.length} element${selectedElements.length > 1 ? 's' : ''} copied`, 'success');
+}
+
+/**
+ * Handle paste — try reading image from system clipboard, fall back to element paste
+ */
+async function handlePaste() {
+  if (navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find(t => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], 'pasted-image.png', { type: imageType });
+          addImageElement(file);
+          return;
+        }
+      }
+    } catch (err) {
+      // Clipboard API not available or permission denied
+    }
+  }
+  pasteElements();
 }
 
 /**
@@ -7554,6 +7577,7 @@ function init() {
     }
     modifyElement(id, { qrData: e.target.value });
   });
+
 
   // Canvas pointer events (for mouse and non-iOS touch)
   canvas.addEventListener('pointerdown', handleCanvasPointerDown, { passive: false });

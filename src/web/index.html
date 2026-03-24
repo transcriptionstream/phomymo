@@ -1254,44 +1254,12 @@
           <div class="prop-label">Printer Model</div>
           <select id="printer-model" class="prop-input">
             <option value="auto">Auto-detect</option>
-            <optgroup label="Tape Printers">
-              <option value="p12">P12 / P12 Pro (12mm tape)</option>
-              <option value="a30">A30 (12-15mm tape)</option>
-            </optgroup>
-            <optgroup label="M02 Series">
-              <option value="m02">M02 / M02S / M02X (48mm)</option>
-              <option value="m02-pro">M02 Pro (53mm, 300 DPI)</option>
-            </optgroup>
-            <optgroup label="M03 Series">
-              <option value="m03">M03 (53mm)</option>
-            </optgroup>
-            <optgroup label="T02 Series">
-              <option value="t02">T02 (48mm)</option>
-            </optgroup>
-            <optgroup label="M04 Series">
-              <option value="m04s-53">M04S - 53mm paper</option>
-              <option value="m04s-80">M04S - 80mm paper</option>
-              <option value="m04s-110">M04S - 110mm paper</option>
-            </optgroup>
-            <optgroup label="M110 Series">
-              <option value="m110">M110 / M120 (48mm)</option>
-              <option value="m110s">M110S (48mm)</option>
-            </optgroup>
-            <optgroup label="M200 Series">
-              <option value="m200">M200 (75mm)</option>
-              <option value="m250">M250 (75mm)</option>
-              <option value="m220">M220 (75mm)</option>
-              <option value="m221">M221 (75mm)</option>
-              <option value="m260">M260 (72mm)</option>
-            </optgroup>
-            <optgroup label="PM-241 Series">
-              <option value="pm241">PM-241-BT (4 inch / 102mm)</option>
-            </optgroup>
-            <optgroup label="D-Series">
-              <option value="d-series">D30 / D35 / D50 / Q30 / Q30S</option>
-            </optgroup>
+            <!-- Populated dynamically from printer definitions -->
           </select>
-          <div class="text-xs text-gray-400 mt-1">Override if auto-detect doesn't work</div>
+          <div class="flex items-center justify-between mt-1">
+            <div class="text-xs text-gray-400">Override if auto-detect doesn't work</div>
+            <button id="manage-printers-btn" class="text-xs text-blue-600 hover:text-blue-800 hover:underline">Manage Printers</button>
+          </div>
         </div>
 
         <!-- Density -->
@@ -1337,6 +1305,132 @@
     </div>
   </div>
 
+  <!-- Printer Definitions Manager Dialog -->
+  <div id="printer-defs-dialog" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-[70] p-4">
+    <div class="bg-white rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">Manage Printer Definitions</h3>
+        <button id="printer-defs-close" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Printer list -->
+      <div id="printer-defs-list" class="space-y-1 mb-4 max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div class="flex gap-2 mb-4">
+        <button id="printer-def-add" class="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New Printer</button>
+      </div>
+
+      <!-- Editor form (hidden until add/edit) -->
+      <div id="printer-def-editor" class="hidden border-t border-gray-200 pt-4">
+        <h4 id="printer-def-editor-title" class="font-semibold text-gray-800 mb-3">New Printer Definition</h4>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">ID (unique key, lowercase, no spaces)</label>
+            <input type="text" id="pdef-id" class="prop-input" placeholder="e.g. my-printer" pattern="[a-z0-9\-]+" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Display Name</label>
+            <input type="text" id="pdef-name" class="prop-input" placeholder="e.g. My Custom Printer" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Group (for dropdown)</label>
+            <input type="text" id="pdef-group" class="prop-input" placeholder="e.g. Custom Printers" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Description</label>
+            <input type="text" id="pdef-description" class="prop-input" placeholder="Short description" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Protocol</label>
+              <select id="pdef-protocol" class="prop-input">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">DPI</label>
+              <select id="pdef-dpi" class="prop-input">
+                <option value="203">203 (standard)</option>
+                <option value="300">300 (high-res)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Width (bytes)</label>
+              <input type="number" id="pdef-width" class="prop-input" min="1" max="200" placeholder="e.g. 72" />
+              <div id="pdef-width-info" class="text-xs text-gray-400 mt-0.5"></div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Alignment</label>
+              <select id="pdef-alignment" class="prop-input">
+                <option value="center">Center</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Rotated Print</label>
+              <select id="pdef-rotated" class="prop-input">
+                <option value="false">No</option>
+                <option value="true">Yes (sideways)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Label Presets</label>
+              <select id="pdef-label-presets" class="prop-input">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Tape Printer</label>
+            <select id="pdef-tape" class="prop-input">
+              <option value="false">No</option>
+              <option value="true">Yes (continuous tape)</option>
+            </select>
+          </div>
+
+          <div id="pdef-tape-options" class="hidden">
+            <label class="block text-xs font-medium text-gray-600 mb-1">Tape Widths (mm, comma-separated)</label>
+            <input type="text" id="pdef-tape-widths" class="prop-input" placeholder="e.g. 12, 14, 15" />
+            <div class="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Default Tape Width (mm)</label>
+                <input type="number" id="pdef-default-tape-width" class="prop-input" min="1" max="50" placeholder="e.g. 12" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Auto-detect Name Patterns (comma-separated prefixes)</label>
+            <input type="text" id="pdef-patterns" class="prop-input" placeholder="e.g. M260, M26" />
+            <div class="text-xs text-gray-400 mt-0.5">BLE device name prefixes for auto-detection. Leave empty for manual-only.</div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mt-4">
+          <button id="printer-def-cancel" class="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+          <button id="printer-def-save" class="flex-1 px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Printer Model Prompt Dialog -->
   <div id="printer-model-prompt" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
     <div class="bg-white rounded-xl p-6 w-96 shadow-xl">
@@ -1355,42 +1449,7 @@
       <div class="space-y-3">
         <select id="prompt-model-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="" disabled selected>-- Select your printer model --</option>
-          <optgroup label="Tape Printers">
-            <option value="p12">P12 / P12 Pro (12mm tape)</option>
-            <option value="a30">A30 (12-15mm tape)</option>
-          </optgroup>
-          <optgroup label="M02 Series">
-            <option value="m02">M02 / M02S / M02X (48mm)</option>
-            <option value="m02-pro">M02 Pro (53mm, 300 DPI)</option>
-          </optgroup>
-          <optgroup label="M03 Series">
-            <option value="m03">M03 (53mm)</option>
-          </optgroup>
-          <optgroup label="T02 Series">
-            <option value="t02">T02 (48mm)</option>
-          </optgroup>
-          <optgroup label="M04 Series">
-            <option value="m04s-53">M04S - 53mm paper</option>
-            <option value="m04s-80">M04S - 80mm paper</option>
-            <option value="m04s-110">M04S - 110mm paper</option>
-          </optgroup>
-          <optgroup label="M110 Series">
-            <option value="m110">M110 / M120 (48mm)</option>
-            <option value="m110s">M110S (48mm)</option>
-          </optgroup>
-          <optgroup label="M200 Series">
-            <option value="m200">M200 (75mm)</option>
-            <option value="m250">M250 (75mm)</option>
-            <option value="m220">M220 (75mm)</option>
-              <option value="m221">M221 (75mm)</option>
-            <option value="m260">M260 (72mm)</option>
-          </optgroup>
-          <optgroup label="PM-241 Series">
-            <option value="pm241">PM-241-BT (4 inch / 102mm)</option>
-          </optgroup>
-          <optgroup label="D-Series">
-            <option value="d-series">D30 / D35 / D50 / Q30 / Q30S</option>
-          </optgroup>
+          <!-- Populated dynamically from printer definitions -->
         </select>
         <button id="prompt-model-confirm" disabled class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
           Confirm

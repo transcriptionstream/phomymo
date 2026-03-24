@@ -136,6 +136,7 @@ export const STORAGE_KEYS = {
   SETTINGS: 'phomymo_settings',
   MULTI_LABEL_PRESETS: 'phomymo_multi_label_presets',
   LOCAL_FONTS_ENABLED: 'phomymo_local_fonts_enabled',
+  CUSTOM_PRINTERS: 'phomymo_custom_printers',
 };
 
 // =============================================================================

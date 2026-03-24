@@ -7,7 +7,7 @@
 import { CanvasRenderer } from './canvas.js?v=113';
 import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
-import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=124';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern, loadPrinterDefinitions, getAllPrinterDefinitions, getPrinterDefinition, getCustomPrinterDefinitions, saveCustomPrinterDefinition, deleteCustomPrinterDefinition, isBuiltinPrinter, resetBuiltinPrinter, getAvailableProtocols, getAvailableLabelPresets, getDetectedDefinition } from './printer.js?v=125';
 import {
   createTextElement,
   createImageElement,
@@ -6708,6 +6708,290 @@ function syncMobileLabelSize() {
   }
 }
 
+// =============================================================================
+// PRINTER DEFINITIONS UI
+// =============================================================================
+
+/**
+ * Populate the printer model dropdown from loaded definitions
+ */
+function populatePrinterModelDropdown() {
+  const defs = getAllPrinterDefinitions();
+  // Group by group name
+  const groups = {};
+  for (const def of defs) {
+    const group = def.group || 'Other';
+    if (!groups[group]) groups[group] = [];
+    groups[group].push(def);
+  }
+
+  // Populate both the print settings dropdown and the model prompt dropdown
+  const selects = [
+    { el: $('#printer-model'), keepFirst: true },
+    { el: $('#prompt-model-select'), keepFirst: true },
+  ];
+
+  for (const { el: select, keepFirst } of selects) {
+    if (!select) continue;
+    const currentValue = select.value;
+
+    // Clear all options except the first
+    while (select.options.length > (keepFirst ? 1 : 0)) {
+      select.remove(keepFirst ? 1 : 0);
+    }
+    // Remove any optgroups
+    select.querySelectorAll('optgroup').forEach(g => g.remove());
+
+    for (const [groupName, printers] of Object.entries(groups)) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = groupName;
+      for (const def of printers) {
+        const opt = document.createElement('option');
+        opt.value = def.id;
+        const widthMm = def.widthBytes ? Math.round(def.widthBytes * 8 / 8) : null;
+        const dpiNote = def.dpi === 300 ? ', 300 DPI' : '';
+        opt.textContent = def.name + (widthMm ? ` (${widthMm}mm${dpiNote})` : '') + (!def.builtin ? ' *' : '');
+        optgroup.appendChild(opt);
+      }
+      select.appendChild(optgroup);
+    }
+
+    // Restore selection
+    select.value = currentValue;
+    // If saved value is no longer valid, fall back
+    if (!select.value || select.selectedIndex === -1) {
+      select.selectedIndex = 0;
+    }
+  }
+}
+
+/**
+ * Initialize the Printer Definitions Manager dialog
+ */
+function initPrinterDefsManager() {
+  const dialog = $('#printer-defs-dialog');
+  const list = $('#printer-defs-list');
+  const editor = $('#printer-def-editor');
+  const editorTitle = $('#printer-def-editor-title');
+  if (!dialog || !list || !editor) return;
+
+  let editingId = null; // null = new, string = editing existing
+
+  // Populate protocol and label preset dropdowns in editor
+  const protocolSelect = $('#pdef-protocol');
+  const labelPresetsSelect = $('#pdef-label-presets');
+  if (protocolSelect) {
+    protocolSelect.innerHTML = '';
+    for (const p of getAvailableProtocols()) {
+      const opt = document.createElement('option');
+      opt.value = p.value;
+      opt.textContent = p.label;
+      protocolSelect.appendChild(opt);
+    }
+  }
+  if (labelPresetsSelect) {
+    labelPresetsSelect.innerHTML = '';
+    for (const p of getAvailableLabelPresets()) {
+      const opt = document.createElement('option');
+      opt.value = p.value;
+      opt.textContent = p.label;
+      labelPresetsSelect.appendChild(opt);
+    }
+  }
+
+  // Width info helper
+  const widthInput = $('#pdef-width');
+  const widthInfo = $('#pdef-width-info');
+  if (widthInput && widthInfo) {
+    widthInput.addEventListener('input', () => {
+      const bytes = parseInt(widthInput.value);
+      if (bytes > 0) {
+        const px = bytes * 8;
+        const mm = bytes; // 8px/mm at 203 DPI ~ 1 byte/mm
+        widthInfo.textContent = `= ${px}px = ~${mm}mm`;
+      } else {
+        widthInfo.textContent = '';
+      }
+    });
+  }
+
+  // Tape toggle
+  const tapeSelect = $('#pdef-tape');
+  const tapeOptions = $('#pdef-tape-options');
+  if (tapeSelect && tapeOptions) {
+    tapeSelect.addEventListener('change', () => {
+      tapeOptions.classList.toggle('hidden', tapeSelect.value !== 'true');
+    });
+  }
+
+  function renderList() {
+    list.innerHTML = '';
+    const defs = getAllPrinterDefinitions();
+    const customs = getCustomPrinterDefinitions();
+    const customIds = new Set(customs.map(d => d.id));
+
+    for (const def of defs) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer';
+
+      const isCustomized = customIds.has(def.id) && isBuiltinPrinter(def.id);
+      const isUserCreated = !isBuiltinPrinter(def.id);
+      const badge = isUserCreated ? '<span class="ml-1 text-xs bg-blue-100 text-blue-700 px-1 rounded">custom</span>'
+        : isCustomized ? '<span class="ml-1 text-xs bg-amber-100 text-amber-700 px-1 rounded">modified</span>'
+        : '';
+
+      row.innerHTML = `
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-gray-800 truncate">${def.name}${badge}</div>
+          <div class="text-xs text-gray-400 truncate">${def.description || def.protocol}</div>
+        </div>
+        <div class="flex gap-1 ml-2 shrink-0">
+          <button class="pdef-edit-btn text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 rounded" data-id="${def.id}">Edit</button>
+          ${isUserCreated ? `<button class="pdef-delete-btn text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded" data-id="${def.id}">Delete</button>` : ''}
+          ${isCustomized ? `<button class="pdef-reset-btn text-xs px-2 py-1 text-amber-600 hover:bg-amber-50 rounded" data-id="${def.id}">Reset</button>` : ''}
+        </div>
+      `;
+      list.appendChild(row);
+    }
+
+    // Bind edit buttons
+    list.querySelectorAll('.pdef-edit-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditor(btn.dataset.id);
+      });
+    });
+
+    // Bind delete buttons
+    list.querySelectorAll('.pdef-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete custom printer "${btn.dataset.id}"?`)) {
+          deleteCustomPrinterDefinition(btn.dataset.id);
+          renderList();
+          populatePrinterModelDropdown();
+        }
+      });
+    });
+
+    // Bind reset buttons
+    list.querySelectorAll('.pdef-reset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Reset "${btn.dataset.id}" to built-in defaults?`)) {
+          resetBuiltinPrinter(btn.dataset.id);
+          renderList();
+          populatePrinterModelDropdown();
+        }
+      });
+    });
+  }
+
+  function openEditor(id) {
+    editingId = id || null;
+    editor.classList.remove('hidden');
+
+    const def = id ? getPrinterDefinition(id) : null;
+    editorTitle.textContent = def ? `Edit: ${def.name}` : 'New Printer Definition';
+
+    const idInput = $('#pdef-id');
+    idInput.value = def?.id || '';
+    idInput.disabled = !!id; // Can't change id of existing definition
+
+    $('#pdef-name').value = def?.name || '';
+    $('#pdef-group').value = def?.group || 'Custom Printers';
+    $('#pdef-description').value = def?.description || '';
+    protocolSelect.value = def?.protocol || 'm-series';
+    $('#pdef-dpi').value = def?.dpi || 203;
+    $('#pdef-width').value = def?.widthBytes ?? '';
+    widthInput.dispatchEvent(new Event('input')); // Update info text
+    $('#pdef-alignment').value = def?.alignment || 'center';
+    $('#pdef-rotated').value = def?.rotated ? 'true' : 'false';
+    labelPresetsSelect.value = def?.labelPresets || 'm-series';
+    tapeSelect.value = def?.tape ? 'true' : 'false';
+    tapeOptions.classList.toggle('hidden', !def?.tape);
+    $('#pdef-tape-widths').value = def?.tapeWidths ? def.tapeWidths.join(', ') : '';
+    $('#pdef-default-tape-width').value = def?.defaultTapeWidth || '';
+    $('#pdef-patterns').value = def?.namePatterns ? def.namePatterns.join(', ') : '';
+  }
+
+  function closeEditor() {
+    editor.classList.add('hidden');
+    editingId = null;
+  }
+
+  function saveEditor() {
+    const id = $('#pdef-id').value.trim().toLowerCase().replace(/[^a-z0-9\-]/g, '-');
+    const name = $('#pdef-name').value.trim();
+
+    if (!id) { alert('ID is required'); return; }
+    if (!name) { alert('Name is required'); return; }
+
+    // Check for id collision when creating new
+    if (!editingId && getPrinterDefinition(id)) {
+      alert(`A printer with ID "${id}" already exists. Choose a different ID or edit the existing one.`);
+      return;
+    }
+
+    const tapeWidthsRaw = $('#pdef-tape-widths').value.trim();
+    const tapeWidths = tapeWidthsRaw ? tapeWidthsRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0) : null;
+
+    const patternsRaw = $('#pdef-patterns').value.trim();
+    const patterns = patternsRaw ? patternsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const widthVal = $('#pdef-width').value.trim();
+
+    const def = {
+      id: editingId || id,
+      name,
+      group: $('#pdef-group').value.trim() || 'Custom Printers',
+      description: $('#pdef-description').value.trim(),
+      protocol: protocolSelect.value,
+      widthBytes: widthVal === '' ? null : parseInt(widthVal),
+      dpi: parseInt($('#pdef-dpi').value),
+      alignment: $('#pdef-alignment').value,
+      rotated: $('#pdef-rotated').value === 'true',
+      tape: tapeSelect.value === 'true',
+      tapeWidths: tapeSelect.value === 'true' ? tapeWidths : null,
+      defaultTapeWidth: tapeSelect.value === 'true' ? (parseInt($('#pdef-default-tape-width').value) || null) : null,
+      namePatterns: patterns,
+      labelPresets: labelPresetsSelect.value,
+      builtin: false,
+    };
+
+    saveCustomPrinterDefinition(def);
+    closeEditor();
+    renderList();
+    populatePrinterModelDropdown();
+  }
+
+  // Open manager
+  $('#manage-printers-btn')?.addEventListener('click', () => {
+    renderList();
+    closeEditor();
+    dialog.classList.remove('hidden');
+  });
+
+  // Close manager
+  $('#printer-defs-close')?.addEventListener('click', () => {
+    dialog.classList.add('hidden');
+  });
+
+  // Close on backdrop click
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.classList.add('hidden');
+  });
+
+  // Add new
+  $('#printer-def-add')?.addEventListener('click', () => openEditor(null));
+
+  // Cancel editor
+  $('#printer-def-cancel')?.addEventListener('click', closeEditor);
+
+  // Save editor
+  $('#printer-def-save')?.addEventListener('click', saveEditor);
+}
+
 /**
  * Initialize the application
  */
@@ -6723,6 +7007,20 @@ function init() {
 
   // Initialize local fonts (show button or auto-load if previously enabled)
   initLocalFonts();
+
+  // Load printer definitions (built-in + custom) then populate dropdown
+  loadPrinterDefinitions().then(() => {
+    populatePrinterModelDropdown();
+    initPrinterDefsManager();
+    // Restore saved printer model selection
+    const savedPrintSettings = safeStorageGet('phomymo_print_settings');
+    if (savedPrintSettings) {
+      const settings = safeJsonParse(savedPrintSettings, null);
+      if (settings && settings.printerModel) {
+        $('#printer-model').value = settings.printerModel;
+      }
+    }
+  });
 
   // Create canvas renderer
   const canvas = $('#preview-canvas');

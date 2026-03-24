@@ -2,8 +2,237 @@
  * Printer protocol for Phomemo printers
  * Handles print commands for both USB and BLE transports
  * Supports M-series (M02, M110, M200, M220, M260) and D-series (D30, D110)
- * v109
+ *
+ * Printer definitions are data-driven from printers.json + user custom definitions.
  */
+
+import { STORAGE_KEYS } from './constants.js';
+
+// =============================================================================
+// PRINTER DEFINITIONS MANAGER
+// =============================================================================
+
+// All loaded printer definitions (built-in + custom, custom wins on id collision)
+let _allDefinitions = [];
+// Built-in definitions loaded from printers.json
+let _builtinDefinitions = [];
+// Whether definitions have been loaded
+let _loaded = false;
+
+/**
+ * Load built-in printer definitions from printers.json
+ * Should be called once at app startup
+ */
+export async function loadPrinterDefinitions() {
+  try {
+    const resp = await fetch('./printers.json');
+    const json = await resp.json();
+    _builtinDefinitions = json.printers || [];
+  } catch (e) {
+    console.error('Failed to load printers.json:', e);
+    _builtinDefinitions = [];
+  }
+  _loaded = true;
+  _rebuildDefinitions();
+}
+
+/**
+ * Get all printer definitions (built-in + custom, merged)
+ * Custom definitions with the same id override built-in ones.
+ * @returns {Array} All printer definitions
+ */
+export function getAllPrinterDefinitions() {
+  if (!_loaded) {
+    console.warn('Printer definitions not loaded yet; returning empty list');
+    return [];
+  }
+  return _allDefinitions;
+}
+
+/**
+ * Get a single printer definition by id
+ * @param {string} id - Printer definition id
+ * @returns {Object|null}
+ */
+export function getPrinterDefinition(id) {
+  return _allDefinitions.find(d => d.id === id) || null;
+}
+
+/**
+ * Get all custom (user-created/overridden) printer definitions from localStorage
+ * @returns {Array}
+ */
+export function getCustomPrinterDefinitions() {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.CUSTOM_PRINTERS);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    console.error('Failed to load custom printers:', e);
+    return [];
+  }
+}
+
+/**
+ * Save a custom printer definition (create or update)
+ * @param {Object} def - Printer definition object
+ */
+export function saveCustomPrinterDefinition(def) {
+  const customs = getCustomPrinterDefinitions();
+  const idx = customs.findIndex(d => d.id === def.id);
+  const saved = { ...def, builtin: false };
+  if (idx >= 0) {
+    customs[idx] = saved;
+  } else {
+    customs.push(saved);
+  }
+  localStorage.setItem(STORAGE_KEYS.CUSTOM_PRINTERS, JSON.stringify(customs));
+  _rebuildDefinitions();
+}
+
+/**
+ * Delete a custom printer definition
+ * @param {string} id - Printer definition id to delete
+ */
+export function deleteCustomPrinterDefinition(id) {
+  const customs = getCustomPrinterDefinitions().filter(d => d.id !== id);
+  localStorage.setItem(STORAGE_KEYS.CUSTOM_PRINTERS, JSON.stringify(customs));
+  _rebuildDefinitions();
+}
+
+/**
+ * Check if a printer definition id is a built-in
+ * @param {string} id
+ * @returns {boolean}
+ */
+export function isBuiltinPrinter(id) {
+  return _builtinDefinitions.some(d => d.id === id);
+}
+
+/**
+ * Reset a customized built-in printer back to its original definition
+ * @param {string} id
+ */
+export function resetBuiltinPrinter(id) {
+  deleteCustomPrinterDefinition(id);
+}
+
+/**
+ * Get the available protocol types (for the editor UI)
+ */
+export function getAvailableProtocols() {
+  return [
+    { value: 'm-series', label: 'M-series (ESC/POS Raster)' },
+    { value: 'm02', label: 'M02-series (ESC/POS with Prefix)' },
+    { value: 'm110', label: 'M110-series (phomemo-tools)' },
+    { value: 'd-series', label: 'D-series (Rotated)' },
+    { value: 'p12', label: 'P12/Tape (Rotated, Continuous)' },
+    { value: 'tspl', label: 'TSPL (Shipping Label)' },
+  ];
+}
+
+/**
+ * Get the available label preset groups (for the editor UI)
+ */
+export function getAvailableLabelPresets() {
+  return [
+    { value: 'm-series', label: 'M-series (standard labels)' },
+    { value: 'd-series', label: 'D-series (small labels)' },
+    { value: 'tape', label: 'Tape (continuous tape)' },
+    { value: 'pm241', label: 'PM-241 (shipping labels)' },
+  ];
+}
+
+/**
+ * Rebuild the merged definitions list from built-in + custom
+ */
+function _rebuildDefinitions() {
+  const customs = getCustomPrinterDefinitions();
+  const customIds = new Set(customs.map(d => d.id));
+
+  // Start with built-ins that haven't been overridden
+  _allDefinitions = _builtinDefinitions
+    .filter(d => !customIds.has(d.id))
+    .map(d => ({ ...d }));
+
+  // Add all custom definitions
+  for (const c of customs) {
+    _allDefinitions.push({ ...c });
+  }
+}
+
+// =============================================================================
+// DETECTION AND CONFIG (data-driven from definitions)
+// =============================================================================
+
+// Default configuration when no definition matches
+const DEFAULT_CONFIG = { width: 72, protocol: 'm-series', dpi: 203 };
+
+/**
+ * Build a flat name-pattern list from all definitions for auto-detection.
+ * More specific (longer) patterns come first to avoid false matches.
+ * Custom definitions' patterns come before built-in ones.
+ */
+function _buildPatternList() {
+  const customs = _allDefinitions.filter(d => !d.builtin);
+  const builtins = _allDefinitions.filter(d => d.builtin);
+
+  const list = [];
+  for (const def of [...customs, ...builtins]) {
+    if (!def.namePatterns) continue;
+    for (const pat of def.namePatterns) {
+      list.push({ pattern: pat.toUpperCase(), def });
+    }
+  }
+  // Sort longer patterns first for specificity
+  list.sort((a, b) => b.pattern.length - a.pattern.length);
+  return list;
+}
+
+/**
+ * Get printer configuration from device name (auto-detect)
+ * @param {string} deviceName - BLE device name
+ * @returns {Object} { width, protocol, dpi, recognized, matchedPattern, definition }
+ */
+function detectPrinterConfig(deviceName) {
+  if (!deviceName) return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null, definition: null };
+
+  const name = deviceName.toUpperCase();
+  const patterns = _buildPatternList();
+
+  for (const { pattern, def } of patterns) {
+    if (name.startsWith(pattern)) {
+      return {
+        width: def.widthBytes,
+        protocol: def.protocol,
+        dpi: def.dpi || 203,
+        recognized: true,
+        matchedPattern: pattern,
+        definition: def,
+      };
+    }
+  }
+  return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null, definition: null };
+}
+
+/**
+ * Get printer configuration from manual model override
+ * @param {string} modelOverride - Manual model selection (printer definition id)
+ * @returns {Object|null}
+ */
+function getOverrideConfig(modelOverride) {
+  if (!modelOverride || modelOverride === 'auto') return null;
+
+  const def = getPrinterDefinition(modelOverride);
+  if (def) {
+    return {
+      width: def.widthBytes,
+      protocol: def.protocol,
+      dpi: def.dpi || 203,
+      definition: def,
+    };
+  }
+  return null;
+}
 
 /**
  * Convert density level (1-8) to heat time value
@@ -129,454 +358,118 @@ const TSPL = {
   END: () => new TextEncoder().encode('END\r\n'),
 };
 
-/**
- * Printer width configurations
- * Width in bytes (8 pixels per byte at 203 DPI)
- * Keys match the dropdown values in index.html
- */
-const PRINTER_WIDTHS = {
-  // Tape printers (continuous tape with variable widths)
-  'p12': 12,  // P12 series (12mm tape)
-  'a30': 15,  // A30 series (12-15mm tape, default 15mm)
-  // M02 series (48mm / 384px) - uses m02 protocol
-  'm02': 48,
-  // M02 Pro (53mm at 300 DPI = 626px = 78 bytes) - uses m02 protocol
-  'm02-pro': 78,
-  // M110/M120/M110S (48mm / 384px) - standard m-series protocol
-  'm110': 48,
-  'm110s': 48,
-  // M03 (53mm / 432px)
-  'm03': 54,
-  // T02 (48mm / 384px) - same print head width as M02/M110
-  't02': 48,
-  // M260 (72mm / 576px)
-  'm260': 72,
-  // M200 (75mm / 608px)
-  'm200': 76,
-  // M250 (75mm label, 72 byte width, same as M221/M260)
-  'm250': 72,
-  // M220 (72mm / 576px, right-aligned label roll)
-  'm220': 72,
-  // M221 (72mm / 576px, centered label roll)
-  'm221': 72,
-  // M04S multi-width options
-  'm04s-53': 54,
-  'm04s-80': 81,
-  'm04s-110': 110,
-  // PM-241 series (4 inch / 102mm / 812px) - shipping label printer
-  'pm241': 102,
-  // D-series uses raw label width
-  'd-series': null,
-};
+// =============================================================================
+// PROTOCOL DETECTION HELPERS (data-driven from definitions)
+// =============================================================================
 
 /**
- * Device name patterns for auto-detection
- * Matched against start of device name (case-insensitive)
- * More specific patterns should come first
- *
- * DPI: Most printers are 203 DPI, but M02 Pro is 300 DPI
+ * Resolve the effective config for a device name + model override.
+ * Returns { width, protocol, dpi, definition }
  */
-const DEVICE_PATTERNS = [
-  // A30 series (12-15mm tape) - uses P12 protocol with rotation
-  { pattern: 'A30', width: 15, protocol: 'p12', dpi: 203 },
-  // P12 series (12mm tape / ~96px at 203 DPI) - M-series protocol with rotation like D30
-  { pattern: 'P12 PRO', width: 12, protocol: 'p12', dpi: 203 },
-  { pattern: 'P12PRO', width: 12, protocol: 'p12', dpi: 203 },
-  { pattern: 'P12', width: 12, protocol: 'p12', dpi: 203 },
-  // M02 Pro series (53mm at 300 DPI = 626px = 78 bytes) - must come before generic M02 patterns
-  { pattern: 'M02 PRO', width: 78, protocol: 'm02', dpi: 300 },
-  { pattern: 'M02PRO', width: 78, protocol: 'm02', dpi: 300 },
-  // M02 series (48mm / 384px at 203 DPI)
-  { pattern: 'M02X', width: 48, protocol: 'm02', dpi: 203 },
-  { pattern: 'M02S', width: 48, protocol: 'm02', dpi: 203 },
-  { pattern: 'M02', width: 48, protocol: 'm02', dpi: 203 },
-  // M03 (53mm / 432px)
-  { pattern: 'M03', width: 54, protocol: 'm-series', dpi: 203 },
-  // T02 (48mm / 384px) - same print head width as M02/M110
-  { pattern: 'T02', width: 48, protocol: 'm-series', dpi: 203 },
-  // M110-series (48mm) - uses M110 protocol from phomemo-tools
-  // Note: M110S uses Q-prefix serial as BLE name, detected via model prompt (not auto-detect)
-  { pattern: 'M110', width: 48, protocol: 'm110', dpi: 203 },
-  { pattern: 'M120', width: 48, protocol: 'm110', dpi: 203 },
-  // M-series mid (75mm)
-  { pattern: 'M200', width: 76, protocol: 'm-series', dpi: 203 },
-  { pattern: 'M250', width: 72, protocol: 'm-series', dpi: 203 },
-  // M-series (72mm) - same print head width as M260
-  { pattern: 'M220', width: 72, protocol: 'm-series', dpi: 203 },
-  { pattern: 'M221', width: 72, protocol: 'm-series', dpi: 203 },
-  // M-series wide (72mm) - M260 and catch-all for M2xx
-  { pattern: 'M260', width: 72, protocol: 'm-series', dpi: 203 },
-  // M04 series (variable width, default to 54mm)
-  { pattern: 'M04', width: 54, protocol: 'm-series', dpi: 203 },
-  // PM-241 series (4 inch / 102mm shipping label printer)
-  // Variants: PM-241-BT, PM-241Z-BT, PM241, etc.
-  // Uses TSPL protocol (common for Chinese shipping label printers)
-  { pattern: 'PM-241', width: 102, protocol: 'tspl', dpi: 203 },
-  { pattern: 'PM241', width: 102, protocol: 'tspl', dpi: 203 },
-  { pattern: 'PM 241', width: 102, protocol: 'tspl', dpi: 203 },
-  // D-series (rotated protocol)
-  { pattern: 'D30', width: null, protocol: 'd-series', dpi: 203 },
-  { pattern: 'D35', width: null, protocol: 'd-series', dpi: 203 },
-  { pattern: 'D50', width: null, protocol: 'd-series', dpi: 203 },
-  { pattern: 'Q30S', width: null, protocol: 'd-series', dpi: 203 },
-  { pattern: 'Q30', width: null, protocol: 'd-series', dpi: 203 },
-  // Generic D prefix last (catches D110, etc)
-  { pattern: 'D', width: null, protocol: 'd-series', dpi: 203 },
-];
-
-// Default configuration when no pattern matches
-const DEFAULT_CONFIG = { width: 72, protocol: 'm-series', dpi: 203 };
-
-/**
- * Get printer configuration from device name
- * @param {string} deviceName - BLE device name
- * @returns {Object} { width, protocol, dpi, recognized, matchedPattern }
- */
-function detectPrinterConfig(deviceName) {
-  if (!deviceName) return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
-
-  const name = deviceName.toUpperCase();
-
-  for (const { pattern, width, protocol, dpi } of DEVICE_PATTERNS) {
-    if (name.startsWith(pattern)) {
-      return { width, protocol, dpi: dpi || 203, recognized: true, matchedPattern: pattern };
-    }
-  }
-  return { ...DEFAULT_CONFIG, recognized: false, matchedPattern: null };
+function _resolveConfig(deviceName, modelOverride = 'auto') {
+  const overrideConfig = getOverrideConfig(modelOverride);
+  if (overrideConfig) return overrideConfig;
+  return detectPrinterConfig(deviceName);
 }
 
 /**
  * Check if a device name is recognized (matches a known pattern)
- * @param {string} deviceName - BLE device name
- * @returns {boolean} True if device matches a known pattern
  */
 export function isDeviceRecognized(deviceName) {
   return detectPrinterConfig(deviceName).recognized;
 }
 
 /**
- * Get the matched pattern for a device name (e.g., "M110", "D30")
- * @param {string} deviceName - BLE device name
- * @returns {string|null} Matched pattern or null if not recognized
+ * Get the matched pattern for a device name
  */
 export function getMatchedPattern(deviceName) {
   return detectPrinterConfig(deviceName).matchedPattern;
 }
 
 /**
- * Get printer configuration from manual override
- * @param {string} modelOverride - Manual model selection
- * @returns {Object|null} { width, protocol } or null if auto
+ * Get the definition that matched a device name (for auto-detect)
  */
-function getOverrideConfig(modelOverride) {
-  if (!modelOverride || modelOverride === 'auto') return null;
-
-  if (modelOverride === 'd-series') {
-    return { width: null, protocol: 'd-series', dpi: 203 };
-  }
-
-  // P12 uses P12 protocol with rotation
-  if (modelOverride === 'p12') {
-    return { width: PRINTER_WIDTHS['p12'], protocol: 'p12', dpi: 203 };
-  }
-
-  // A30 uses P12 protocol with rotation (supports 12-15mm tape)
-  if (modelOverride === 'a30') {
-    return { width: 15, protocol: 'p12', dpi: 203 };
-  }
-
-  // M02 uses special protocol
-  if (modelOverride === 'm02') {
-    return { width: PRINTER_WIDTHS['m02'], protocol: 'm02', dpi: 203 };
-  }
-
-  // M02 Pro uses special protocol and 300 DPI
-  if (modelOverride === 'm02-pro') {
-    return { width: PRINTER_WIDTHS['m02-pro'], protocol: 'm02', dpi: 300 };
-  }
-
-  // M110/M110S uses M110 protocol from phomemo-tools
-  if (modelOverride === 'm110' || modelOverride === 'm110s') {
-    return { width: PRINTER_WIDTHS[modelOverride], protocol: 'm110', dpi: 203 };
-  }
-
-  // PM-241 uses TSPL protocol (shipping label printer)
-  if (modelOverride === 'pm241') {
-    return { width: 102, protocol: 'tspl', dpi: 203 };
-  }
-
-  const width = PRINTER_WIDTHS[modelOverride];
-  if (width !== undefined) {
-    return { width, protocol: 'm-series', dpi: 203 };
-  }
-
-  return null;
+export function getDetectedDefinition(deviceName) {
+  return detectPrinterConfig(deviceName).definition;
 }
 
-/**
- * Detect if device is D-series based on name or override
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isDSeriesPrinter(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig) {
-    return overrideConfig.protocol === 'd-series';
-  }
-
-  // Auto-detect from device name
-  const config = detectPrinterConfig(deviceName);
-  return config.protocol === 'd-series';
+  return _resolveConfig(deviceName, modelOverride).protocol === 'd-series';
 }
 
-/**
- * Detect if device is M02-series based on name or override
- * M02 series uses a special prefix and different feed behavior
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isM02Printer(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'm02') {
-    return true;
-  }
-
-  // For other overrides, use the override's protocol
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig) {
-    return overrideConfig.protocol === 'm02';
-  }
-
-  // Auto-detect from device name
-  const config = detectPrinterConfig(deviceName);
-  return config.protocol === 'm02';
+  return _resolveConfig(deviceName, modelOverride).protocol === 'm02';
 }
 
-/**
- * Detect if device is P12-series based on name or override
- * P12 series uses M-series protocol but prints rotated like D30 (continuous tape)
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isP12Printer(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'p12') {
-    return true;
-  }
+  return _resolveConfig(deviceName, modelOverride).protocol === 'p12';
+}
 
-  // For other overrides, use the override's protocol
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig) {
-    return overrideConfig.protocol === 'p12';
-  }
+export function isA30Printer(deviceName, modelOverride = 'auto') {
+  const def = _resolveConfig(deviceName, modelOverride).definition;
+  return def?.id === 'a30';
+}
 
-  // Auto-detect from device name
-  const config = detectPrinterConfig(deviceName);
+export function isTapePrinter(deviceName, modelOverride = 'auto') {
+  const config = _resolveConfig(deviceName, modelOverride);
+  const def = config.definition;
+  if (def) return !!def.tape;
   return config.protocol === 'p12';
 }
 
-/**
- * Detect if device is A30-series based on name or override
- * A30 uses P12 protocol but supports wider tape (12-15mm)
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
-export function isA30Printer(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'a30') {
-    return true;
-  }
-
-  // Auto-detect from device name
-  const upperName = (deviceName || '').toUpperCase();
-  return upperName.startsWith('A30');
-}
-
-/**
- * Detect if device is a tape printer (P12 or A30 series)
- * These use continuous tape and support variable tape widths
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
-export function isTapePrinter(deviceName, modelOverride = 'auto') {
-  return isP12Printer(deviceName, modelOverride) || isA30Printer(deviceName, modelOverride);
-}
-
-/**
- * Detect if device is PM-241 series (4-inch shipping label printer)
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isPM241Printer(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'pm241') {
-    return true;
-  }
-
-  // For other overrides, check the width (PM-241 is 102 bytes = 4 inch)
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig) {
-    return overrideConfig.width === 102;
-  }
-
-  // Auto-detect from device name - check for PM-241 pattern
-  const config = detectPrinterConfig(deviceName);
-  return config.width === 102;
+  return _resolveConfig(deviceName, modelOverride).protocol === 'tspl';
 }
 
-/**
- * Detect if device uses TSPL protocol (shipping label printers)
- * @param {string} deviceName - Device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isTSPLPrinter(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'pm241' || modelOverride === 'tspl') {
-    return true;
-  }
-
-  // For other overrides, use the override's protocol
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig) {
-    return overrideConfig.protocol === 'tspl';
-  }
-
-  // Auto-detect from device name
-  const config = detectPrinterConfig(deviceName);
-  return config.protocol === 'tspl';
+  return _resolveConfig(deviceName, modelOverride).protocol === 'tspl';
 }
 
-/**
- * Detect if device is M110-series based on name or override
- * M110/M110S/M120 use the phomemo-tools protocol with specific commands
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 function isM110Printer(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  if (modelOverride === 'm110' || modelOverride === 'm110s') {
-    return true;
-  }
-
-  // For other overrides, use the override's protocol
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig) {
-    return overrideConfig.protocol === 'm110';
-  }
-
-  // Auto-detect from device name
-  const config = detectPrinterConfig(deviceName);
-  return config.protocol === 'm110';
+  return _resolveConfig(deviceName, modelOverride).protocol === 'm110';
 }
 
-/**
- * Detect if device is a rotated printer (D-series or tape printers like P12/A30)
- * These printers print labels sideways and need raw raster data with rotation
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isRotatedPrinter(deviceName, modelOverride = 'auto') {
-  return isDSeriesPrinter(deviceName, modelOverride) || isTapePrinter(deviceName, modelOverride);
+  const config = _resolveConfig(deviceName, modelOverride);
+  const def = config.definition;
+  if (def) return !!def.rotated;
+  // Fallback: D-series and P12 protocols are rotated
+  return config.protocol === 'd-series' || config.protocol === 'p12';
 }
 
-/**
- * Detect if device is a narrow M-series printer (M110, M120)
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- */
 export function isNarrowMSeriesPrinter(deviceName, modelOverride = 'auto') {
-  const width = getPrinterWidthBytes(deviceName, modelOverride);
-  return width === 48;
+  return getPrinterWidthBytes(deviceName, modelOverride) === 48;
 }
 
-/**
- * Get print alignment for a printer
- * M110S and M220 have labels right-aligned in the printer (not centered)
- * M221 uses centered alignment despite similar hardware
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- * @returns {'left' | 'center' | 'right'} Alignment for print data
- */
 export function getPrinterAlignment(deviceName, modelOverride = 'auto') {
-  // Manual M110S/M220 override
-  if (modelOverride === 'm110s' || modelOverride === 'm220') {
-    return 'right';
-  }
-
-  // Auto-detect M220 from device name (M221 uses centered alignment)
-  const name = (deviceName || '').toUpperCase();
-  if (name.startsWith('M220')) {
-    return 'right';
-  }
-
-  // All other printers use centered alignment
+  const config = _resolveConfig(deviceName, modelOverride);
+  const def = config.definition;
+  if (def && def.alignment) return def.alignment;
   return 'center';
 }
 
-/**
- * Get the maximum print width in bytes for a given printer
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- * @returns {number} Width in bytes (48, 54, 72, 76, or 81)
- */
 export function getPrinterWidthBytes(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
   const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig && overrideConfig.width !== null) {
-    return overrideConfig.width;
-  }
-
-  // Auto-detect from device name
+  if (overrideConfig && overrideConfig.width !== null) return overrideConfig.width;
   const config = detectPrinterConfig(deviceName);
   return config.width ?? DEFAULT_CONFIG.width;
 }
 
-/**
- * Get the DPI (dots per inch) for a printer
- * Most printers are 203 DPI, but M02 Pro is 300 DPI
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- * @returns {number} DPI value (203 or 300)
- */
 export function getPrinterDpi(deviceName, modelOverride = 'auto') {
-  // Manual override takes precedence
-  const overrideConfig = getOverrideConfig(modelOverride);
-  if (overrideConfig && overrideConfig.dpi) {
-    return overrideConfig.dpi;
-  }
-
-  // Auto-detect from device name
-  const config = detectPrinterConfig(deviceName);
+  const config = _resolveConfig(deviceName, modelOverride);
   return config.dpi || 203;
 }
 
-/**
- * Get a human-readable description of the detected printer type
- * @param {string} deviceName - BLE device name
- * @param {string} modelOverride - Manual model selection
- * @returns {string} Description like "M-series (48mm)" or "D-series" or "M02-series"
- */
 export function getPrinterDescription(deviceName, modelOverride = 'auto') {
-  const isDSeries = isDSeriesPrinter(deviceName, modelOverride);
-  if (isDSeries) return 'D-series';
-
-  const isA30 = isA30Printer(deviceName, modelOverride);
-  if (isA30) return 'A30-series (12-15mm tape)';
-
-  const isP12 = isP12Printer(deviceName, modelOverride);
-  if (isP12) return 'P12-series (12mm tape)';
-
-  const isPM241 = isPM241Printer(deviceName, modelOverride);
-  if (isPM241) return 'PM-241 (4-inch shipping)';
-
-  const isM02 = isM02Printer(deviceName, modelOverride);
-  const isM110 = isM110Printer(deviceName, modelOverride);
+  const config = _resolveConfig(deviceName, modelOverride);
+  const def = config.definition;
+  if (def) {
+    const widthMm = def.widthBytes ? Math.round(def.widthBytes * 8 / 8) : null;
+    return def.name + (widthMm ? ` (${widthMm}mm)` : '');
+  }
+  // Fallback for unrecognized printers
   const width = getPrinterWidthBytes(deviceName, modelOverride);
-  const widthMm = Math.round(width * 8 / 8); // bytes * 8 pixels / 8 px per mm
-
-  if (isM02) return `M02-series (${widthMm}mm)`;
-  if (isM110) return `M110-series (${widthMm}mm)`;
+  const widthMm = Math.round(width * 8 / 8);
   return `M-series (${widthMm}mm)`;
 }
 

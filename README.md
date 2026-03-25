@@ -4,7 +4,10 @@ A free, browser-based label designer for Phomemo thermal printers. No drivers ne
 
 **Try it now: https://phomymo.affordablemagic.net**
 
-![Phomymo Label Designer](screenshot.png) ![Mobile UI](screenshot-mobile.png)
+<p>
+  <img src="screenshot.png" alt="Phomymo Label Designer" width="600" />
+  <img src="screenshot-mobile.png" alt="Mobile UI" width="200" />
+</p>
 
 ## Quick Start
 

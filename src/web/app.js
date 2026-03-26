@@ -5629,40 +5629,20 @@ function checkCompatibility() {
                 </div>
                 <h4 class="font-semibold text-gray-900 text-sm">Save & Export</h4>
               </div>
-              <p class="text-xs text-gray-600">Save designs, export as JSON files</p>
+              <p class="text-xs text-gray-600">Save designs, export as JSON, PDF, or PNG</p>
             </div>
           </div>
 
-          <!-- Supported Printers Info -->
-          <div class="grid grid-cols-2 gap-2">
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-green-600 uppercase tracking-wide">Tape Printers</span>
-              <p class="text-sm text-gray-700">P12, P12 Pro, A30</p>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
-              <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02</p>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
-              <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30, Q30S</p>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-orange-600 uppercase tracking-wide">Shipping</span>
-              <p class="text-sm text-gray-700">PM-241, PM-241-BT (USB only)</p>
-            </div>
-          </div>
+          <!-- User Manual Link -->
+          <a href="docs/manual.html" target="_blank" rel="noopener" class="flex items-center justify-center gap-2 w-full px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors text-sm font-medium">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            Read the User Manual
+          </a>
 
-          <!-- GitHub CTA -->
-          <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 border border-gray-200 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <svg class="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/></svg>
-              <span class="text-sm text-gray-700">Open source &amp; free forever</span>
-            </div>
-            <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="px-3 py-1 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-1">
-              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.4 8.168L12 18.896l-7.334 3.857 1.4-8.168-5.934-5.787 8.2-1.192L12 .587z"/></svg>
-              Star on GitHub
-            </a>
+          <!-- Supported Printers (compact) -->
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Supported Printers</p>
+            <p class="text-xs text-gray-700">P12, A30, M02-M260, T02, D30-D110, Q30/Q30S, PM-241</p>
           </div>
 
           <!-- Action Button -->
@@ -7081,6 +7061,7 @@ function init() {
   // Info dialog
   $('#info-btn').addEventListener('click', showInfoDialog);
   $('#info-close').addEventListener('click', hideInfoDialog);
+  $('#info-get-started')?.addEventListener('click', hideInfoDialog);
   $('#info-dialog').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) hideInfoDialog();
   });

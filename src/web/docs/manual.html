@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Phomymo User Manual</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 900px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin: 8px 0;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Phomymo User Manual</h1>
+</header>
+<h1 id="phomymo-user-manual">Phomymo User Manual</h1>
+<p>A guide to designing and printing labels with the Phomymo label
+designer.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol type="1">
+<li><a href="#getting-started">Getting Started</a></li>
+<li><a href="#adding-elements">Adding Elements</a></li>
+<li><a href="#element-properties">Element Properties</a></li>
+<li><a href="#templates-and-batch-printing">Templates and Batch
+Printing</a></li>
+<li><a href="#print-settings">Print Settings</a></li>
+<li><a href="#custom-printer-definitions">Custom Printer
+Definitions</a></li>
+</ol>
+<hr />
+<h2 id="getting-started">Getting Started</h2>
+<p>Open <a
+href="https://phomymo.affordablemagic.net">phomymo.affordablemagic.net</a>
+in Chrome, Edge, or another Chromium-based browser. The app works on
+desktop and Android - iOS is not supported due to Web Bluetooth
+limitations.</p>
+<figure>
+<img src="screenshots/01-getting-started/01-app-loaded.png"
+alt="App loaded" />
+<figcaption aria-hidden="true">App loaded</figcaption>
+</figure>
+<h3 id="the-interface">The Interface</h3>
+<p>The interface has three main areas:</p>
+<ul>
+<li><strong>Toolbar</strong> (top) - Buttons to add elements, undo/redo,
+arrange layers, save/load, and export</li>
+<li><strong>Canvas</strong> (center) - Your label design area with zoom
+controls</li>
+<li><strong>Properties Panel</strong> (right) - Edit the selected
+element’s properties</li>
+</ul>
+<figure>
+<img src="screenshots/01-getting-started/02-interface-overview.png"
+alt="Interface overview" />
+<figcaption aria-hidden="true">Interface overview</figcaption>
+</figure>
+<h3 id="connecting-a-printer">Connecting a Printer</h3>
+<ol type="1">
+<li>Click <strong>Connect</strong> in the top toolbar</li>
+<li>Select your Phomemo printer from the Bluetooth device picker</li>
+<li>The app auto-detects your printer model and configures the correct
+settings</li>
+</ol>
+<p>You can also use <strong>USB</strong> for PM-241 shipping label
+printers by switching the connection type dropdown.</p>
+<hr />
+<h2 id="adding-elements">Adding Elements</h2>
+<p>Use the toolbar buttons to add elements to your label. Each element
+appears on the canvas and can be dragged, resized, and rotated.</p>
+<h3 id="text">Text</h3>
+<p>Click <strong>Text</strong> to add a text element. It starts in
+inline edit mode - type your text and click outside to finish.</p>
+<figure>
+<img src="screenshots/02-adding-elements/01-text-element-added.png"
+alt="Text element added" />
+<figcaption aria-hidden="true">Text element added</figcaption>
+</figure>
+<h3 id="barcodes">Barcodes</h3>
+<p>Click <strong>Barcode</strong> to add a barcode. The default format
+is Code 128 - change it in the properties panel.</p>
+<figure>
+<img src="screenshots/02-adding-elements/02-barcode-element-added.png"
+alt="Barcode added" />
+<figcaption aria-hidden="true">Barcode added</figcaption>
+</figure>
+<h3 id="qr-codes">QR Codes</h3>
+<p>Click <strong>QR</strong> to add a QR code. Enter any text or URL in
+the properties panel.</p>
+<figure>
+<img src="screenshots/02-adding-elements/03-qr-element-added.png"
+alt="QR code added" />
+<figcaption aria-hidden="true">QR code added</figcaption>
+</figure>
+<h3 id="shapes">Shapes</h3>
+<p>Click <strong>Shape</strong> to open the shape menu, then pick from
+rectangle, ellipse, triangle, or line.</p>
+<figure>
+<img src="screenshots/02-adding-elements/04-shape-dropdown.png"
+alt="Shape dropdown" />
+<figcaption aria-hidden="true">Shape dropdown</figcaption>
+</figure>
+<figure>
+<img src="screenshots/02-adding-elements/05-rectangle-element-added.png"
+alt="Rectangle added" />
+<figcaption aria-hidden="true">Rectangle added</figcaption>
+</figure>
+<h3 id="images">Images</h3>
+<p>Click <strong>Image</strong> to import a picture from your device.
+Images can be scaled, cropped, and dithered for thermal printing.</p>
+<figure>
+<img src="screenshots/02-adding-elements/06-image-element-added.png"
+alt="Image added" />
+<figcaption aria-hidden="true">Image added</figcaption>
+</figure>
+<h3 id="multiple-elements">Multiple Elements</h3>
+<p>You can add as many elements as you need. Use the layer buttons
+(Raise/Lower) to control which elements appear on top.</p>
+<figure>
+<img src="screenshots/02-adding-elements/07-all-elements-on-canvas.png"
+alt="All elements" />
+<figcaption aria-hidden="true">All elements</figcaption>
+</figure>
+<hr />
+<h2 id="element-properties">Element Properties</h2>
+<p>Click any element on the canvas to select it. The properties panel on
+the right updates to show that element’s settings.</p>
+<h3 id="text-properties">Text Properties</h3>
+<p>Text elements have the most options: font family, size,
+bold/italic/underline, text color, background color, horizontal and
+vertical alignment, word wrap, and auto-scale.</p>
+<figure>
+<img
+src="screenshots/03-element-properties/01-text-properties-panel.png"
+alt="Text properties panel" />
+<figcaption aria-hidden="true">Text properties panel</figcaption>
+</figure>
+<p>Change the text content in the textarea and adjust styling with the
+buttons and inputs below.</p>
+<figure>
+<img
+src="screenshots/03-element-properties/02-text-properties-modified.png"
+alt="Text modified" />
+<figcaption aria-hidden="true">Text modified</figcaption>
+</figure>
+<h3 id="barcode-properties">Barcode Properties</h3>
+<p>Set the barcode data and format (Code 128, EAN-13, UPC-A, or Code
+39). You can toggle the text display below the barcode.</p>
+<figure>
+<img
+src="screenshots/03-element-properties/03-barcode-properties-panel.png"
+alt="Barcode properties" />
+<figcaption aria-hidden="true">Barcode properties</figcaption>
+</figure>
+<figure>
+<img
+src="screenshots/03-element-properties/04-barcode-properties-modified.png"
+alt="Barcode modified" />
+<figcaption aria-hidden="true">Barcode modified</figcaption>
+</figure>
+<h3 id="qr-code-properties">QR Code Properties</h3>
+<p>Enter the data to encode. The QR code auto-sizes based on content
+length.</p>
+<figure>
+<img src="screenshots/03-element-properties/05-qr-properties-panel.png"
+alt="QR properties" />
+<figcaption aria-hidden="true">QR properties</figcaption>
+</figure>
+<figure>
+<img
+src="screenshots/03-element-properties/06-qr-properties-modified.png"
+alt="QR modified" />
+<figcaption aria-hidden="true">QR modified</figcaption>
+</figure>
+<h3 id="shape-properties">Shape Properties</h3>
+<p>Choose the shape type, fill style (solid, dithered grayscale, or
+none), stroke color, stroke width, and corner radius (rectangles
+only).</p>
+<figure>
+<img
+src="screenshots/03-element-properties/07-shape-properties-panel.png"
+alt="Shape properties" />
+<figcaption aria-hidden="true">Shape properties</figcaption>
+</figure>
+<figure>
+<img
+src="screenshots/03-element-properties/08-shape-properties-modified.png"
+alt="Shape modified" />
+<figcaption aria-hidden="true">Shape modified</figcaption>
+</figure>
+<h3 id="position-and-size">Position and Size</h3>
+<p>All elements share position (X, Y), size (Width, Height), and
+rotation controls at the top of the properties panel. You can type exact
+values or drag elements on the canvas.</p>
+<figure>
+<img src="screenshots/03-element-properties/09-position-properties.png"
+alt="Position properties" />
+<figcaption aria-hidden="true">Position properties</figcaption>
+</figure>
+<hr />
+<h2 id="templates-and-batch-printing">Templates and Batch Printing</h2>
+<p>Templates let you print multiple labels with different data - like
+name badges, product labels, or address labels.</p>
+<h3 id="creating-template-fields">Creating Template Fields</h3>
+<p>Use <code>{{FieldName}}</code> syntax in any text, barcode, or QR
+code element. For example, type <code>{{Name}} - ${{Price}}</code> in a
+text element.</p>
+<p>When template fields are detected, a purple <strong>Template</strong>
+button appears in the toolbar.</p>
+<figure>
+<img src="screenshots/04-templates-batch/01-template-field-in-text.png"
+alt="Template field in text" />
+<figcaption aria-hidden="true">Template field in text</figcaption>
+</figure>
+<h3 id="template-panel">Template Panel</h3>
+<p>Click the template button to open the template panel, which shows
+your detected fields and data management options.</p>
+<figure>
+<img src="screenshots/04-templates-batch/02-template-panel-open.png"
+alt="Template panel" />
+<figcaption aria-hidden="true">Template panel</figcaption>
+</figure>
+<h3 id="importing-data">Importing Data</h3>
+<p>Click <strong>Manage Data</strong> to open the data dialog. You can
+import a CSV file or manually add rows.</p>
+<figure>
+<img
+src="screenshots/04-templates-batch/03-template-data-dialog-empty.png"
+alt="Empty data dialog" />
+<figcaption aria-hidden="true">Empty data dialog</figcaption>
+</figure>
+<p>Click <strong>Import CSV</strong> and select your file. The CSV
+headers should match your field names (e.g.,
+<code>Name,Price</code>).</p>
+<figure>
+<img src="screenshots/04-templates-batch/04-csv-data-imported.png"
+alt="CSV imported" />
+<figcaption aria-hidden="true">CSV imported</figcaption>
+</figure>
+<h3 id="previewing-labels">Previewing Labels</h3>
+<p>Click <strong>Preview</strong> to see all your labels rendered with
+the data. Click any thumbnail to see it full-size.</p>
+<figure>
+<img src="screenshots/04-templates-batch/05-preview-grid.png"
+alt="Preview grid" />
+<figcaption aria-hidden="true">Preview grid</figcaption>
+</figure>
+<h3 id="batch-printing">Batch Printing</h3>
+<p>Click <strong>Print All</strong> to print every label in sequence. A
+progress indicator shows the current label being printed. You can cancel
+at any time.</p>
+<hr />
+<h2 id="print-settings">Print Settings</h2>
+<p>Click the <strong>gear icon</strong> in the toolbar to open print
+settings.</p>
+<figure>
+<img src="screenshots/05-print-settings/01-print-settings-dialog.png"
+alt="Print settings dialog" />
+<figcaption aria-hidden="true">Print settings dialog</figcaption>
+</figure>
+<h3 id="choosing-a-printer-model">Choosing a Printer Model</h3>
+<p>The <strong>Printer Model</strong> dropdown lists all supported
+printers. The default is <strong>Auto-detect</strong>, which identifies
+your printer from its Bluetooth name.</p>
+<figure>
+<img src="screenshots/05-print-settings/02-printer-model-dropdown.png"
+alt="Printer dropdown" />
+<figcaption aria-hidden="true">Printer dropdown</figcaption>
+</figure>
+<p>If auto-detection doesn’t work (e.g., your printer broadcasts a
+serial number instead of a model name), select your model manually.</p>
+<figure>
+<img src="screenshots/05-print-settings/03-printer-selected.png"
+alt="Printer selected" />
+<figcaption aria-hidden="true">Printer selected</figcaption>
+</figure>
+<h3 id="print-density">Print Density</h3>
+<p>The density slider controls how dark the print is (1 = light, 8 =
+dark). Some printers may not respond to this setting.</p>
+<figure>
+<img src="screenshots/05-print-settings/04-density-adjusted.png"
+alt="Density adjusted" />
+<figcaption aria-hidden="true">Density adjusted</figcaption>
+</figure>
+<h3 id="other-settings">Other Settings</h3>
+<ul>
+<li><strong>Copies</strong> - Number of copies to print</li>
+<li><strong>Feed After Print</strong> - How much blank space to feed
+after the label</li>
+</ul>
+<p>Click <strong>Save</strong> to apply your settings. They persist
+across sessions.</p>
+<figure>
+<img src="screenshots/05-print-settings/05-settings-saved.png"
+alt="Settings saved" />
+<figcaption aria-hidden="true">Settings saved</figcaption>
+</figure>
+<hr />
+<h2 id="custom-printer-definitions">Custom Printer Definitions</h2>
+<p>If your printer isn’t in the built-in list, or if you need to tweak
+settings for your specific hardware, you can create custom printer
+definitions.</p>
+<h3 id="opening-the-manager">Opening the Manager</h3>
+<p>In Print Settings, click <strong>Manage Printers</strong> to open the
+printer definitions manager.</p>
+<figure>
+<img src="screenshots/06-custom-printers/01-printer-defs-list.png"
+alt="Printer definitions list" />
+<figcaption aria-hidden="true">Printer definitions list</figcaption>
+</figure>
+<h3 id="adding-a-new-printer">Adding a New Printer</h3>
+<p>Click <strong>Add New Printer</strong> to open the editor form.</p>
+<figure>
+<img src="screenshots/06-custom-printers/02-new-printer-form.png"
+alt="New printer form" />
+<figcaption aria-hidden="true">New printer form</figcaption>
+</figure>
+<p>Fill in the fields:</p>
+<ul>
+<li><strong>ID</strong> - Unique identifier (lowercase, no spaces)</li>
+<li><strong>Display Name</strong> - What appears in the dropdown</li>
+<li><strong>Group</strong> - Dropdown group label</li>
+<li><strong>Protocol</strong> - The print protocol your printer uses
+(M-series, M02, M110, D-series, P12/Tape, or TSPL)</li>
+<li><strong>Width (bytes)</strong> - Print head width (each byte = 8
+pixels = ~1mm at 203 DPI)</li>
+<li><strong>DPI</strong> - 203 (standard) or 300 (high-res)</li>
+<li><strong>Alignment</strong> - How the label is positioned on the
+print head</li>
+<li><strong>Auto-detect Patterns</strong> - BLE device name prefixes for
+automatic recognition</li>
+</ul>
+<figure>
+<img src="screenshots/06-custom-printers/03-new-printer-filled.png"
+alt="Filled form" />
+<figcaption aria-hidden="true">Filled form</figcaption>
+</figure>
+<p>After saving, your custom printer appears in the list with a
+<strong>custom</strong> badge and in all printer dropdowns.</p>
+<figure>
+<img src="screenshots/06-custom-printers/04-custom-printer-in-list.png"
+alt="Custom in list" />
+<figcaption aria-hidden="true">Custom in list</figcaption>
+</figure>
+<h3 id="editing-built-in-printers">Editing Built-in Printers</h3>
+<p>Click <strong>Edit</strong> on any built-in printer to override its
+settings. Modified built-ins show a <strong>modified</strong> badge.</p>
+<figure>
+<img src="screenshots/06-custom-printers/05-editing-builtin.png"
+alt="Editing built-in" />
+<figcaption aria-hidden="true">Editing built-in</figcaption>
+</figure>
+<figure>
+<img
+src="screenshots/06-custom-printers/06-modified-builtin-in-list.png"
+alt="Modified badge" />
+<figcaption aria-hidden="true">Modified badge</figcaption>
+</figure>
+<h3 id="deleting-and-resetting">Deleting and Resetting</h3>
+<ul>
+<li><strong>Delete</strong> - Removes custom printers you created</li>
+<li><strong>Reset</strong> - Reverts a modified built-in printer back to
+its original settings</li>
+</ul>
+<figure>
+<img src="screenshots/06-custom-printers/07-after-delete.png"
+alt="After delete" />
+<figcaption aria-hidden="true">After delete</figcaption>
+</figure>
+<figure>
+<img src="screenshots/06-custom-printers/08-after-reset.png"
+alt="After reset" />
+<figcaption aria-hidden="true">After reset</figcaption>
+</figure>
+<p>All custom and modified printer definitions are saved in your
+browser’s localStorage and persist across sessions.</p>
+</body>
+</html>

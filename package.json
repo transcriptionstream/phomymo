@@ -1,0 +1,29 @@
+{
+  "name": "phomymo",
+  "version": "1.0.0",
+  "description": "A free, browser-based label designer for Phomemo thermal printers. No drivers needed - connects via Bluetooth or USB.",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed",
+    "manual:screenshots": "npx playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/transcriptionstream/phomymo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/transcriptionstream/phomymo/issues"
+  },
+  "homepage": "https://github.com/transcriptionstream/phomymo#readme",
+  "dependencies": {
+    "puppeteer": "^24.37.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

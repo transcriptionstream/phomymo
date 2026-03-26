@@ -1486,93 +1486,65 @@
 
       <!-- Content -->
       <div class="p-5 space-y-4">
-        <!-- Top row: Features + Privacy -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
-            <div class="flex items-center gap-2 mb-1">
-              <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              </div>
-              <h4 class="font-semibold text-gray-900 text-sm">No Install Required</h4>
+        <!-- Quick Start Steps -->
+        <div class="space-y-3">
+          <div class="flex items-start gap-3">
+            <div class="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span class="text-white text-xs font-bold">1</span>
             </div>
-            <p class="text-xs text-gray-600">Runs in browser. No downloads, no drivers, no account.</p>
+            <div>
+              <h4 class="font-semibold text-gray-900 text-sm">Connect</h4>
+              <p class="text-xs text-gray-600">Click <strong>Connect</strong> to pair with your Phomemo printer via Bluetooth</p>
+            </div>
           </div>
-          <div class="bg-amber-50 rounded-lg p-3 border border-amber-100">
-            <div class="flex items-center gap-2 mb-1">
-              <div class="w-6 h-6 bg-amber-500 rounded flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-              </div>
-              <h4 class="font-semibold text-gray-900 text-sm">Privacy Focused</h4>
+          <div class="flex items-start gap-3">
+            <div class="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span class="text-white text-xs font-bold">2</span>
             </div>
-            <p class="text-xs text-gray-600">No data collected. Everything stays on your device.</p>
+            <div>
+              <h4 class="font-semibold text-gray-900 text-sm">Design</h4>
+              <p class="text-xs text-gray-600">Add text, barcodes, QR codes, images, and shapes to your label</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span class="text-white text-xs font-bold">3</span>
+            </div>
+            <div>
+              <h4 class="font-semibold text-gray-900 text-sm">Print</h4>
+              <p class="text-xs text-gray-600">Hit <strong>Print</strong> to send your design straight to the printer</p>
+            </div>
           </div>
         </div>
 
-        <!-- Power Features -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-lg p-3 border border-indigo-100">
-            <div class="flex items-center gap-2 mb-1">
-              <div class="w-6 h-6 bg-indigo-500 rounded flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              </div>
-              <h4 class="font-semibold text-gray-900 text-sm">Batch Printing</h4>
-            </div>
-            <p class="text-xs text-gray-600">Templates with {{fields}} + CSV import for bulk labels.</p>
-          </div>
-          <div class="bg-gradient-to-br from-cyan-50 to-teal-50 rounded-lg p-3 border border-cyan-100">
-            <div class="flex items-center gap-2 mb-1">
-              <div class="w-6 h-6 bg-cyan-500 rounded flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
-              </div>
-              <h4 class="font-semibold text-gray-900 text-sm">Multi-Label Rolls</h4>
-            </div>
-            <p class="text-xs text-gray-600">Design multiple labels side-by-side with clone or individual mode.</p>
-          </div>
+        <!-- CTA Buttons -->
+        <button id="info-get-started" class="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold">
+          Get Started
+        </button>
+        <a href="docs/manual.html" target="_blank" rel="noopener" class="flex items-center justify-center gap-2 w-full px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors text-sm font-medium">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          Read the User Manual
+        </a>
+
+        <!-- Supported Printers (compact) -->
+        <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Supported Printers</p>
+          <p class="text-xs text-gray-700">P12, A30, M02-M260, T02, D30-D110, Q30/Q30S, PM-241</p>
         </div>
 
-        <!-- Supported Printers -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <span class="text-xs font-medium text-green-600 uppercase tracking-wide">Tape Printers</span>
-            <p class="text-sm text-gray-700">P12, P12 Pro, A30</p>
-            <p class="text-xs text-gray-500">12-15mm continuous tape</p>
-          </div>
-          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
-            <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02</p>
-            <p class="text-xs text-gray-500">48-110mm print width</p>
-          </div>
-          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
-            <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30, Q30S</p>
-            <p class="text-xs text-gray-500">Compact 12-24mm width</p>
-          </div>
-          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <span class="text-xs font-medium text-orange-600 uppercase tracking-wide">Shipping</span>
-            <p class="text-sm text-gray-700">PM-241, PM-241-BT</p>
-            <p class="text-xs text-gray-500">4-inch labels (USB only)</p>
-          </div>
-        </div>
-
-        <!-- GitHub CTA -->
-        <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 border border-gray-200 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <p class="text-sm text-gray-700">Like this tool? <span class="font-medium">Star us on GitHub!</span></p>
-          </div>
+        <!-- GitHub + Browser -->
+        <div class="flex items-center justify-between">
           <div class="flex gap-2">
             <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
               Star
             </a>
             <a href="https://github.com/transcriptionstream/phomymo/issues" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
               Report Issue
             </a>
           </div>
+          <p class="text-xs text-gray-400">Requires Chrome, Edge, or Chromium</p>
         </div>
-
-        <!-- Browser note -->
-        <p class="text-xs text-gray-500 text-center">Requires Chrome, Edge, or Chromium-based browser with Web Bluetooth.</p>
       </div>
 
       <!-- Footer -->

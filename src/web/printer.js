@@ -123,6 +123,7 @@ export function getAvailableProtocols() {
   return [
     { value: 'm-series', label: 'M-series (ESC/POS Raster)' },
     { value: 'm02', label: 'M02-series (ESC/POS with Prefix)' },
+    { value: 'm04', label: 'M04-series (300 DPI)' },
     { value: 'm110', label: 'M110-series (phomemo-tools)' },
     { value: 'd-series', label: 'D-series (Rotated)' },
     { value: 'p12', label: 'P12/Tape (Rotated, Continuous)' },
@@ -297,6 +298,21 @@ const M110_CMD = {
   FOOTER: new Uint8Array([0x1f, 0xf0, 0x05, 0x00, 0x1f, 0xf0, 0x03, 0x00]),
 };
 
+// M04-series specific commands (reverse-engineered from BTSnoop HCI logs)
+// M04S/M04AS use 300 DPI and a proprietary init sequence
+const M04_CMD = {
+  // 1F 11 02 <density> - Set print density (0x00-0x0F, default 0x04)
+  DENSITY: (level) => new Uint8Array([0x1f, 0x11, 0x02, level]),
+  // 1F 11 37 <param> - Set heat/speed (correlates with density)
+  HEAT: (param) => new Uint8Array([0x1f, 0x11, 0x37, param]),
+  // 1F 11 0B - Init command (required, purpose undetermined)
+  INIT: new Uint8Array([0x1f, 0x11, 0x0b]),
+  // 1F 11 35 <mode> - Compression mode (0x00=raw, 0x01=LZO; raw is sufficient)
+  COMPRESSION: (mode) => new Uint8Array([0x1f, 0x11, 0x35, mode]),
+  // 1B 64 02 - Paper feed (sent twice after print data)
+  FEED: new Uint8Array([0x1b, 0x64, 0x02]),
+};
+
 // P12-series specific commands (based on soburi/phomemo_p12 protocol)
 const P12_CMD = {
   // P12 init sequence - grouped into 6 packets as per soburi protocol
@@ -427,6 +443,10 @@ export function isTSPLPrinter(deviceName, modelOverride = 'auto') {
 
 function isM110Printer(deviceName, modelOverride = 'auto') {
   return _resolveConfig(deviceName, modelOverride).protocol === 'm110';
+}
+
+function isM04Printer(deviceName, modelOverride = 'auto') {
+  return _resolveConfig(deviceName, modelOverride).protocol === 'm04';
 }
 
 export function isRotatedPrinter(deviceName, modelOverride = 'auto') {
@@ -589,6 +609,7 @@ export async function print(transport, rasterData, options = {}) {
   const isDSeries = isDSeriesPrinter(deviceName, printerModel);
   const isP12 = isP12Printer(deviceName, printerModel);
   const isM02 = isM02Printer(deviceName, printerModel);
+  const isM04 = isM04Printer(deviceName, printerModel);
   const isM110 = isM110Printer(deviceName, printerModel);
   const isTSPL = isTSPLPrinter(deviceName, printerModel);
   const printerDesc = getPrinterDescription(deviceName, printerModel);
@@ -610,6 +631,8 @@ export async function print(transport, rasterData, options = {}) {
     await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
+  } else if (isM04 && isBLE) {
+    await printM04(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isM110 && isBLE) {
     // M110/M110S/M120 uses phomemo-tools protocol
     await printM110(transport, data, widthBytes, heightLines, density, onProgress);
@@ -767,6 +790,74 @@ async function printM02(transport, data, widthBytes, heightLines, density, onPro
   await transport.delay(300);
   console.log('Sending minimal feed (8 dots for continuous paper)...');
   await transport.send(CMD.FEED(8));
+  await transport.delay(500);
+
+  console.log('Print complete!');
+}
+
+/**
+ * Print via BLE for M04-series printers (M04S, M04AS)
+ * Uses proprietary init sequence and 300 DPI with burst chunking
+ */
+async function printM04(transport, data, widthBytes, heightLines, density, onProgress) {
+  console.log('Using M04-series protocol (300 DPI)...');
+
+  // Map density 1-8 to M04 range 0x00-0x0F (default 0x04)
+  const m04Density = Math.round((density / 8) * 15);
+  // Heat parameter correlates with density
+  const m04Heat = m04Density;
+
+  // Step 1: Set density
+  console.log(`Setting density to ${density} (M04 value: 0x${m04Density.toString(16).padStart(2, '0')})...`);
+  await transport.send(M04_CMD.DENSITY(m04Density));
+  await transport.delay(30);
+
+  // Step 2: Set heat/speed
+  console.log('Setting heat/speed...');
+  await transport.send(M04_CMD.HEAT(m04Heat));
+  await transport.delay(30);
+
+  // Step 3: Init
+  console.log('Sending M04 init...');
+  await transport.send(M04_CMD.INIT);
+  await transport.delay(30);
+
+  // Step 4: Set compression mode to raw (no LZO)
+  console.log('Setting compression mode (raw)...');
+  await transport.send(M04_CMD.COMPRESSION(0x00));
+  await transport.delay(30);
+
+  // Step 5: Raster header (standard ESC/POS format)
+  console.log('Sending raster header...');
+  await transport.send(CMD.RASTER_HEADER(widthBytes, heightLines));
+
+  // Step 6: Send data in 205-byte chunks, 3 per burst, 50ms between bursts
+  console.log('Sending data (205-byte chunks, 3-chunk bursts)...');
+  const chunkSize = 205;
+  const burstSize = 3;
+  let chunkCount = 0;
+
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
+    await transport.send(chunk);
+    chunkCount++;
+
+    if (chunkCount % burstSize === 0) {
+      await transport.delay(50); // Inter-burst delay
+    }
+
+    if (onProgress) {
+      const progress = Math.round((i + chunk.length) / data.length * 100);
+      onProgress(progress);
+    }
+  }
+
+  // Step 7: Feed (sent twice as per protocol)
+  await transport.delay(300);
+  console.log('Sending feed...');
+  await transport.send(M04_CMD.FEED);
+  await transport.delay(50);
+  await transport.send(M04_CMD.FEED);
   await transport.delay(500);
 
   console.log('Print complete!');

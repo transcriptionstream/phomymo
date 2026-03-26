@@ -55,7 +55,7 @@ python3 -m http.server 8080
 | M02 Pro | 53mm (626px) | 300 DPI high-resolution mini printer |
 | M03 | 53mm (432px) | Mini sticker printer |
 | T02 | 48mm (384px) | Mini sticker printer |
-| M04S | 53/80/110mm | Multi-width support (select in settings) |
+| M04S / M04AS | 53/80/110mm | 300 DPI multi-width printer (select paper size in settings) |
 | M110 / M120 | 48mm (384px) | Narrow label makers |
 | M200 / M250 | 75mm (608px) | Mid-size labels |
 | M220 / M221 | 72mm (576px) | Wide labels |
@@ -130,6 +130,7 @@ Protocol research and inspiration:
 
 - [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools) - CUPS driver with reverse-engineered protocol
 - [yaddran/thermal-print](https://github.com/yaddran/thermal-print) - Printer status query commands
+- [ooki1jp](https://github.com/vivier/phomemo-tools/issues/27#issuecomment-3850158579) - M04AS/M04S protocol reverse-engineering
 
 Libraries: [JsBarcode](https://github.com/lindell/JsBarcode), [QRCode.js](https://github.com/davidshimjs/qrcodejs), [jsPDF](https://github.com/parallax/jsPDF)
 

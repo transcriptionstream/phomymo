@@ -5642,7 +5642,7 @@ function checkCompatibility() {
           <!-- Supported Printers (compact) -->
           <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
             <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Supported Printers</p>
-            <p class="text-xs text-gray-700">P12, A30, M02-M260, T02, D30-D110, Q30/Q30S, PM-241</p>
+            <p class="text-xs text-gray-700">P12, A30, M02-M260, M04S, T02, D30-D110, Q30/Q30S, PM-241</p>
           </div>
 
           <!-- Action Button -->

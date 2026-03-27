@@ -134,6 +134,10 @@ Protocol research and inspiration:
 
 Libraries: [JsBarcode](https://github.com/lindell/JsBarcode), [QRCode.js](https://github.com/davidshimjs/qrcodejs), [jsPDF](https://github.com/parallax/jsPDF)
 
+## Support the Project
+
+If Phomymo is useful to you, consider [making a donation](https://donate.stripe.com/7sY7sMese0182tXgn8eAg00) to support ongoing development.
+
 ## License
 
 MIT License - see LICENSE file for details.

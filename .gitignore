@@ -1,4 +1,5 @@
 .*
+!.github/
 *.md
 !README.md
 !docs/manual.md

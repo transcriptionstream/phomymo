@@ -5653,7 +5653,13 @@ function checkCompatibility() {
 
         <!-- Footer -->
         <div class="bg-gray-50 px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-          <p class="text-xs text-gray-400">Not affiliated with Phomemo</p>
+          <div class="flex items-center gap-3">
+            <p class="text-xs text-gray-400">Not affiliated with Phomemo</p>
+            <a href="https://donate.stripe.com/7sY7sMese0182tXgn8eAg00" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 text-pink-600 text-xs hover:text-pink-700 transition-colors">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              Donate
+            </a>
+          </div>
           <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all">
             <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
             <span class="text-xs font-medium text-gray-700">An Affordable Magic Product</span>

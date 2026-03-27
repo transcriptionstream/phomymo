@@ -300,16 +300,25 @@ const M110_CMD = {
 
 // M04-series specific commands (reverse-engineered from BTSnoop HCI logs)
 // M04S/M04AS use 300 DPI and a proprietary init sequence
+// Tested on real hardware by @ramiorg (github.com/transcriptionstream/phomymo/issues/23)
 const M04_CMD = {
   // 1F 11 02 <density> - Set print density (0x00-0x0F, default 0x04)
   DENSITY: (level) => new Uint8Array([0x1f, 0x11, 0x02, level]),
-  // 1F 11 37 <param> - Set heat/speed (correlates with density)
+  // 1F 11 37 <param> - Set heat/speed parameter
   HEAT: (param) => new Uint8Array([0x1f, 0x11, 0x37, param]),
   // 1F 11 0B - Init command (required, purpose undetermined)
   INIT: new Uint8Array([0x1f, 0x11, 0x0b]),
   // 1F 11 35 <mode> - Compression mode (0x00=raw, 0x01=LZO; raw is sufficient)
   COMPRESSION: (mode) => new Uint8Array([0x1f, 0x11, 0x35, mode]),
-  // 1B 64 02 - Paper feed (sent twice after print data)
+  // M04 raster header - same opcodes as standard ESC/POS but with proper 16-bit LE width
+  RASTER_HEADER: (widthBytes, heightLines) => new Uint8Array([
+    0x1d, 0x76, 0x30, 0x00,
+    widthBytes % 256,
+    Math.floor(widthBytes / 256),
+    heightLines % 256,
+    Math.floor(heightLines / 256),
+  ]),
+  // 1B 64 02 - Paper feed
   FEED: new Uint8Array([0x1b, 0x64, 0x02]),
 };
 
@@ -632,7 +641,7 @@ export async function print(transport, rasterData, options = {}) {
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isM04 && isBLE) {
-    await printM04(transport, data, widthBytes, heightLines, density, onProgress);
+    await printM04(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else if (isM110 && isBLE) {
     // M110/M110S/M120 uses phomemo-tools protocol
     await printM110(transport, data, widthBytes, heightLines, density, onProgress);
@@ -797,15 +806,16 @@ async function printM02(transport, data, widthBytes, heightLines, density, onPro
 
 /**
  * Print via BLE for M04-series printers (M04S, M04AS)
- * Uses proprietary init sequence and 300 DPI with burst chunking
+ * Uses proprietary init sequence and 300 DPI
+ * Tested on real hardware by @ramiorg
  */
-async function printM04(transport, data, widthBytes, heightLines, density, onProgress) {
+async function printM04(transport, data, widthBytes, heightLines, density, feed, onProgress) {
   console.log('Using M04-series protocol (300 DPI)...');
 
   // Map density 1-8 to M04 range 0x00-0x0F (default 0x04)
   const m04Density = Math.round((density / 8) * 15);
-  // Heat parameter correlates with density
-  const m04Heat = m04Density;
+  // Heat parameter - tested range on real hardware
+  const m04Heat = Math.round(100 + (density - 1) * 50 / 3);
 
   // Step 1: Set density
   console.log(`Setting density to ${density} (M04 value: 0x${m04Density.toString(16).padStart(2, '0')})...`);
@@ -813,7 +823,7 @@ async function printM04(transport, data, widthBytes, heightLines, density, onPro
   await transport.delay(30);
 
   // Step 2: Set heat/speed
-  console.log('Setting heat/speed...');
+  console.log(`Setting heat/speed (${m04Heat})...`);
   await transport.send(M04_CMD.HEAT(m04Heat));
   await transport.delay(30);
 
@@ -827,24 +837,18 @@ async function printM04(transport, data, widthBytes, heightLines, density, onPro
   await transport.send(M04_CMD.COMPRESSION(0x00));
   await transport.delay(30);
 
-  // Step 5: Raster header (standard ESC/POS format)
+  // Step 5: M04-specific raster header (proper 16-bit LE width/height)
   console.log('Sending raster header...');
-  await transport.send(CMD.RASTER_HEADER(widthBytes, heightLines));
+  await transport.send(M04_CMD.RASTER_HEADER(widthBytes, heightLines));
 
-  // Step 6: Send data in 205-byte chunks, 3 per burst, 50ms between bursts
-  console.log('Sending data (205-byte chunks, 3-chunk bursts)...');
-  const chunkSize = 205;
-  const burstSize = 3;
-  let chunkCount = 0;
+  // Step 6: Send data in 256-byte chunks
+  console.log('Sending data (256-byte chunks)...');
+  const chunkSize = 256;
 
   for (let i = 0; i < data.length; i += chunkSize) {
     const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
     await transport.send(chunk);
-    chunkCount++;
-
-    if (chunkCount % burstSize === 0) {
-      await transport.delay(50); // Inter-burst delay
-    }
+    await transport.delay(20);
 
     if (onProgress) {
       const progress = Math.round((i + chunk.length) / data.length * 100);
@@ -852,12 +856,14 @@ async function printM04(transport, data, widthBytes, heightLines, density, onPro
     }
   }
 
-  // Step 7: Feed (sent twice as per protocol)
+  // Step 7: Feed - number of feed commands based on feed setting
   await transport.delay(300);
-  console.log('Sending feed...');
-  await transport.send(M04_CMD.FEED);
-  await transport.delay(50);
-  await transport.send(M04_CMD.FEED);
+  const feedCount = Math.max(1, Math.round(feed / 16));
+  console.log(`Sending feed (${feedCount} lines)...`);
+  for (let i = 0; i < feedCount; i++) {
+    await transport.send(M04_CMD.FEED);
+    await transport.delay(30);
+  }
   await transport.delay(500);
 
   console.log('Print complete!');

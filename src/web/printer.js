@@ -282,7 +282,8 @@ const D_CMD = {
     rows % 256,
     Math.floor(rows / 256),
   ]),
-  END: new Uint8Array([0x1b, 0x64, 0x00]),
+  END: new Uint8Array([0x1b, 0x64, 0x00]),  // ESC d 0 - print, no feed (gap detection for die-cut)
+  FEED: (dots) => new Uint8Array([0x1b, 0x4a, dots & 0xff]),  // ESC J n - feed n dots (for continuous tape)
 };
 
 // M110-series specific commands (based on phomemo-tools project)
@@ -612,7 +613,7 @@ function rotateRaster90CCW(data, widthBytes, heightLines) {
  * @param {Function} options.onProgress - Progress callback (percent)
  */
 export async function print(transport, rasterData, options = {}) {
-  const { isBLE = false, deviceName = '', printerModel = 'auto', density = 6, feed = 32, onProgress = null } = options;
+  const { isBLE = false, deviceName = '', printerModel = 'auto', density = 6, feed = 32, continuous = false, onProgress = null } = options;
   const { data, widthBytes, heightLines } = rasterData;
 
   const isDSeries = isDSeriesPrinter(deviceName, printerModel);
@@ -637,7 +638,7 @@ export async function print(transport, rasterData, options = {}) {
     await printP12(transport, data, widthBytes, heightLines, onProgress);
   } else if (isDSeries && isBLE) {
     // D-series (D30, D110, etc.)
-    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density);
+    await printDSeries(transport, data, widthBytes, heightLines, onProgress, density, continuous, feed);
   } else if (isM02 && isBLE) {
     await printM02(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isM04 && isBLE) {
@@ -656,7 +657,7 @@ export async function print(transport, rasterData, options = {}) {
  * Print via BLE for D-series printers (D30, D110, etc.)
  * Uses rotated printing with D-series protocol
  */
-async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6) {
+async function printDSeries(transport, data, widthBytes, heightLines, onProgress, density = 6, continuous = false, feed = 0) {
   console.log('Using D-series protocol...');
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
@@ -664,32 +665,57 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
   const rotated = rotateRaster90CW(data, widthBytes, heightLines);
   console.log(`Rotated: ${rotated.widthBytes} bytes wide x ${rotated.heightLines} rows`);
 
+  // For continuous tape, pad raster with blank rows to push content past the cutter
+  // ESC J feed is ignored in continuous mode, so we bake the feed into the image data
+  let printData = rotated.data;
+  let printRows = rotated.heightLines;
+  if (continuous && feed > 0) {
+    // The D30 has ~7mm (56 dots) from print head to cutter edge - content needs this
+    // padding just to reach the cut point, then 'feed' adds extra margin beyond that
+    const cutterOffset = 56; // ~7mm head-to-cutter distance at 203 DPI
+    const paddingRows = cutterOffset + feed;
+    const paddingBytes = paddingRows * rotated.widthBytes;
+    const padded = new Uint8Array(rotated.data.length + paddingBytes);
+    padded.set(rotated.data);
+    // Rest is already zeros (blank rows)
+    printData = padded;
+    printRows = rotated.heightLines + paddingRows;
+    console.log(`Continuous tape: added ${paddingRows} blank rows (${cutterOffset} cutter offset + ${feed} feed, ${printRows} total rows)`);
+  }
+
   // Set heat/density before header
   const heatTime = densityToHeatTime(density);
   console.log(`Setting density ${density} (heat time: ${heatTime})...`);
   await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
   await transport.delay(30);
 
+  // For continuous tape, set media type to continuous (0x0B) to disable gap detection
+  if (continuous) {
+    console.log('Setting media type to continuous (1F 11 0B)...');
+    await transport.send(new Uint8Array([0x1f, 0x11, 0x0b]));
+    await transport.delay(30);
+  }
+
   // Send D-series header (includes ESC @ init)
   console.log('Sending D-series header...');
-  await transport.send(D_CMD.HEADER(rotated.widthBytes, rotated.heightLines));
+  await transport.send(D_CMD.HEADER(rotated.widthBytes, printRows));
 
   // Send data in chunks
   console.log('Sending data...');
   const chunkSize = 128;
 
-  for (let i = 0; i < rotated.data.length; i += chunkSize) {
-    const chunk = rotated.data.slice(i, Math.min(i + chunkSize, rotated.data.length));
+  for (let i = 0; i < printData.length; i += chunkSize) {
+    const chunk = printData.slice(i, Math.min(i + chunkSize, printData.length));
     await transport.send(chunk);
     await transport.delay(20);
 
     if (onProgress) {
-      const progress = Math.round((i + chunk.length) / rotated.data.length * 100);
+      const progress = Math.round((i + chunk.length) / printData.length * 100);
       onProgress(progress);
     }
   }
 
-  // D-series end command
+  // D-series end command (ESC d 0 - gap detection for die-cut, no-op for continuous)
   await transport.delay(100);
   console.log('Sending D-series end command...');
   await transport.send(D_CMD.END);

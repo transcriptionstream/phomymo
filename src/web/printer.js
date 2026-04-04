@@ -689,12 +689,11 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
   await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
   await transport.delay(30);
 
-  // For continuous tape, set media type to continuous (0x0B) to disable gap detection
-  if (continuous) {
-    console.log('Setting media type to continuous (1F 11 0B)...');
-    await transport.send(new Uint8Array([0x1f, 0x11, 0x0b]));
-    await transport.delay(30);
-  }
+  // Set media type: continuous (0x0B) disables gap detection, gaps (0x0A) enables it
+  const mediaType = continuous ? 0x0b : 0x0a;
+  console.log(`Setting media type to ${continuous ? 'continuous' : 'gaps'} (1F 11 ${mediaType.toString(16).padStart(2, '0')})...`);
+  await transport.send(new Uint8Array([0x1f, 0x11, mediaType]));
+  await transport.delay(30);
 
   // Send D-series header (includes ESC @ init)
   console.log('Sending D-series header...');

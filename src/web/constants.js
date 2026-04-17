@@ -180,6 +180,15 @@ export const D_SERIES_LABEL_SIZES = {
   '30x15': { width: 30, height: 15 },
 };
 
+// D-series continuous tape sizes (no die-cut gaps)
+export const D_SERIES_CONTINUOUS_SIZES = {
+  '40x12 cont': { width: 40, height: 12, continuous: true },
+  '30x12 cont': { width: 30, height: 12, continuous: true },
+  '22x12 cont': { width: 22, height: 12, continuous: true },
+  '40x15 cont': { width: 40, height: 15, continuous: true },
+  '30x15 cont': { width: 30, height: 15, continuous: true },
+};
+
 // Round/circle labels for D-series printers - diameter in mm
 export const D_SERIES_ROUND_LABELS = {
   '14mm Round': { width: 14, height: 14, round: true },

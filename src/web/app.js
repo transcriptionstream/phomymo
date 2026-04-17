@@ -80,6 +80,7 @@ import {
   M_SERIES_LABEL_SIZES,
   M_SERIES_ROUND_LABELS,
   D_SERIES_LABEL_SIZES,
+  D_SERIES_CONTINUOUS_SIZES,
   D_SERIES_ROUND_LABELS,
   TAPE_LABEL_SIZES,
   PM241_LABEL_SIZES,
@@ -783,7 +784,7 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
     roundSizes = {}; // No round labels for tape printers
     defaultKey = `40x${state.tapeWidth}`;
   } else if (isDSeries) {
-    // D-series uses fixed narrow label sizes
+    // D-series uses fixed narrow label sizes + continuous tape options
     rectSizes = D_SERIES_LABEL_SIZES;
     roundSizes = D_SERIES_ROUND_LABELS;
     defaultKey = '40x12';
@@ -799,7 +800,8 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
     defaultKey = '40x30';
   }
 
-  LABEL_SIZES = { ...rectSizes, ...roundSizes };
+  const continuousSizes = isDSeries ? D_SERIES_CONTINUOUS_SIZES : {};
+  LABEL_SIZES = { ...rectSizes, ...roundSizes, ...continuousSizes };
 
   // Clear existing options (except custom)
   while (select.options.length > 0) {
@@ -825,6 +827,21 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
       const option = document.createElement('option');
       option.value = key;
       option.textContent = key; // e.g., "20mm Round"
+      select.appendChild(option);
+    }
+  }
+
+  // Add continuous tape options for D-series
+  if (Object.keys(continuousSizes).length > 0) {
+    const separator = document.createElement('option');
+    separator.disabled = true;
+    separator.textContent = '── Continuous Tape ──';
+    select.appendChild(separator);
+
+    for (const [key, size] of Object.entries(continuousSizes)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = `${size.width}x${size.height}mm (cont.)`;
       select.appendChild(option);
     }
   }
@@ -904,6 +921,8 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
     roundSizes = M_SERIES_ROUND_LABELS;
   }
 
+  const continuousSizes = isDSeries ? D_SERIES_CONTINUOUS_SIZES : {};
+
   // Clear and rebuild mobile dropdown
   while (mobileSelect.options.length > 0) {
     mobileSelect.remove(0);
@@ -932,6 +951,21 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
     }
   }
 
+  // Add continuous tape options for D-series
+  if (Object.keys(continuousSizes).length > 0) {
+    const separator = document.createElement('option');
+    separator.disabled = true;
+    separator.textContent = '── Continuous ──';
+    mobileSelect.appendChild(separator);
+
+    for (const [key, size] of Object.entries(continuousSizes)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = `${size.width}x${size.height}mm (cont.)`;
+      mobileSelect.appendChild(option);
+    }
+  }
+
   // Add custom option
   const customOption = document.createElement('option');
   customOption.value = 'custom';
@@ -950,12 +984,15 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
 
 /**
  * Check if the currently connected printer is a continuous tape printer (P12/A30)
- * @returns {boolean} True if tape printer is connected
+ * or a D-series with a continuous tape label selected
+ * @returns {boolean} True if continuous tape mode is active
  */
 function isContinuousTapePrinter() {
   const deviceName = state.transport?.getDeviceName?.() || '';
   const printerModel = state.printSettings.printerModel;
-  return isTapePrinter(deviceName, printerModel);
+  if (isTapePrinter(deviceName, printerModel)) return true;
+  // D-series with continuous label selected
+  return !!(state.labelSize && state.labelSize.continuous);
 }
 
 /**
@@ -1037,23 +1074,24 @@ function loadTapeWidthForDevice(deviceName) {
 }
 
 /**
- * Adjust the label length by a delta (for P12 continuous tape)
+ * Adjust the label length by a delta (for continuous tape printers)
  * @param {number} delta - Amount to adjust in mm (positive or negative)
  */
 function adjustLabelLength(delta) {
   const currentWidth = state.labelSize.width;
+  const tapeHeight = state.labelSize.height || 12;
   const newWidth = Math.max(10, Math.min(100, currentWidth + delta));
 
   if (newWidth !== currentWidth) {
-    // Update to custom size
-    state.labelSize = { width: newWidth, height: 12 };
+    // Update to custom size, preserve continuous flag and tape height
+    state.labelSize = { width: newWidth, height: tapeHeight, continuous: state.labelSize.continuous || false };
     $('#label-size').value = 'custom';
     $('#custom-size').classList.remove('hidden');
     $('#custom-width').value = newWidth;
-    $('#custom-height').value = 12;
+    $('#custom-height').value = tapeHeight;
 
     // Update canvas
-    state.renderer.setDimensions(newWidth, 12, state.zoom, false);
+    state.renderer.setDimensions(newWidth, tapeHeight, state.zoom, false);
     state.renderer.clearCache();
     render();
     updatePrintSize();
@@ -1062,7 +1100,7 @@ function adjustLabelLength(delta) {
     $('#mobile-label-size').value = 'custom';
     $('#mobile-custom-size')?.classList.remove('hidden');
     $('#mobile-custom-width').value = newWidth;
-    $('#mobile-custom-height').value = 12;
+    $('#mobile-custom-height').value = tapeHeight;
   }
 }
 
@@ -1903,6 +1941,7 @@ async function handleBatchPrint() {
         printerModel,
         density,
         feed,
+        continuous: !!(state.labelSize?.continuous),
         onProgress: (progress) => {
           updatePrintProgress(rowIndex + 1, totalRows, `Sending data... ${progress}%`);
         },
@@ -1989,6 +2028,7 @@ async function handlePrintSinglePreview() {
       printerModel,
       density,
       feed,
+      continuous: !!(state.labelSize?.continuous),
       onProgress: (progress) => {
         btn.textContent = `Printing... ${progress}%`;
       },
@@ -2400,6 +2440,7 @@ function handleLabelSizeChange() {
 
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
   updatePrintSize();
+  updateLengthAdjustButtons();
 
   // Auto zoom-to-fit if label is too large at 100% zoom
   zoomToFitIfNeeded();
@@ -4728,6 +4769,7 @@ async function handlePrint() {
         printerModel,
         density,
         feed,
+        continuous: !!(state.labelSize?.continuous),
         onProgress: (progress) => {
           btn.textContent = `Printing... ${progress}%`;
           setStatus(`Printing${copyText}... ${progress}%`);

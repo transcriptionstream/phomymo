@@ -145,18 +145,25 @@ export const STORAGE_KEYS = {
 
 // M-series printers (M110, M220, etc.) - width x height in mm
 export const M_SERIES_LABEL_SIZES = {
-  '12x40': { width: 12, height: 40 },
-  '15x30': { width: 15, height: 30 },
-  '20x30': { width: 20, height: 30 },
-  '25x50': { width: 25, height: 50 },
-  '30x20': { width: 30, height: 20 },
-  '30x40': { width: 30, height: 40 },
-  '40x30': { width: 40, height: 30 },
-  '40x60': { width: 40, height: 60 },
-  '50x25': { width: 50, height: 25 },
-  '50x30': { width: 50, height: 30 },
-  '50x80': { width: 50, height: 80 },
-  '60x40': { width: 60, height: 40 },
+  '48x15': { width: 48, height: 15 },
+  '48x20': { width: 48, height: 20 },
+  '48x25': { width: 48, height: 25 },
+  '48x30': { width: 48, height: 30 },
+  '48x35': { width: 48, height: 35 },
+  '48x40': { width: 48, height: 40 },
+  '48x45': { width: 48, height: 45 },
+  // '12x40': { width: 12, height: 40 },
+  // '15x30': { width: 15, height: 30 },
+  // '20x30': { width: 20, height: 30 },
+  // '25x50': { width: 25, height: 50 },
+  // '30x20': { width: 30, height: 20 },
+  // '30x40': { width: 30, height: 40 },
+  // '40x30': { width: 40, height: 30 },
+  // '40x60': { width: 40, height: 60 },
+  // '50x25': { width: 50, height: 25 },
+  // '50x30': { width: 50, height: 30 },
+  // '50x80': { width: 50, height: 80 },
+  // '60x40': { width: 60, height: 40 },
 };
 
 // Round/circle labels for M-series printers - diameter in mm

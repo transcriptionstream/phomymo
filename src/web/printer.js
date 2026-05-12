@@ -784,34 +784,43 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
 async function printM02(transport, data, widthBytes, heightLines, density, onProgress) {
   console.log('Using M02-series protocol...');
 
-  // M02 requires a special prefix before commands
-  console.log('Sending M02 prefix...');
-  await transport.send(M02_CMD.PREFIX);
-  await transport.delay(50);
+  // Map density 1-8 to M04 range 0x00-0x0F (default 0x04)
+  const m04Density = Math.round((density / 8) * 15);
+  // Heat parameter - tested range on real hardware
+  const m04Heat = Math.round(100 + (density - 1) * 50 / 3);
 
-  // Standard init
-  console.log('Sending init...');
-  await transport.send(CMD.INIT);
-  await transport.delay(100);
-
-  // Set density using ESC 7 heat command
-  const heatTime = densityToHeatTime(density);
-  console.log(`Setting density to ${density} (heat time: ${heatTime})...`);
-  await transport.send(CMD.HEAT_SETTINGS(7, heatTime, 2));
+  // Step 1: Set density
+  console.log(`Setting density to ${density} (M04 value: 0x${m04Density.toString(16).padStart(2, '0')})...`);
+  await transport.send(M04_CMD.DENSITY(m04Density));
   await transport.delay(30);
 
-  // Raster header
-  console.log('Sending header...');
-  await transport.send(CMD.RASTER_HEADER(widthBytes, heightLines));
+  // Step 2: Set heat/speed
+  console.log(`Setting heat/speed (${m04Heat})...`);
+  await transport.send(M04_CMD.HEAT(m04Heat));
+  await transport.delay(30);
 
-  // Send data in 128-byte chunks
-  console.log('Sending data...');
-  const chunkSize = 128;
+  // Step 3: Init
+  console.log('Sending M04 init...');
+  await transport.send(M04_CMD.INIT);
+  await transport.delay(30);
+
+  // Step 4: Set compression mode to raw (no LZO)
+  console.log('Setting compression mode (raw)...');
+  await transport.send(M04_CMD.COMPRESSION(0x00));
+  await transport.delay(30);
+
+  // Step 5: M04-specific raster header (proper 16-bit LE width/height)
+  console.log('Sending raster header...');
+  await transport.send(M04_CMD.RASTER_HEADER(widthBytes, heightLines));
+
+  // Step 6: Send data in 256-byte chunks
+  console.log('Sending data (3-lines-byte chunks)...');
+  const chunkSize = Math.floor(576 / 8 * 3);
 
   for (let i = 0; i < data.length; i += chunkSize) {
     const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
     await transport.send(chunk);
-    await transport.delay(20);
+    await transport.delay(15);
 
     if (onProgress) {
       const progress = Math.round((i + chunk.length) / data.length * 100);
@@ -819,11 +828,14 @@ async function printM02(transport, data, widthBytes, heightLines, density, onPro
     }
   }
 
-  // M02 uses continuous paper - minimal feed just to clear print head
-  // Too much feed wastes paper on continuous rolls
+  // Step 7: Feed - number of feed commands based on feed setting
   await transport.delay(300);
-  console.log('Sending minimal feed (8 dots for continuous paper)...');
-  await transport.send(CMD.FEED(8));
+  const feedCount = Math.max(1, Math.round(feed / 16));
+  console.log(`Sending feed (${feedCount} lines)...`);
+  for (let i = 0; i < feedCount; i++) {
+    await transport.send(M04_CMD.FEED);
+    await transport.delay(30);
+  }
   await transport.delay(500);
 
   console.log('Print complete!');

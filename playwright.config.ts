@@ -24,7 +24,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'python3 -m http.server 8081 --directory src/web',
+    command: 'node scripts/python3.cjs -m http.server 8081 --directory src/web',
     port: 8081,
     reuseExistingServer: !process.env.CI,
     timeout: 10_000,

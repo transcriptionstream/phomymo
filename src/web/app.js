@@ -4560,9 +4560,13 @@ function initPrinterModelPrompt() {
  * @param {MouseEvent} event - Click event (shift+click shows all devices)
  */
 async function handleConnect(event) {
-  // Check if printing is supported in this browser
+  // No transports at all → tell the user which browsers do work
   if (!state.canPrint) {
-    alert('Printing is not available in this browser.\n\nPlease use Chrome, Edge, or Opera on desktop for Bluetooth printing.');
+    alert(
+      'Printing is not available in this browser.\n\n' +
+      'Bluetooth and USB printing are both unavailable. Please use Chrome, ' +
+      'Edge, Opera, or another Chromium-based browser to print.'
+    );
     return;
   }
 
@@ -5534,6 +5538,26 @@ function hideShortcutsModal() {
 }
 
 /**
+ * Disable options in a connection-type <select> whose underlying transport
+ * (Web Bluetooth / WebUSB) isn't exposed by this browser.
+ * @param {HTMLSelectElement|null} selectEl
+ */
+function disableUnsupportedConnOptions(selectEl) {
+  if (!selectEl) return;
+  const hasBluetooth = 'bluetooth' in navigator;
+  const hasUsb = 'usb' in navigator;
+  for (const opt of selectEl.options) {
+    if (opt.value === 'ble' && !hasBluetooth) {
+      opt.disabled = true;
+      opt.title = 'Bluetooth printing isn\'t supported in this browser';
+    } else if (opt.value === 'usb' && !hasUsb) {
+      opt.disabled = true;
+      opt.title = 'USB printing isn\'t supported in this browser';
+    }
+  }
+}
+
+/**
  * Check browser compatibility
  */
 function checkCompatibility() {
@@ -5545,13 +5569,19 @@ function checkCompatibility() {
     canPrint = false;
   }
 
-  if (!('bluetooth' in navigator)) {
-    warnings.push('Web Bluetooth not supported - printing requires Chrome, Edge, or Opera');
-    canPrint = false;
+  const hasBluetooth = 'bluetooth' in navigator;
+  const hasUsb = 'usb' in navigator;
+
+  if (!hasBluetooth) {
+    warnings.push('Bluetooth printing isn\'t supported in this browser');
+  }
+  if (!hasUsb) {
+    warnings.push('USB printing isn\'t supported in this browser');
   }
 
-  if (!('usb' in navigator)) {
-    console.warn('WebUSB not supported - USB printing will not be available');
+  // Need at least one transport to print at all
+  if (!hasBluetooth && !hasUsb) {
+    canPrint = false;
   }
 
   // Store print capability in state for disabling print buttons
@@ -5571,7 +5601,7 @@ function checkCompatibility() {
             </div>
             <div>
               <h3 class="text-lg font-bold">Limited Browser Support</h3>
-              <p class="text-amber-100 text-xs">Printing requires Chrome, Edge, or Opera</p>
+              <p class="text-amber-100 text-xs">Printing requires Chrome, Edge, Opera or another Chromium-based browser</p>
             </div>
           </div>
         </div>
@@ -5860,6 +5890,7 @@ function initMobileUI() {
   const mobileConnType = $('#mobile-conn-type');
   const desktopConnType = $('#conn-type');
   if (mobileConnType && desktopConnType) {
+    disableUnsupportedConnOptions(mobileConnType);
     mobileConnType.value = desktopConnType.value;
     mobileConnType.addEventListener('change', (e) => {
       desktopConnType.value = e.target.value;
@@ -6739,11 +6770,13 @@ function init() {
     setTapeWidth(parseInt(e.target.value, 10));
   });
 
-  // Connection type
+  // Connection type — disable options whose underlying transport is missing
   const connType = $('#conn-type');
-  if (!('usb' in navigator)) {
-    const usbOption = connType.querySelector('option[value="usb"]');
-    if (usbOption) usbOption.remove();
+  disableUnsupportedConnOptions(connType);
+  // If default ('ble') isn't supported, fall back to USB when available
+  if (!('bluetooth' in navigator) && 'usb' in navigator) {
+    state.connectionType = 'usb';
+    if (connType) connType.value = 'usb';
   }
   connType.addEventListener('change', (e) => {
     state.connectionType = e.target.value;

@@ -90,7 +90,7 @@ export class USBTransport {
    */
   async connect(options = {}) {
     if (!USBTransport.isAvailable()) {
-      throw new Error('WebUSB is not supported in this browser');
+      throw new Error('USB printing isn\'t supported in this browser');
     }
 
     // Try to reconnect to existing device first

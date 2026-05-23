@@ -99,6 +99,50 @@ Built-in definitions are loaded from `printers.json` at startup.
 
 When the Bluetooth device picker appears, select the device showing a **signal strength indicator**. Devices listed without signal strength may be cached/ghost entries that won't connect properly.
 
+## USB on Linux
+
+On Linux, the kernel's generic USB printer driver (`usblp`) auto-binds to thermal printers when they're plugged in and claims the printer interface. WebUSB then can't claim the same interface and you'll see:
+
+```
+Failed to execute 'claimInterface' on 'USBDevice': Unable to claim interface.
+```
+
+You need to release the device from `usblp`. Pick one:
+
+**Quick test (non-persistent):** unload the module without unplugging the printer.
+
+```bash
+sudo modprobe -r usblp
+```
+
+Click Connect again. `usblp` will rebind on the next replug or reboot.
+
+**Persistent (blacklist):** prevents `usblp` from ever loading. Simple, but **breaks CUPS / `lp` printing for all USB printers** on this machine.
+
+```bash
+echo 'blacklist usblp' | sudo tee /etc/modprobe.d/blacklist-usblp.conf
+sudo modprobe -r usblp
+```
+
+**Persistent (per-device, recommended if you also use CUPS):** detach `usblp` only from the Phomemo. Get the printer's vendor/product ID with `lsusb`, then create `/etc/udev/rules.d/70-phomemo-webusb.rules`:
+
+```
+# Replace XXXX:YYYY with your IDs from `lsusb`
+SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="YYYY", MODE="0660", TAG+="uaccess"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="YYYY", \
+  RUN+="/bin/sh -c 'echo -n %k:1.0 > /sys/bus/usb/drivers/usblp/unbind 2>/dev/null || true'"
+```
+
+Reload and replug:
+
+```bash
+sudo udevadm control --reload-rules
+```
+
+### Printer model not auto-detected on USB
+
+Many Phomemo printers report a generic name like "USB Composite Device" over USB rather than a recognizable model string. When this happens, the app will prompt you to pick the model on first connection and remember your choice for next time. You can also set it manually in Print Settings → Printer Model.
+
 ## Project Structure
 
 ```

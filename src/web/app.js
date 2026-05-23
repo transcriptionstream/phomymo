@@ -4,10 +4,10 @@
  * v116
  */
 
-import { CanvasRenderer } from './canvas.js?v=111';
+import { CanvasRenderer } from './canvas.js?v=115';
 import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
-import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern } from './printer.js?v=124';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern, loadPrinterDefinitions, getAllPrinterDefinitions, getPrinterDefinition, getCustomPrinterDefinitions, saveCustomPrinterDefinition, deleteCustomPrinterDefinition, isBuiltinPrinter, resetBuiltinPrinter, getAvailableProtocols, getAvailableLabelPresets, getDetectedDefinition } from './printer.js?v=128';
 import {
   createTextElement,
   createImageElement,
@@ -80,10 +80,11 @@ import {
   M_SERIES_LABEL_SIZES,
   M_SERIES_ROUND_LABELS,
   D_SERIES_LABEL_SIZES,
+  D_SERIES_CONTINUOUS_SIZES,
   D_SERIES_ROUND_LABELS,
   TAPE_LABEL_SIZES,
   PM241_LABEL_SIZES,
-} from './constants.js?v=104';
+} from './constants.js?v=105';
 import {
   bindCheckbox,
   bindToggleButton,
@@ -773,6 +774,8 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
 
   // Show/hide tape width selector
   updateTapeWidthVisibility(isTape);
+  // Show "Continuous" checkbox in Custom row only for D-series
+  updateCustomContinuousVisibility(isDSeries);
 
   let rectSizes, roundSizes, defaultKey;
   if (isTape) {
@@ -783,7 +786,7 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
     roundSizes = {}; // No round labels for tape printers
     defaultKey = `40x${state.tapeWidth}`;
   } else if (isDSeries) {
-    // D-series uses fixed narrow label sizes
+    // D-series uses fixed narrow label sizes + continuous tape options
     rectSizes = D_SERIES_LABEL_SIZES;
     roundSizes = D_SERIES_ROUND_LABELS;
     defaultKey = '40x12';
@@ -799,7 +802,8 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
     defaultKey = '40x30';
   }
 
-  LABEL_SIZES = { ...rectSizes, ...roundSizes };
+  const continuousSizes = isDSeries ? D_SERIES_CONTINUOUS_SIZES : {};
+  LABEL_SIZES = { ...rectSizes, ...roundSizes, ...continuousSizes };
 
   // Clear existing options (except custom)
   while (select.options.length > 0) {
@@ -825,6 +829,21 @@ function updateLabelSizeDropdown(deviceName = '', model = 'auto') {
       const option = document.createElement('option');
       option.value = key;
       option.textContent = key; // e.g., "20mm Round"
+      select.appendChild(option);
+    }
+  }
+
+  // Add continuous tape options for D-series
+  if (Object.keys(continuousSizes).length > 0) {
+    const separator = document.createElement('option');
+    separator.disabled = true;
+    separator.textContent = '── Continuous Tape ──';
+    select.appendChild(separator);
+
+    for (const [key, size] of Object.entries(continuousSizes)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = `${size.width}x${size.height}mm (cont.)`;
       select.appendChild(option);
     }
   }
@@ -904,6 +923,8 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
     roundSizes = M_SERIES_ROUND_LABELS;
   }
 
+  const continuousSizes = isDSeries ? D_SERIES_CONTINUOUS_SIZES : {};
+
   // Clear and rebuild mobile dropdown
   while (mobileSelect.options.length > 0) {
     mobileSelect.remove(0);
@@ -932,6 +953,21 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
     }
   }
 
+  // Add continuous tape options for D-series
+  if (Object.keys(continuousSizes).length > 0) {
+    const separator = document.createElement('option');
+    separator.disabled = true;
+    separator.textContent = '── Continuous ──';
+    mobileSelect.appendChild(separator);
+
+    for (const [key, size] of Object.entries(continuousSizes)) {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = `${size.width}x${size.height}mm (cont.)`;
+      mobileSelect.appendChild(option);
+    }
+  }
+
   // Add custom option
   const customOption = document.createElement('option');
   customOption.value = 'custom';
@@ -950,12 +986,15 @@ function updateMobileLabelSizeDropdown(deviceName = '', model = 'auto') {
 
 /**
  * Check if the currently connected printer is a continuous tape printer (P12/A30)
- * @returns {boolean} True if tape printer is connected
+ * or a D-series with a continuous tape label selected
+ * @returns {boolean} True if continuous tape mode is active
  */
 function isContinuousTapePrinter() {
   const deviceName = state.transport?.getDeviceName?.() || '';
   const printerModel = state.printSettings.printerModel;
-  return isTapePrinter(deviceName, printerModel);
+  if (isTapePrinter(deviceName, printerModel)) return true;
+  // D-series with continuous label selected
+  return !!(state.labelSize && state.labelSize.continuous);
 }
 
 /**
@@ -975,6 +1014,21 @@ function updateLengthAdjustButtons() {
 function updateTapeWidthVisibility(show) {
   $('#tape-width-selector')?.classList.toggle('hidden', !show);
   $('#mobile-tape-width-selector')?.classList.toggle('hidden', !show);
+}
+
+/**
+ * Show or hide the "Continuous" checkbox in the Custom size row.
+ * Only meaningful for D-series (M-series has no continuous mode; P12/A30 are
+ * always continuous and use a different UI).
+ * @param {boolean} show - Whether to show the continuous checkbox
+ */
+function updateCustomContinuousVisibility(show) {
+  $('#custom-continuous-wrap')?.classList.toggle('hidden', !show);
+  $('#mobile-custom-continuous-wrap')?.classList.toggle('hidden', !show);
+  if (!show) {
+    if ($('#custom-continuous')) $('#custom-continuous').checked = false;
+    if ($('#mobile-custom-continuous')) $('#mobile-custom-continuous').checked = false;
+  }
 }
 
 /**
@@ -1037,23 +1091,24 @@ function loadTapeWidthForDevice(deviceName) {
 }
 
 /**
- * Adjust the label length by a delta (for P12 continuous tape)
+ * Adjust the label length by a delta (for continuous tape printers)
  * @param {number} delta - Amount to adjust in mm (positive or negative)
  */
 function adjustLabelLength(delta) {
   const currentWidth = state.labelSize.width;
+  const tapeHeight = state.labelSize.height || 12;
   const newWidth = Math.max(10, Math.min(100, currentWidth + delta));
 
   if (newWidth !== currentWidth) {
-    // Update to custom size
-    state.labelSize = { width: newWidth, height: 12 };
+    // Update to custom size, preserve continuous flag and tape height
+    state.labelSize = { width: newWidth, height: tapeHeight, continuous: state.labelSize.continuous || false };
     $('#label-size').value = 'custom';
     $('#custom-size').classList.remove('hidden');
     $('#custom-width').value = newWidth;
-    $('#custom-height').value = 12;
+    $('#custom-height').value = tapeHeight;
 
     // Update canvas
-    state.renderer.setDimensions(newWidth, 12, state.zoom, false);
+    state.renderer.setDimensions(newWidth, tapeHeight, state.zoom, false);
     state.renderer.clearCache();
     render();
     updatePrintSize();
@@ -1062,7 +1117,7 @@ function adjustLabelLength(delta) {
     $('#mobile-label-size').value = 'custom';
     $('#mobile-custom-size')?.classList.remove('hidden');
     $('#mobile-custom-width').value = newWidth;
-    $('#mobile-custom-height').value = 12;
+    $('#mobile-custom-height').value = tapeHeight;
   }
 }
 
@@ -1903,6 +1958,7 @@ async function handleBatchPrint() {
         printerModel,
         density,
         feed,
+        continuous: !!(state.labelSize?.continuous),
         onProgress: (progress) => {
           updatePrintProgress(rowIndex + 1, totalRows, `Sending data... ${progress}%`);
         },
@@ -1989,6 +2045,7 @@ async function handlePrintSinglePreview() {
       printerModel,
       density,
       feed,
+      continuous: !!(state.labelSize?.continuous),
       onProgress: (progress) => {
         btn.textContent = `Printing... ${progress}%`;
       },
@@ -2379,12 +2436,13 @@ function handleLabelSizeChange() {
     $('#custom-size').classList.remove('hidden');
     // Reset round checkbox to unchecked when switching to custom
     $('#custom-round').checked = false;
+    if ($('#custom-continuous')) $('#custom-continuous').checked = false;
     $('#custom-height').disabled = false;
     $('#custom-size-x').classList.remove('hidden');
     $('#custom-height').classList.remove('hidden');
     const w = validateLabelWidth($('#custom-width').value);
     const h = validateLabelHeight($('#custom-height').value);
-    state.labelSize = { width: w, height: h, round: false };
+    state.labelSize = { width: w, height: h, round: false, continuous: false };
   } else {
     $('#custom-size').classList.add('hidden');
     const preset = LABEL_SIZES[value];
@@ -2400,6 +2458,7 @@ function handleLabelSizeChange() {
 
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, state.labelSize.round || false);
   updatePrintSize();
+  updateLengthAdjustButtons();
 
   // Auto zoom-to-fit if label is too large at 100% zoom
   zoomToFitIfNeeded();
@@ -2413,6 +2472,7 @@ function handleLabelSizeChange() {
 function handleCustomSizeChange() {
   const w = validateLabelWidth($('#custom-width').value);
   const isRound = $('#custom-round').checked;
+  const isContinuous = !isRound && !!$('#custom-continuous')?.checked;
   const h = isRound ? w : validateLabelHeight($('#custom-height').value);
 
   // Sync height input when round is checked
@@ -2427,9 +2487,10 @@ function handleCustomSizeChange() {
     $('#custom-height').classList.remove('hidden');
   }
 
-  state.labelSize = { width: w, height: h, round: isRound };
+  state.labelSize = { width: w, height: h, round: isRound, continuous: isContinuous };
   state.renderer.setDimensions(state.labelSize.width, state.labelSize.height, state.zoom, isRound);
   updatePrintSize();
+  updateLengthAdjustButtons();
 
   // Auto zoom-to-fit if label is too large at 100% zoom
   zoomToFitIfNeeded();
@@ -2440,6 +2501,7 @@ function handleCustomSizeChange() {
   if ($('#mobile-custom-width')) $('#mobile-custom-width').value = w;
   if ($('#mobile-custom-height')) $('#mobile-custom-height').value = h;
   if ($('#mobile-custom-round')) $('#mobile-custom-round').checked = isRound;
+  if ($('#mobile-custom-continuous')) $('#mobile-custom-continuous').checked = isContinuous;
 }
 
 // =============================================================================
@@ -4732,6 +4794,7 @@ async function handlePrint() {
         printerModel,
         density,
         feed,
+        continuous: !!(state.labelSize?.continuous),
         onProgress: (progress) => {
           btn.textContent = `Printing... ${progress}%`;
           setStatus(`Printing${copyText}... ${progress}%`);
@@ -5414,11 +5477,11 @@ function handleKeyDown(e) {
     }
   }
 
-  // Ctrl/Cmd + V to paste
+  // Ctrl/Cmd + V to paste — try clipboard image first, fall back to element paste
   if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
     if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       e.preventDefault();
-      pasteElements();
+      handlePaste();
     }
   }
 
@@ -5487,6 +5550,29 @@ function copyElements() {
   // Deep clone the elements
   state.clipboard = JSON.parse(JSON.stringify(selectedElements));
   showToast(`${selectedElements.length} element${selectedElements.length > 1 ? 's' : ''} copied`, 'success');
+}
+
+/**
+ * Handle paste — try reading image from system clipboard, fall back to element paste
+ */
+async function handlePaste() {
+  if (navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find(t => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], 'pasted-image.png', { type: imageType });
+          addImageElement(file);
+          return;
+        }
+      }
+    } catch (err) {
+      // Clipboard API not available or permission denied
+    }
+  }
+  pasteElements();
 }
 
 /**
@@ -5636,40 +5722,20 @@ function checkCompatibility() {
                 </div>
                 <h4 class="font-semibold text-gray-900 text-sm">Save & Export</h4>
               </div>
-              <p class="text-xs text-gray-600">Save designs, export as JSON files</p>
+              <p class="text-xs text-gray-600">Save designs, export as JSON, PDF, or PNG</p>
             </div>
           </div>
 
-          <!-- Supported Printers Info -->
-          <div class="grid grid-cols-2 gap-2">
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-green-600 uppercase tracking-wide">Tape Printers</span>
-              <p class="text-sm text-gray-700">P12, P12 Pro, A30</p>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-blue-600 uppercase tracking-wide">M-Series</span>
-              <p class="text-sm text-gray-700">M02, M02S, M02X, M02 Pro, M03, M04S, M110, M120, M200, M220, M221, M250, M260, T02</p>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-purple-600 uppercase tracking-wide">D-Series</span>
-              <p class="text-sm text-gray-700">D30, D35, D50, D110, Q30, Q30S</p>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
-              <span class="text-xs font-medium text-orange-600 uppercase tracking-wide">Shipping</span>
-              <p class="text-sm text-gray-700">PM-241, PM-241-BT (USB only)</p>
-            </div>
-          </div>
+          <!-- User Manual Link -->
+          <a href="docs/manual.html" target="_blank" rel="noopener" class="flex items-center justify-center gap-2 w-full px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors text-sm font-medium">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            Read the User Manual
+          </a>
 
-          <!-- GitHub CTA -->
-          <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 border border-gray-200 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <svg class="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/></svg>
-              <span class="text-sm text-gray-700">Open source &amp; free forever</span>
-            </div>
-            <a href="https://github.com/transcriptionstream/phomymo" target="_blank" rel="noopener" class="px-3 py-1 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-1">
-              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.4 8.168L12 18.896l-7.334 3.857 1.4-8.168-5.934-5.787 8.2-1.192L12 .587z"/></svg>
-              Star on GitHub
-            </a>
+          <!-- Supported Printers (compact) -->
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Supported Printers</p>
+            <p class="text-xs text-gray-700">P12, A30, M02-M260, M04S, T02, D30-D110, Q30/Q30S, PM-241</p>
           </div>
 
           <!-- Action Button -->
@@ -5680,7 +5746,13 @@ function checkCompatibility() {
 
         <!-- Footer -->
         <div class="bg-gray-50 px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-          <p class="text-xs text-gray-400">Not affiliated with Phomemo</p>
+          <div class="flex items-center gap-3">
+            <p class="text-xs text-gray-400">Not affiliated with Phomemo</p>
+            <a href="https://donate.stripe.com/7sY7sMese0182tXgn8eAg00" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-1 text-pink-600 text-xs hover:text-pink-700 transition-colors">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              Donate
+            </a>
+          </div>
           <a href="https://affordablemagic.net" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all">
             <img src="https://affordablemagic.net/affordablemagic-400w.png" alt="Affordable Magic" class="h-4">
             <span class="text-xs font-medium text-gray-700">An Affordable Magic Product</span>
@@ -5821,6 +5893,9 @@ function initMobileUI() {
         $('#mobile-custom-width').value = $('#custom-width').value || '';
         $('#mobile-custom-height').value = $('#custom-height').value || '';
         $('#mobile-custom-round').checked = $('#custom-round').checked || false;
+        if ($('#mobile-custom-continuous')) {
+          $('#mobile-custom-continuous').checked = $('#custom-continuous')?.checked || false;
+        }
         updateMobileCustomSizeVisibility();
       } else {
         mobileCustomSize?.classList.add('hidden');
@@ -5853,11 +5928,13 @@ function initMobileUI() {
     const w = $('#mobile-custom-width')?.value;
     const h = $('#mobile-custom-height')?.value;
     const isRound = $('#mobile-custom-round')?.checked;
+    const isContinuous = !!$('#mobile-custom-continuous')?.checked;
 
     // Sync to desktop inputs
     if ($('#custom-width')) $('#custom-width').value = w;
     if ($('#custom-height')) $('#custom-height').value = isRound ? w : h;
     if ($('#custom-round')) $('#custom-round').checked = isRound;
+    if ($('#custom-continuous')) $('#custom-continuous').checked = isContinuous;
 
     // Trigger the desktop handler
     handleCustomSizeChange();
@@ -5885,6 +5962,7 @@ function initMobileUI() {
     }
     syncMobileCustomToDesktop();
   });
+  $('#mobile-custom-continuous')?.addEventListener('change', syncMobileCustomToDesktop);
 
   // Sync mobile connection type
   const mobileConnType = $('#mobile-conn-type');
@@ -6702,9 +6780,11 @@ function syncMobileLabelSize() {
     const mobileW = $('#mobile-custom-width');
     const mobileH = $('#mobile-custom-height');
     const mobileRound = $('#mobile-custom-round');
+    const mobileContinuous = $('#mobile-custom-continuous');
     if (mobileW) mobileW.value = $('#custom-width')?.value || '';
     if (mobileH) mobileH.value = $('#custom-height')?.value || '';
     if (mobileRound) mobileRound.checked = $('#custom-round')?.checked || false;
+    if (mobileContinuous) mobileContinuous.checked = $('#custom-continuous')?.checked || false;
     // Update visibility based on round
     const isRound = mobileRound?.checked;
     if (mobileH) {
@@ -6714,6 +6794,290 @@ function syncMobileLabelSize() {
   } else {
     mobileCustomSize?.classList.add('hidden');
   }
+}
+
+// =============================================================================
+// PRINTER DEFINITIONS UI
+// =============================================================================
+
+/**
+ * Populate the printer model dropdown from loaded definitions
+ */
+function populatePrinterModelDropdown() {
+  const defs = getAllPrinterDefinitions();
+  // Group by group name
+  const groups = {};
+  for (const def of defs) {
+    const group = def.group || 'Other';
+    if (!groups[group]) groups[group] = [];
+    groups[group].push(def);
+  }
+
+  // Populate both the print settings dropdown and the model prompt dropdown
+  const selects = [
+    { el: $('#printer-model'), keepFirst: true },
+    { el: $('#prompt-model-select'), keepFirst: true },
+  ];
+
+  for (const { el: select, keepFirst } of selects) {
+    if (!select) continue;
+    const currentValue = select.value;
+
+    // Clear all options except the first
+    while (select.options.length > (keepFirst ? 1 : 0)) {
+      select.remove(keepFirst ? 1 : 0);
+    }
+    // Remove any optgroups
+    select.querySelectorAll('optgroup').forEach(g => g.remove());
+
+    for (const [groupName, printers] of Object.entries(groups)) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = groupName;
+      for (const def of printers) {
+        const opt = document.createElement('option');
+        opt.value = def.id;
+        const widthMm = def.widthBytes ? Math.round(def.widthBytes * 8 / 8) : null;
+        const dpiNote = def.dpi === 300 ? ', 300 DPI' : '';
+        opt.textContent = def.name + (widthMm ? ` (${widthMm}mm${dpiNote})` : '') + (!def.builtin ? ' *' : '');
+        optgroup.appendChild(opt);
+      }
+      select.appendChild(optgroup);
+    }
+
+    // Restore selection
+    select.value = currentValue;
+    // If saved value is no longer valid, fall back
+    if (!select.value || select.selectedIndex === -1) {
+      select.selectedIndex = 0;
+    }
+  }
+}
+
+/**
+ * Initialize the Printer Definitions Manager dialog
+ */
+function initPrinterDefsManager() {
+  const dialog = $('#printer-defs-dialog');
+  const list = $('#printer-defs-list');
+  const editor = $('#printer-def-editor');
+  const editorTitle = $('#printer-def-editor-title');
+  if (!dialog || !list || !editor) return;
+
+  let editingId = null; // null = new, string = editing existing
+
+  // Populate protocol and label preset dropdowns in editor
+  const protocolSelect = $('#pdef-protocol');
+  const labelPresetsSelect = $('#pdef-label-presets');
+  if (protocolSelect) {
+    protocolSelect.innerHTML = '';
+    for (const p of getAvailableProtocols()) {
+      const opt = document.createElement('option');
+      opt.value = p.value;
+      opt.textContent = p.label;
+      protocolSelect.appendChild(opt);
+    }
+  }
+  if (labelPresetsSelect) {
+    labelPresetsSelect.innerHTML = '';
+    for (const p of getAvailableLabelPresets()) {
+      const opt = document.createElement('option');
+      opt.value = p.value;
+      opt.textContent = p.label;
+      labelPresetsSelect.appendChild(opt);
+    }
+  }
+
+  // Width info helper
+  const widthInput = $('#pdef-width');
+  const widthInfo = $('#pdef-width-info');
+  if (widthInput && widthInfo) {
+    widthInput.addEventListener('input', () => {
+      const bytes = parseInt(widthInput.value);
+      if (bytes > 0) {
+        const px = bytes * 8;
+        const mm = bytes; // 8px/mm at 203 DPI ~ 1 byte/mm
+        widthInfo.textContent = `= ${px}px = ~${mm}mm`;
+      } else {
+        widthInfo.textContent = '';
+      }
+    });
+  }
+
+  // Tape toggle
+  const tapeSelect = $('#pdef-tape');
+  const tapeOptions = $('#pdef-tape-options');
+  if (tapeSelect && tapeOptions) {
+    tapeSelect.addEventListener('change', () => {
+      tapeOptions.classList.toggle('hidden', tapeSelect.value !== 'true');
+    });
+  }
+
+  function renderList() {
+    list.innerHTML = '';
+    const defs = getAllPrinterDefinitions();
+    const customs = getCustomPrinterDefinitions();
+    const customIds = new Set(customs.map(d => d.id));
+
+    for (const def of defs) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer';
+
+      const isCustomized = customIds.has(def.id) && isBuiltinPrinter(def.id);
+      const isUserCreated = !isBuiltinPrinter(def.id);
+      const badge = isUserCreated ? '<span class="ml-1 text-xs bg-blue-100 text-blue-700 px-1 rounded">custom</span>'
+        : isCustomized ? '<span class="ml-1 text-xs bg-amber-100 text-amber-700 px-1 rounded">modified</span>'
+        : '';
+
+      row.innerHTML = `
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-gray-800 truncate">${def.name}${badge}</div>
+          <div class="text-xs text-gray-400 truncate">${def.description || def.protocol}</div>
+        </div>
+        <div class="flex gap-1 ml-2 shrink-0">
+          <button class="pdef-edit-btn text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 rounded" data-id="${def.id}">Edit</button>
+          ${isUserCreated ? `<button class="pdef-delete-btn text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded" data-id="${def.id}">Delete</button>` : ''}
+          ${isCustomized ? `<button class="pdef-reset-btn text-xs px-2 py-1 text-amber-600 hover:bg-amber-50 rounded" data-id="${def.id}">Reset</button>` : ''}
+        </div>
+      `;
+      list.appendChild(row);
+    }
+
+    // Bind edit buttons
+    list.querySelectorAll('.pdef-edit-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditor(btn.dataset.id);
+      });
+    });
+
+    // Bind delete buttons
+    list.querySelectorAll('.pdef-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete custom printer "${btn.dataset.id}"?`)) {
+          deleteCustomPrinterDefinition(btn.dataset.id);
+          renderList();
+          populatePrinterModelDropdown();
+        }
+      });
+    });
+
+    // Bind reset buttons
+    list.querySelectorAll('.pdef-reset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Reset "${btn.dataset.id}" to built-in defaults?`)) {
+          resetBuiltinPrinter(btn.dataset.id);
+          renderList();
+          populatePrinterModelDropdown();
+        }
+      });
+    });
+  }
+
+  function openEditor(id) {
+    editingId = id || null;
+    editor.classList.remove('hidden');
+
+    const def = id ? getPrinterDefinition(id) : null;
+    editorTitle.textContent = def ? `Edit: ${def.name}` : 'New Printer Definition';
+
+    const idInput = $('#pdef-id');
+    idInput.value = def?.id || '';
+    idInput.disabled = !!id; // Can't change id of existing definition
+
+    $('#pdef-name').value = def?.name || '';
+    $('#pdef-group').value = def?.group || 'Custom Printers';
+    $('#pdef-description').value = def?.description || '';
+    protocolSelect.value = def?.protocol || 'm-series';
+    $('#pdef-dpi').value = def?.dpi || 203;
+    $('#pdef-width').value = def?.widthBytes ?? '';
+    widthInput.dispatchEvent(new Event('input')); // Update info text
+    $('#pdef-alignment').value = def?.alignment || 'center';
+    $('#pdef-rotated').value = def?.rotated ? 'true' : 'false';
+    labelPresetsSelect.value = def?.labelPresets || 'm-series';
+    tapeSelect.value = def?.tape ? 'true' : 'false';
+    tapeOptions.classList.toggle('hidden', !def?.tape);
+    $('#pdef-tape-widths').value = def?.tapeWidths ? def.tapeWidths.join(', ') : '';
+    $('#pdef-default-tape-width').value = def?.defaultTapeWidth || '';
+    $('#pdef-patterns').value = def?.namePatterns ? def.namePatterns.join(', ') : '';
+  }
+
+  function closeEditor() {
+    editor.classList.add('hidden');
+    editingId = null;
+  }
+
+  function saveEditor() {
+    const id = $('#pdef-id').value.trim().toLowerCase().replace(/[^a-z0-9\-]/g, '-');
+    const name = $('#pdef-name').value.trim();
+
+    if (!id) { alert('ID is required'); return; }
+    if (!name) { alert('Name is required'); return; }
+
+    // Check for id collision when creating new
+    if (!editingId && getPrinterDefinition(id)) {
+      alert(`A printer with ID "${id}" already exists. Choose a different ID or edit the existing one.`);
+      return;
+    }
+
+    const tapeWidthsRaw = $('#pdef-tape-widths').value.trim();
+    const tapeWidths = tapeWidthsRaw ? tapeWidthsRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0) : null;
+
+    const patternsRaw = $('#pdef-patterns').value.trim();
+    const patterns = patternsRaw ? patternsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const widthVal = $('#pdef-width').value.trim();
+
+    const def = {
+      id: editingId || id,
+      name,
+      group: $('#pdef-group').value.trim() || 'Custom Printers',
+      description: $('#pdef-description').value.trim(),
+      protocol: protocolSelect.value,
+      widthBytes: widthVal === '' ? null : parseInt(widthVal),
+      dpi: parseInt($('#pdef-dpi').value),
+      alignment: $('#pdef-alignment').value,
+      rotated: $('#pdef-rotated').value === 'true',
+      tape: tapeSelect.value === 'true',
+      tapeWidths: tapeSelect.value === 'true' ? tapeWidths : null,
+      defaultTapeWidth: tapeSelect.value === 'true' ? (parseInt($('#pdef-default-tape-width').value) || null) : null,
+      namePatterns: patterns,
+      labelPresets: labelPresetsSelect.value,
+      builtin: false,
+    };
+
+    saveCustomPrinterDefinition(def);
+    closeEditor();
+    renderList();
+    populatePrinterModelDropdown();
+  }
+
+  // Open manager
+  $('#manage-printers-btn')?.addEventListener('click', () => {
+    renderList();
+    closeEditor();
+    dialog.classList.remove('hidden');
+  });
+
+  // Close manager
+  $('#printer-defs-close')?.addEventListener('click', () => {
+    dialog.classList.add('hidden');
+  });
+
+  // Close on backdrop click
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.classList.add('hidden');
+  });
+
+  // Add new
+  $('#printer-def-add')?.addEventListener('click', () => openEditor(null));
+
+  // Cancel editor
+  $('#printer-def-cancel')?.addEventListener('click', closeEditor);
+
+  // Save editor
+  $('#printer-def-save')?.addEventListener('click', saveEditor);
 }
 
 /**
@@ -6731,6 +7095,20 @@ function init() {
 
   // Initialize local fonts (show button or auto-load if previously enabled)
   initLocalFonts();
+
+  // Load printer definitions (built-in + custom) then populate dropdown
+  loadPrinterDefinitions().then(() => {
+    populatePrinterModelDropdown();
+    initPrinterDefsManager();
+    // Restore saved printer model selection
+    const savedPrintSettings = safeStorageGet('phomymo_print_settings');
+    if (savedPrintSettings) {
+      const settings = safeJsonParse(savedPrintSettings, null);
+      if (settings && settings.printerModel) {
+        $('#printer-model').value = settings.printerModel;
+      }
+    }
+  });
 
   // Create canvas renderer
   const canvas = $('#preview-canvas');
@@ -6755,6 +7133,7 @@ function init() {
   $('#custom-width').addEventListener('change', handleCustomSizeChange);
   $('#custom-height').addEventListener('change', handleCustomSizeChange);
   $('#custom-round').addEventListener('change', handleCustomSizeChange);
+  $('#custom-continuous')?.addEventListener('change', handleCustomSizeChange);
 
   // P12/A30 label length adjust buttons
   $('#length-plus')?.addEventListener('click', () => adjustLabelLength(5));
@@ -6793,6 +7172,7 @@ function init() {
   // Info dialog
   $('#info-btn').addEventListener('click', showInfoDialog);
   $('#info-close').addEventListener('click', hideInfoDialog);
+  $('#info-get-started')?.addEventListener('click', hideInfoDialog);
   $('#info-dialog').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) hideInfoDialog();
   });
@@ -7587,6 +7967,7 @@ function init() {
     }
     modifyElement(id, { qrData: e.target.value });
   });
+
 
   // Canvas pointer events (for mouse and non-iOS touch)
   canvas.addEventListener('pointerdown', handleCanvasPointerDown, { passive: false });

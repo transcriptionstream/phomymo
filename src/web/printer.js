@@ -640,7 +640,7 @@ export async function print(transport, rasterData, options = {}) {
     // D-series (D30, D110, etc.)
     await printDSeries(transport, data, widthBytes, heightLines, onProgress, density, continuous, feed);
   } else if (isM02 && isBLE) {
-    await printM02(transport, data, widthBytes, heightLines, density, onProgress);
+    await printM02(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else if (isM04 && isBLE) {
     await printM04(transport, data, widthBytes, heightLines, density, feed, onProgress);
   } else if (isM110 && isBLE) {
@@ -781,7 +781,7 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
  * Print via BLE for M02-series printers
  * M02 uses a special prefix and minimal/no feed (continuous paper)
  */
-async function printM02(transport, data, widthBytes, heightLines, density, onProgress) {
+async function printM02(transport, data, widthBytes, heightLines, density, feed, onProgress) {
   console.log('Using M02-series protocol...');
 
   // Map density 1-8 to M04 range 0x00-0x0F (default 0x04)
@@ -813,14 +813,16 @@ async function printM02(transport, data, widthBytes, heightLines, density, onPro
   console.log('Sending raster header...');
   await transport.send(M04_CMD.RASTER_HEADER(widthBytes, heightLines));
 
-  // Step 6: Send data in 256-byte chunks
-  console.log('Sending data (3-lines-byte chunks)...');
-  const chunkSize = Math.floor(576 / 8 * 3);
+  // Step 6: Send raster data in row-aligned chunks sized to the probed BLE write limit.
+  // Row alignment prevents byte-level shifts if any write is dropped or truncated.
+  const rowsPerChunk = Math.max(1, Math.floor((transport.maxWriteSize ?? 128) / widthBytes));
+  const chunkSize = rowsPerChunk * widthBytes;
+  console.log(`Sending data (${chunkSize}-byte chunks, ${rowsPerChunk} rows)...`);
 
   for (let i = 0; i < data.length; i += chunkSize) {
     const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
     await transport.send(chunk);
-    await transport.delay(15);
+    await transport.delay(20);
 
     if (onProgress) {
       const progress = Math.round((i + chunk.length) / data.length * 100);
@@ -878,9 +880,11 @@ async function printM04(transport, data, widthBytes, heightLines, density, feed,
   console.log('Sending raster header...');
   await transport.send(M04_CMD.RASTER_HEADER(widthBytes, heightLines));
 
-  // Step 6: Send data in 256-byte chunks
-  console.log('Sending data (256-byte chunks)...');
-  const chunkSize = 256;
+  // Step 6: Send raster data in row-aligned chunks sized to the probed BLE write limit.
+  // Row alignment prevents byte-level shifts if any write is dropped or truncated.
+  const rowsPerChunk = Math.max(1, Math.floor((transport.maxWriteSize ?? 128) / widthBytes));
+  const chunkSize = rowsPerChunk * widthBytes;
+  console.log(`Sending data (${chunkSize}-byte chunks, ${rowsPerChunk} rows)...`);
 
   for (let i = 0; i < data.length; i += chunkSize) {
     const chunk = data.slice(i, Math.min(i + chunkSize, data.length));

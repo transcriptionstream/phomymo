@@ -37,6 +37,9 @@ export class BLETransport {
     this.onDisconnect = null;
     this.onPrinterInfo = null; // Callback for printer info updates
     this._useWriteWithResponse = false; // Some devices need writeValue instead of writeValueWithoutResponse
+    // 182 bytes: safely below the 197-byte ATT payload Android Phomemo printers negotiate (MTU=200),
+    // while row-aligning well for common printer widths (e.g. 48-byte rows → 3 rows × 48 = 144 bytes).
+    this.maxWriteSize = 182;
     this.printerInfo = {
       battery: null,
       paper: null,

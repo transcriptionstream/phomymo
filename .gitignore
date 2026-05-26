@@ -16,3 +16,5 @@ src/web/robots.txt
 src/web/screenshot.png
 src/web/google*.html
 archive/
+
+bt-logs

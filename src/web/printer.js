@@ -7,6 +7,7 @@
  */
 
 import { STORAGE_KEYS } from './constants.js';
+import { markUpserted, markDeleted } from './sync.js?v=1';
 
 // =============================================================================
 // PRINTER DEFINITIONS MANAGER
@@ -86,6 +87,7 @@ export function saveCustomPrinterDefinition(def) {
     customs.push(saved);
   }
   localStorage.setItem(STORAGE_KEYS.CUSTOM_PRINTERS, JSON.stringify(customs));
+  markUpserted('custom_printers', saved.id);
   _rebuildDefinitions();
 }
 
@@ -96,6 +98,15 @@ export function saveCustomPrinterDefinition(def) {
 export function deleteCustomPrinterDefinition(id) {
   const customs = getCustomPrinterDefinitions().filter(d => d.id !== id);
   localStorage.setItem(STORAGE_KEYS.CUSTOM_PRINTERS, JSON.stringify(customs));
+  markDeleted('custom_printers', id);
+  _rebuildDefinitions();
+}
+
+/**
+ * Re-merge definitions after custom printers changed in localStorage
+ * outside this module (e.g. a server sync pull).
+ */
+export function refreshCustomPrinterDefinitions() {
   _rebuildDefinitions();
 }
 

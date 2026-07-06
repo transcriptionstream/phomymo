@@ -7,7 +7,7 @@
 import { CanvasRenderer } from './canvas.js?v=115';
 import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
-import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern, loadPrinterDefinitions, getAllPrinterDefinitions, getPrinterDefinition, getCustomPrinterDefinitions, saveCustomPrinterDefinition, deleteCustomPrinterDefinition, isBuiltinPrinter, resetBuiltinPrinter, getAvailableProtocols, getAvailableLabelPresets, getDetectedDefinition } from './printer.js?v=128';
+import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern, loadPrinterDefinitions, getAllPrinterDefinitions, getPrinterDefinition, getCustomPrinterDefinitions, saveCustomPrinterDefinition, deleteCustomPrinterDefinition, isBuiltinPrinter, resetBuiltinPrinter, getAvailableProtocols, getAvailableLabelPresets, getDetectedDefinition, refreshCustomPrinterDefinitions } from './printer.js?v=129';
 import {
   createTextElement,
   createImageElement,
@@ -54,7 +54,8 @@ import {
   loadDesign,
   listDesigns,
   deleteDesign,
-} from './storage.js?v=100';
+} from './storage.js?v=101';
+import { initSync, markUpserted, markDeleted } from './sync.js?v=1';
 import {
   extractFields,
   hasTemplateFields,
@@ -2734,6 +2735,7 @@ function saveMultiLabelPreset() {
   };
 
   safeStorageSet(STORAGE_KEYS.MULTI_LABEL_PRESETS, safeJsonStringify(presets));
+  markUpserted('multi_label_presets', name.trim());
   loadMultiLabelPresets();
   showToast(`Preset "${name.trim()}" saved`, 'success');
 }
@@ -2771,6 +2773,7 @@ function deleteMultiLabelPreset() {
   const presets = safeJsonParse(safeStorageGet(STORAGE_KEYS.MULTI_LABEL_PRESETS), {});
   delete presets[name];
   safeStorageSet(STORAGE_KEYS.MULTI_LABEL_PRESETS, safeJsonStringify(presets));
+  markDeleted('multi_label_presets', name);
 
   loadMultiLabelPresets();
   select.value = '';
@@ -7077,6 +7080,18 @@ function init() {
         $('#printer-model').value = settings.printerModel;
       }
     }
+    // Pull server state (if a sync server is present) and start background sync
+    initSync({
+      onStatus: setStatus,
+      refresh: {
+        custom_printers: () => {
+          refreshCustomPrinterDefinitions();
+          populatePrinterModelDropdown();
+        },
+        // designs and multi_label_presets need no refresh hook: their UI
+        // re-reads localStorage every time the relevant dialog opens
+      },
+    });
   });
 
   // Create canvas renderer

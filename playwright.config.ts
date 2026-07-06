@@ -24,7 +24,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'python3 -m http.server 8081 --directory src/web',
+    command: 'PHOMYMO_TEST=1 PORT=8081 node server/index.mjs',
     port: 8081,
     reuseExistingServer: !process.env.CI,
     timeout: 10_000,

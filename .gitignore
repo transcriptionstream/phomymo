@@ -4,6 +4,7 @@
 !README.md
 !docs/manual.md
 node_modules/
+server/data/
 
 # Playwright
 test-results/

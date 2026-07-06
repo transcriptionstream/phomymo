@@ -3,6 +3,7 @@
  */
 
 import { STORAGE_KEYS } from './constants.js';
+import { markUpserted, markDeleted } from './sync.js?v=1';
 
 const STORAGE_KEY = STORAGE_KEYS.DESIGNS;
 const MULTI_LABEL_PRESETS_KEY = STORAGE_KEYS.MULTI_LABEL_PRESETS;
@@ -53,6 +54,7 @@ export function saveDesign(name, design) {
     throw new Error('Failed to save design');
   }
 
+  markUpserted('designs', name.trim());
   return true;
 }
 
@@ -99,7 +101,11 @@ export function deleteDesign(name) {
   }
 
   delete designs[name];
-  return setAllDesigns(designs);
+  if (!setAllDesigns(designs)) {
+    return false;
+  }
+  markDeleted('designs', name);
+  return true;
 }
 
 /**
@@ -127,7 +133,14 @@ export function renameDesign(oldName, newName) {
     delete designs[oldName];
   }
 
-  return setAllDesigns(designs);
+  if (!setAllDesigns(designs)) {
+    return false;
+  }
+  if (trimmedNew !== oldName) {
+    markDeleted('designs', oldName);
+  }
+  markUpserted('designs', trimmedNew);
+  return true;
 }
 
 /**

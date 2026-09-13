@@ -140,6 +140,7 @@ export function getAvailableLabelPresets() {
     { value: 'd-series', label: 'D-series (small labels)' },
     { value: 'tape', label: 'Tape (continuous tape)' },
     { value: 'pm241', label: 'PM-241 (shipping labels)' },
+    { value: 'd520', label: 'D520 (small square/TSPL labels)' },
   ];
 }
 
@@ -360,14 +361,17 @@ const TSPL = {
   // Set gap between labels (0 for continuous)
   GAP: (gapMm) => new TextEncoder().encode(`GAP ${gapMm} mm, 0 mm\r\n`),
 
+  // Vertical offset of the print start position
+  OFFSET: (offsetMm) => new TextEncoder().encode(`OFFSET ${offsetMm} mm\r\n`),
+
   // Set print density (0-15)
   DENSITY: (level) => new TextEncoder().encode(`DENSITY ${level}\r\n`),
 
   // Set print speed (1-10)
   SPEED: (speed) => new TextEncoder().encode(`SPEED ${speed}\r\n`),
 
-  // Set print direction (0=normal, 1=reversed)
-  DIRECTION: (dir) => new TextEncoder().encode(`DIRECTION ${dir}\r\n`),
+  // Set print direction (0=normal, 1=reversed); mirror: 0=normal, 1=mirrored
+  DIRECTION: (dir, mirror = 0) => new TextEncoder().encode(`DIRECTION ${dir},${mirror}\r\n`),
 
   // Clear image buffer
   CLS: () => new TextEncoder().encode('CLS\r\n'),
@@ -628,11 +632,15 @@ export async function print(transport, rasterData, options = {}) {
   console.log(`Transport: ${isBLE ? 'BLE' : 'USB'}, Density: ${density}, Feed: ${feed}`);
 
   if (isTSPL) {
-    // TSPL protocol for shipping label printers (PM-241, etc.)
+    // TSPL protocol for shipping label printers (PM-241, D520, etc.)
     // Get label dimensions in mm from raster data
     const labelWidthMm = Math.round(widthBytes * 8 / 8); // 8 dots/mm at 203 DPI
     const labelHeightMm = Math.round(heightLines / 8);
-    await printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress);
+    const tsplDef = _resolveConfig(deviceName, printerModel).definition;
+    const gapMm = tsplDef?.tsplGapMm ?? 3;
+    const offsetMm = tsplDef?.tsplOffsetMm ?? -3;
+    const sendEnd = tsplDef?.tsplSendEnd ?? true;
+    await printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress, gapMm, offsetMm, sendEnd);
   } else if (isP12 && isBLE) {
     // P12 uses its own protocol with proprietary init sequence
     await printP12(transport, data, widthBytes, heightLines, onProgress);
@@ -1044,10 +1052,13 @@ async function printUSB(transport, data, widthBytes, heightLines, density, feed,
 }
 
 /**
- * Print via TSPL protocol (for shipping label printers like PM-241)
- * TSPL is a text-based command language used by many Chinese thermal label printers
+ * Print via TSPL protocol (for shipping label printers like PM-241, and
+ * BLE label makers like the D520)
+ * TSPL is a text-based command language used by many Chinese thermal label printers.
+ * gapMm/offsetMm are printer-specific (D520 BLE capture showed GAP 4.6mm/OFFSET 0mm,
+ * vs PM-241's GAP 3mm/OFFSET -3mm) - passed in per printer definition.
  */
-async function printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress) {
+async function printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress, gapMm = 3, offsetMm = -3, sendEnd = true) {
   console.log('Using TSPL protocol...');
   console.log(`Label size: ${labelWidthMm}mm x ${labelHeightMm}mm`);
   console.log(`Raster: ${widthBytes} bytes wide x ${heightLines} rows`);
@@ -1062,12 +1073,12 @@ async function printTSPL(transport, data, widthBytes, heightLines, labelWidthMm,
   await transport.send(TSPL.SIZE(labelWidthMm, labelHeightMm));
   await transport.delay(50);
 
-  // GAP command - gap between labels (3mm typical for die-cut labels)
-  await transport.send(TSPL.GAP(3));
+  // GAP command - gap between labels (die-cut/black-mark spacing, printer-specific)
+  await transport.send(TSPL.GAP(gapMm));
   await transport.delay(50);
 
-  // OFFSET command - shift print down to center on label (negative = down)
-  await transport.send(new TextEncoder().encode('OFFSET -3 mm\r\n'));
+  // OFFSET command - shift print start position (negative = down), printer-specific
+  await transport.send(TSPL.OFFSET(offsetMm));
   await transport.delay(50);
 
   // DENSITY command
@@ -1122,8 +1133,11 @@ async function printTSPL(transport, data, widthBytes, heightLines, labelWidthMm,
   await transport.send(TSPL.PRINT(1));
   await transport.delay(50);
 
-  // END command
-  await transport.send(TSPL.END());
+  // END command - the D520's official app never sends this (confirmed from a
+  // BLE capture), so it's opt-in per printer definition rather than assumed
+  if (sendEnd) {
+    await transport.send(TSPL.END());
+  }
 
   console.log('TSPL print complete!');
 }

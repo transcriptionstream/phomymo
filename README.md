@@ -63,6 +63,7 @@ python3 -m http.server 8080
 | D30 / D35 / D50 / D110 | 12-15mm | Smart mini label makers (rotated protocol) |
 | Q30 / Q30S | 12-15mm | Similar to D30 |
 | PM-241 / PM-241-BT | 102mm (4") | Shipping labels, USB only (TSPL protocol) |
+| D520 | variable | Shipping label printer, various sizes, over BLE (TSPL protocol) |
 
 The app auto-detects your printer model from the Bluetooth device name and configures the correct protocol, print width, DPI, and label presets. If auto-detection fails, you can manually select your model in Print Settings, or the app will prompt you on first connection.
 

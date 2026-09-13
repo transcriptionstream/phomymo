@@ -306,6 +306,26 @@
       "namePatterns": ["D30", "D35", "D50", "Q30S", "Q30", "D"],
       "labelPresets": "d-series",
       "builtin": true
+    },
+    {
+      "id": "d520",
+      "name": "D520",
+      "group": "D520 Series",
+      "description": "Shipping label printer, supports a range of label sizes (BLE, TSPL protocol)",
+      "protocol": "tspl",
+      "widthBytes": 39,
+      "dpi": 203,
+      "alignment": "center",
+      "rotated": false,
+      "tape": false,
+      "tapeWidths": null,
+      "defaultTapeWidth": null,
+      "namePatterns": ["D520"],
+      "labelPresets": "d520",
+      "tsplGapMm": 4.6,
+      "tsplOffsetMm": 0,
+      "tsplSendEnd": false,
+      "builtin": true
     }
   ]
 }

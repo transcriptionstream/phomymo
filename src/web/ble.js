@@ -236,6 +236,12 @@ export class BLETransport {
     // Setup disconnect handler (only once per device)
     if (!this.device._hasDisconnectHandler) {
       this.device.addEventListener('gattserverdisconnected', () => {
+        // A link dropped during connectGATT() can report after we've already
+        // reconnected - don't tear down the new, working connection
+        if (this.device?.gatt?.connected) {
+          console.log('Ignoring stale disconnect event');
+          return;
+        }
         console.log('Disconnected');
         this.connected = false;
         this.server = null;
@@ -305,19 +311,34 @@ export class BLETransport {
       console.log('Device requires writeValue (with response)');
     }
 
-    try {
-      this.notifyChar = await this.service.getCharacteristic(BLE.NOTIFY_CHAR_UUID);
-      await this.notifyChar.startNotifications();
+    if (this.device._skipNotifications) {
+      console.log('Skipping notifications for this device (previous attempt dropped the connection)');
+    } else {
+      try {
+        this.notifyChar = await this.service.getCharacteristic(BLE.NOTIFY_CHAR_UUID);
+        await this.notifyChar.startNotifications();
 
-      // Set up notification handler (store reference for cleanup)
-      this._notificationHandler = (event) => {
-        this.handleNotification(event);
-      };
-      this.notifyChar.addEventListener('characteristicvaluechanged', this._notificationHandler);
+        // Set up notification handler (store reference for cleanup)
+        this._notificationHandler = (event) => {
+          this.handleNotification(event);
+        };
+        this.notifyChar.addEventListener('characteristicvaluechanged', this._notificationHandler);
 
-      console.log('Notifications enabled');
-    } catch (e) {
-      console.warn('Notifications not available:', e.message);
+        console.log('Notifications enabled');
+      } catch (e) {
+        this.notifyChar = null;
+        console.warn('Notifications not available:', e.message);
+
+        // On Windows, enabling notifications on an unbonded printer (e.g. D30)
+        // can drop the GATT link entirely. Give the stack a moment to report it,
+        // then reconnect without notifications rather than reporting a dead link.
+        await this.delay(300);
+        if (!this.device.gatt.connected) {
+          console.warn('Enabling notifications dropped the connection (known Windows issue with unbonded printers). Reconnecting without notifications...');
+          this.device._skipNotifications = true;
+          return this.connectGATT();
+        }
+      }
     }
 
     this.connected = true;
@@ -655,6 +676,12 @@ export class BLETransport {
   async queryAll() {
     if (!this.isConnected()) {
       throw new Error('Not connected');
+    }
+
+    // Replies arrive via notifications - without them, queries are just extra writes
+    if (!this.notifyChar) {
+      console.log('Skipping printer info query (notifications not available)');
+      return;
     }
 
     console.log('Querying all printer info...');

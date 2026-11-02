@@ -335,6 +335,11 @@ const P12_CMD = {
     new Uint8Array([0x1f, 0x11, 0x19]),
     new Uint8Array([0x1f, 0x11, 0x07]),
   ],
+  // P12 print density: 1F 11 02 nn (nn = 1 light ... 4 very dark).
+  // Captured from Print Master, which sends it before each print once a print
+  // quality is selected. Without it the printer uses a faint default after
+  // power-on; the setting persists until power-off (see issue #45).
+  DENSITY: (level) => new Uint8Array([0x1f, 0x11, 0x02, level]),
   // P12 print header: ESC @ + GS v 0 + dimensions
   HEADER: (widthBytes, rows) => new Uint8Array([
     0x1b, 0x40,           // ESC @ - Initialize
@@ -635,7 +640,7 @@ export async function print(transport, rasterData, options = {}) {
     await printTSPL(transport, data, widthBytes, heightLines, labelWidthMm, labelHeightMm, density, onProgress);
   } else if (isP12 && isBLE) {
     // P12 uses its own protocol with proprietary init sequence
-    await printP12(transport, data, widthBytes, heightLines, onProgress);
+    await printP12(transport, data, widthBytes, heightLines, density, onProgress);
   } else if (isDSeries && isBLE) {
     // D-series (D30, D110, etc.)
     await printDSeries(transport, data, widthBytes, heightLines, onProgress, density, continuous, feed);
@@ -723,10 +728,18 @@ async function printDSeries(transport, data, widthBytes, heightLines, onProgress
 }
 
 /**
+ * Map phomymo density (1-8) to the P12's four density levels (1-4)
+ * 1-2 -> 1 (light), 3-4 -> 2, 5-6 -> 3, 7-8 -> 4 (very dark)
+ */
+function p12DensityLevel(density) {
+  return Math.min(4, Math.max(1, Math.ceil(density / 2)));
+}
+
+/**
  * Print via BLE for P12-series printers (P12, P12 Pro)
  * Continuous tape printer - uses proprietary init sequence to fix print positioning
  */
-async function printP12(transport, data, widthBytes, heightLines, onProgress) {
+async function printP12(transport, data, widthBytes, heightLines, density, onProgress) {
   console.log('Using P12-series protocol...');
   console.log(`Input: ${widthBytes} bytes wide x ${heightLines} rows (${data.length} bytes)`);
 
@@ -747,6 +760,12 @@ async function printP12(transport, data, widthBytes, heightLines, onProgress) {
       await transport.delay(100); // Fallback delay if no waitForResponse
     }
   }
+
+  // Set print density (P12 ignores ESC 7 / generic density commands)
+  const level = p12DensityLevel(density);
+  console.log(`Setting P12 density level ${level} (from density ${density})...`);
+  await transport.send(P12_CMD.DENSITY(level));
+  await transport.delay(50);
 
   // Send P12 header (ESC @ + GS v 0 + dimensions)
   console.log('Sending P12 header...');

@@ -417,6 +417,66 @@ export class BLETransport {
   }
 
   /**
+   * Wait for the printer to finish the current print job.
+   *
+   * M-series printers report `1A 0F 0C` when the page is complete and
+   * `1A 0B B8` when the job is cancelled/rejected. Waiting for this is
+   * important: starting the next job before the printer is done can
+   * desynchronise its raster parser and make it feed without printing.
+   *
+   * @param {number} timeout - Maximum time to wait in ms
+   * @returns {Promise<'complete'|'cancelled'|'timeout'>}
+   */
+  async waitForPrintComplete(timeout = 30000) {
+    const notifyChar = this.notifyChar;
+    if (!notifyChar) {
+      // No notifications (e.g. some Android Chrome stacks). Fall back to a
+      // conservative delay so the caller still does not start the next job
+      // while the printer is busy.
+      await this.delay(timeout);
+      return 'timeout';
+    }
+
+    return new Promise((resolve) => {
+      let buffer = [];
+      let timer = null;
+      let handler = null;
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        notifyChar.removeEventListener('characteristicvaluechanged', handler);
+      };
+
+      const finish = (result) => {
+        cleanup();
+        resolve(result);
+      };
+
+      timer = setTimeout(() => finish('timeout'), timeout);
+
+      handler = (event) => {
+        buffer.push(...new Uint8Array(event.target.value.buffer));
+
+        for (let i = 0; i + 2 < buffer.length; i++) {
+          if (buffer[i] === 0x1a && buffer[i + 1] === 0x0f && buffer[i + 2] === 0x0c) {
+            finish('complete');
+            return;
+          }
+          if (buffer[i] === 0x1a && buffer[i + 1] === 0x0b && buffer[i + 2] === 0xb8) {
+            finish('cancelled');
+            return;
+          }
+        }
+
+        // Keep only the tail in case a frame is split across notifications.
+        if (buffer.length > 64) buffer = buffer.slice(-64);
+      };
+
+      notifyChar.addEventListener('characteristicvaluechanged', handler);
+    });
+  }
+
+  /**
    * Send data in chunks with delays
    */
   async sendChunked(data, onProgress = null) {

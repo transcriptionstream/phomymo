@@ -944,6 +944,26 @@ async function printM110(transport, data, widthBytes, heightLines, density, onPr
   await transport.delay(300);
   console.log('Sending footer...');
   await transport.send(M110_CMD.FOOTER);
+
+  // Wait for the printer to finish this page before returning. If we return
+  // (and the caller starts another copy/print) while the printer is still
+  // printing or feeding to the next gap, the new header can desynchronise the
+  // raster parser. The printer then interprets image bytes as commands (0x0A
+  // is a line feed) and feeds without printing.
+  const printTimeMs = Math.max(2500, Math.ceil(heightLines / 150 * 1000) + 1500);
+  if (typeof transport.waitForPrintComplete === 'function') {
+    const result = await transport.waitForPrintComplete(printTimeMs);
+    if (result === 'timeout') {
+      console.warn(`Printer did not confirm completion within ${printTimeMs}ms`);
+    } else if (result === 'cancelled') {
+      console.warn('Printer reported the print job was cancelled');
+    }
+  } else {
+    // USB or older transports: use the conservative timing estimate.
+    await transport.delay(printTimeMs);
+  }
+
+  // Small settle delay so the printer is fully idle before the next job.
   await transport.delay(500);
 
   console.log('Print complete!');

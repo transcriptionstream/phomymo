@@ -148,6 +148,7 @@ const state = {
   transport: null,
   renderer: null,
   canPrint: true,   // Set to false if browser doesn't support Bluetooth/USB
+  printInProgress: false,  // Guards against overlapping print jobs
   currentDesignName: null,  // Name of the currently loaded design
   // Drag state
   isDragging: false,
@@ -1863,6 +1864,8 @@ async function handleBatchPrint() {
     return;
   }
 
+  if (!tryBeginPrint()) return;
+
   const btn = $('#template-print-btn');
   const originalText = btn.textContent;
   const { density, feed, printerModel } = state.printSettings;
@@ -1987,6 +1990,7 @@ async function handleBatchPrint() {
   } finally {
     btn.disabled = false;
     hidePrintProgress();
+    endPrint();
   }
 }
 
@@ -2001,6 +2005,8 @@ async function handlePrintSinglePreview() {
     setStatus('No record to print');
     return;
   }
+
+  if (!tryBeginPrint()) return;
 
   const btn = $('#full-preview-print');
   const originalText = btn.textContent;
@@ -2060,6 +2066,7 @@ async function handlePrintSinglePreview() {
     btn.textContent = originalText;
   } finally {
     btn.disabled = false;
+    endPrint();
   }
 }
 
@@ -4734,9 +4741,28 @@ async function handleConnect(event) {
 }
 
 /**
+ * Claim the single print slot. Returns false if a print is already in
+ * progress so a second click cannot start an overlapping job.
+ */
+function tryBeginPrint() {
+  if (state.printInProgress) {
+    setStatus('Printing already in progress...');
+    return false;
+  }
+  state.printInProgress = true;
+  return true;
+}
+
+function endPrint() {
+  state.printInProgress = false;
+}
+
+/**
  * Handle print button click
  */
 async function handlePrint() {
+  if (!tryBeginPrint()) return;
+
   const btn = $('#print-btn');
   const originalText = btn.textContent;
   const { density, copies, feed, printerModel } = state.printSettings;
@@ -4812,6 +4838,7 @@ async function handlePrint() {
     btn.textContent = originalText;
   } finally {
     btn.disabled = false;
+    endPrint();
   }
 }
 
@@ -7342,6 +7369,8 @@ function init() {
 
   // Density test button
   $('#print-density-test').addEventListener('click', async () => {
+    if (!tryBeginPrint()) return;
+
     const btn = $('#print-density-test');
     const originalText = btn.innerHTML;
 
@@ -7375,6 +7404,7 @@ function init() {
     } finally {
       btn.disabled = false;
       btn.innerHTML = originalText;
+      endPrint();
     }
   });
 

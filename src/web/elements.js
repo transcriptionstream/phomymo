@@ -95,12 +95,171 @@ export function createQRElement(data = 'https://example.com', options = {}) {
     rotation: options.rotation ?? 0,
     // QR-specific
     qrData: data,
+    qrType: options.qrType ?? 'text',   // 'text','url','email','phone','sms','wifi','vcard','mecard','location'
+    qrFields: options.qrFields ?? {},   // structured inputs for the type above; qrData is the computed/final string
   };
 }
 
 /**
+ * Escape a value for the WiFi QR format (backslash-escape ; , " \ : )
+ */
+function escapeWifiValue(str) {
+  return String(str ?? '').replace(/([\\;,":])/g, '\\$1');
+}
+
+/**
+ * Build the final QR payload string from a structured type + field set.
+ * Pure function - the caller is responsible for writing the result into
+ * the element's qrData. 'text' (and any unrecognized type) just passes
+ * the raw field through unchanged, so existing designs (which only ever
+ * had qrData, no qrType) keep working exactly as before.
+ * @param {string} type
+ * @param {object} fields
+ */
+export function buildQRData(type, fields = {}) {
+  const f = (name) => (fields[name] ?? '').toString().trim();
+
+  switch (type) {
+    case 'url': {
+      const url = f('url');
+      if (!url) return '';
+      return /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`;
+    }
+
+    case 'email': {
+      const to = f('to');
+      const subject = f('subject');
+      const body = f('body');
+      const params = [];
+      if (subject) params.push(`subject=${encodeURIComponent(subject)}`);
+      if (body) params.push(`body=${encodeURIComponent(body)}`);
+      return `mailto:${to}${params.length ? '?' + params.join('&') : ''}`;
+    }
+
+    case 'phone':
+      return `tel:${f('phone')}`;
+
+    case 'sms': {
+      const phone = f('phone');
+      const message = f('message');
+      return `SMSTO:${phone}:${message}`;
+    }
+
+    case 'wifi': {
+      const ssid = escapeWifiValue(f('ssid'));
+      const password = escapeWifiValue(f('password'));
+      const security = f('security') || 'WPA'; // WPA, WEP, or nopass
+      const hidden = fields.hidden ? 'H:true;' : '';
+      if (security === 'nopass') {
+        return `WIFI:T:nopass;S:${ssid};${hidden};`;
+      }
+      return `WIFI:T:${security};S:${ssid};P:${password};${hidden};`;
+    }
+
+    case 'location': {
+      const lat = f('lat');
+      const lng = f('lng');
+      return `geo:${lat},${lng}`;
+    }
+
+    case 'vcard': {
+      const name = f('name');
+      const phone = f('phone');
+      const email = f('email');
+      const org = f('org');
+      const url = f('url');
+      const lines = ['BEGIN:VCARD', 'VERSION:3.0'];
+      if (name) {
+        // Best-effort split into "Last;First" for the N field; FN keeps the full name as typed.
+        const parts = name.trim().split(/\s+/);
+        const last = parts.length > 1 ? parts[parts.length - 1] : '';
+        const first = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0] || '';
+        lines.push(`N:${last};${first};;;`);
+        lines.push(`FN:${name}`);
+      }
+      if (org) lines.push(`ORG:${org}`);
+      if (phone) lines.push(`TEL:${phone}`);
+      if (email) lines.push(`EMAIL:${email}`);
+      if (url) lines.push(`URL:${url}`);
+      lines.push('END:VCARD');
+      return lines.join('\n');
+    }
+
+    case 'mecard': {
+      const name = f('name');
+      const phone = f('phone');
+      const email = f('email');
+      const parts = [];
+      if (name) parts.push(`N:${name}`);
+      if (phone) parts.push(`TEL:${phone}`);
+      if (email) parts.push(`EMAIL:${email}`);
+      return `MECARD:${parts.join(';')};;`;
+    }
+
+    case 'text':
+    default:
+      return fields.text ?? '';
+  }
+}
+
+/**
+ * Parse a .vcf (vCard) file's text into the field names buildQRData's
+ * 'vcard' case expects. Handles the common single-contact vCard 2.1/3.0
+ * line format (PROP;PARAM=VALUE:data), including folded continuation
+ * lines (RFC 2425 - a line starting with a space/tab continues the
+ * previous one) and the simple cases of escaped semicolons in N/FN.
+ */
+export function parseVCF(text) {
+  const rawLines = text.split(/\r\n|\r|\n/);
+  const lines = [];
+  for (const line of rawLines) {
+    if ((line.startsWith(' ') || line.startsWith('\t')) && lines.length > 0) {
+      lines[lines.length - 1] += line.slice(1);
+    } else {
+      lines.push(line);
+    }
+  }
+
+  const result = { name: '', phone: '', email: '', org: '', url: '' };
+  for (const line of lines) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx < 0) continue;
+    const propPart = line.slice(0, colonIdx);
+    const value = line.slice(colonIdx + 1).trim();
+    const prop = propPart.split(';')[0].toUpperCase();
+
+    switch (prop) {
+      case 'FN':
+        if (!result.name) result.name = value;
+        break;
+      case 'N':
+        if (!result.name) {
+          const [last, first] = value.split(';');
+          result.name = [first, last].filter(Boolean).join(' ').trim();
+        }
+        break;
+      case 'TEL':
+        if (!result.phone) result.phone = value;
+        break;
+      case 'EMAIL':
+        if (!result.email) result.email = value;
+        break;
+      case 'ORG':
+        if (!result.org) result.org = value.replace(/;/g, ' ').trim();
+        break;
+      case 'URL':
+        if (!result.url) result.url = value;
+        break;
+      default:
+        break;
+    }
+  }
+  return result;
+}
+
+/**
  * Create a shape element
- * @param {string} shapeType - 'rectangle', 'ellipse', 'line', 'triangle'
+ * @param {string} shapeType - 'rectangle', 'ellipse', 'triangle', 'diamond', 'pentagon', 'hexagon', 'octagon', 'star', 'line'
  * @param {object} options - Position, size, and shape-specific options
  */
 export function createShapeElement(shapeType = 'rectangle', options = {}) {
@@ -114,7 +273,7 @@ export function createShapeElement(shapeType = 'rectangle', options = {}) {
     height: options.height ?? 60,
     rotation: options.rotation ?? 0,
     // Shape-specific
-    shapeType: shapeType,                         // 'rectangle', 'ellipse', 'line', 'triangle'
+    shapeType: shapeType,                         // 'rectangle', 'ellipse', 'triangle', 'diamond', 'pentagon', 'hexagon', 'octagon', 'star', 'line'
     fill: options.fill ?? 'black',                // 'white', 'black', 'dither-light', 'dither-medium', 'dither-dark'
     stroke: options.stroke ?? 'none',             // 'none', 'black', 'white'
     strokeWidth: options.strokeWidth ?? 2,        // Stroke width in pixels

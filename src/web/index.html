@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+    // Applied as early as possible (before any CSS paints) to avoid a
+    // flash of the light theme on startup. Kept intentionally tiny and
+    // dependency-free since app.js (a module) loads and runs later.
+    try {
+      var _t = localStorage.getItem('phomymo_theme');
+      if (_t && _t !== 'light') document.documentElement.setAttribute('data-theme', _t);
+    } catch (e) {}
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -210,6 +219,27 @@
       .mobile-only { display: none !important; }
     }
 
+    /* Landscape phones: the mobile UI's fixed header + two-row bottom
+       toolbar (~212px combined) eats a disproportionate share of a short
+       landscape viewport. Shrink icons/padding/text and the reserved body
+       padding so more of the screen is left for the actual canvas. Keyed
+       off orientation+height rather than width, since a landscape phone
+       can be wider than the usual 767px mobile-UI breakpoint. */
+    @media (orientation: landscape) and (max-height: 500px) {
+      body { padding-top: 40px; padding-bottom: 92px; }
+      #mobile-header { padding-top: 4px; padding-bottom: 4px; }
+      #mobile-header svg { width: 18px; height: 18px; }
+      #mobile-header #mobile-label-name { font-size: 0.8rem; }
+      .mobile-toolbar-row { padding: 3px 2px; }
+      .mobile-tool-btn { padding: 2px 6px; font-size: 7px; min-width: 40px; }
+      .mobile-tool-btn svg { width: 15px; height: 15px; margin-bottom: 1px; }
+      .mobile-divider { height: 20px; }
+      #zoom-controls { top: 44px !important; }
+      footer { bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; }
+      .mobile-props-panel { max-height: 75vh; }
+      .mobile-props-content { max-height: calc(75vh - 80px); }
+    }
+
     /* Mobile fixed bottom toolbar */
     .mobile-toolbar {
       position: fixed;
@@ -306,6 +336,312 @@
     #mobile-menu-panel.menu-open {
       transform: translateX(0) !important;
     }
+  </style>
+
+  <!--
+    Dark theme system.
+
+    Architecture: the app's markup uses literal Tailwind color utility
+    classes (bg-white, text-gray-900, bg-blue-600, ...) everywhere - there
+    was no CSS-variable layer to begin with. Rather than rewrite every
+    class attribute in the app, this block overrides what those specific
+    classes RESOLVE to, scoped under `[data-theme="..."]` on <html>, using
+    one shared variable layer so each theme only has to define ~35
+    variables instead of repeating every Tailwind-class override 4 times.
+
+    Every selector below is prefixed with `[data-theme]` (an attribute
+    selector), which makes it one specificity level above the equivalent
+    bare Tailwind utility class/pseudo-class selector Tailwind's CDN
+    runtime generates - so these always win regardless of when Tailwind's
+    JIT-generated stylesheet gets injected into <head>, with no reliance
+    on source order.
+
+    What's intentionally NOT touched (stays literal in every theme):
+    - The label/canvas rendering itself (#preview-canvas, #full-preview-
+      canvas, .preview-canvas) - it represents physical white paper + black
+      ink, independent of the app's own UI theme. These were switched from
+      Tailwind's bg-white class to an inline style so they're immune to the
+      overrides below regardless of specificity.
+    - Literal color-swatch previews (the Text Color / Background / Stroke
+      pickers' black/white squares) - also switched to inline styles for
+      the same reason; they represent actual selectable colors, not UI.
+    - The two "branded gradient banner" dialog headers (Info dialog,
+      update-progress dialog) and the multi-zone toolbar - small,
+      self-contained blocks that keep their own fixed color scheme in
+      every theme via the `.theme-fixed` escape hatch below, which resets
+      the variables for that subtree back to the light defaults.
+  -->
+  <style id="theme-styles">
+    /* ===== Generic Tailwind-class -> variable mapping (shared by all themes) ===== */
+    [data-theme] .bg-gray-100,
+    [data-theme] .hover\:bg-gray-100:hover,
+    [data-theme] .active\:bg-gray-100:active { background-color: var(--surface-3); }
+    [data-theme] .bg-gray-50,
+    [data-theme] .hover\:bg-gray-50:hover { background-color: var(--surface-2); }
+    [data-theme] .bg-white { background-color: var(--surface-1); }
+    [data-theme] .bg-gray-200,
+    [data-theme] .hover\:bg-gray-200:hover,
+    [data-theme] .active\:bg-gray-200:active,
+    [data-theme] .hover\:bg-gray-300:hover { background-color: var(--surface-4); }
+    [data-theme] .bg-gray-400 { background-color: var(--surface-strong); }
+
+    [data-theme] .text-gray-900,
+    [data-theme] .text-gray-800,
+    [data-theme] .hover\:text-gray-800:hover { color: var(--text-primary); }
+    [data-theme] .text-gray-700,
+    [data-theme] .text-gray-600,
+    [data-theme] .hover\:text-gray-600:hover { color: var(--text-secondary); }
+    [data-theme] .text-gray-500,
+    [data-theme] .text-gray-400 { color: var(--text-tertiary); }
+    [data-theme] .text-gray-300 { color: var(--text-disabled); }
+
+    [data-theme] .border-gray-100 { border-color: var(--border-subtle); }
+    [data-theme] .border-gray-200,
+    [data-theme] .border-gray-300 { border-color: var(--border-default); }
+    [data-theme] .focus\:ring-gray-400:focus { --tw-ring-color: var(--border-strong); }
+
+    /* Primary ("dark pill") button: bg-gray-900/bg-gray-800 + text-white */
+    [data-theme] .bg-gray-900 { background-color: var(--accent-solid); }
+    [data-theme] .hover\:bg-gray-800:hover,
+    [data-theme] .bg-gray-800 { background-color: var(--accent-solid-hover); }
+    [data-theme] .active\:bg-gray-700:active { background-color: var(--accent-solid-hover); }
+    [data-theme] .bg-gray-900.text-white,
+    [data-theme] .bg-gray-900 .text-white,
+    [data-theme] .bg-gray-800.text-white { color: var(--on-accent-solid); }
+
+    /* Accent (blue family) */
+    [data-theme] .bg-blue-50,
+    [data-theme] .hover\:bg-blue-50:hover { background-color: var(--accent-surface-weak); }
+    [data-theme] .bg-blue-100,
+    [data-theme] .bg-blue-200,
+    [data-theme] .hover\:bg-blue-100:hover,
+    [data-theme] .hover\:bg-blue-200:hover { background-color: var(--accent-surface); }
+    [data-theme] .bg-blue-500,
+    [data-theme] .bg-blue-600 { background-color: var(--accent-solid); }
+    [data-theme] .hover\:bg-blue-600:hover,
+    [data-theme] .hover\:bg-blue-700:hover { background-color: var(--accent-solid-hover); }
+    [data-theme] .bg-blue-500.text-white,
+    [data-theme] .bg-blue-500 .text-white,
+    [data-theme] .bg-blue-600.text-white,
+    [data-theme] .bg-blue-600 .text-white { color: var(--on-accent-solid); }
+    [data-theme] .text-blue-600,
+    [data-theme] .text-blue-700,
+    [data-theme] .text-blue-900,
+    [data-theme] .hover\:text-blue-800:hover { color: var(--accent-text); }
+    [data-theme] .border-blue-100,
+    [data-theme] .border-blue-200,
+    [data-theme] .border-blue-300,
+    [data-theme] .border-blue-400 { border-color: var(--accent-border); }
+    [data-theme] .focus\:ring-blue-400:focus,
+    [data-theme] .focus\:ring-blue-500:focus,
+    [data-theme] .ring-blue-400,
+    [data-theme] .hover\:ring-blue-500:hover { --tw-ring-color: var(--accent-ring); }
+
+    /* Purple family (template / multi-zone features) */
+    [data-theme] .bg-purple-50,
+    [data-theme] .hover\:bg-purple-50:hover { background-color: var(--purple-surface-weak); }
+    [data-theme] .bg-purple-100,
+    [data-theme] .hover\:bg-purple-100:hover,
+    [data-theme] .active\:bg-purple-100:active,
+    [data-theme] .hover\:bg-purple-200:hover,
+    [data-theme] .active\:bg-purple-200:active { background-color: var(--purple-surface); }
+    [data-theme] .bg-purple-600 { background-color: var(--purple-solid); }
+    [data-theme] .hover\:bg-purple-700:hover { background-color: var(--purple-solid-hover); }
+    [data-theme] .active\:bg-purple-800:active { background-color: var(--purple-solid-active); }
+    [data-theme] .bg-purple-600.text-white,
+    [data-theme] .bg-purple-600 .text-white { color: var(--on-purple-solid); }
+    [data-theme] .text-purple-400,
+    [data-theme] .text-purple-600,
+    [data-theme] .text-purple-700,
+    [data-theme] .text-purple-900,
+    [data-theme] .hover\:text-purple-600:hover,
+    [data-theme] .hover\:text-purple-800:hover { color: var(--purple-text); }
+    [data-theme] .border-purple-200 { border-color: var(--purple-border); }
+
+    /* Danger (red family) */
+    [data-theme] .bg-red-50,
+    [data-theme] .hover\:bg-red-50:hover,
+    [data-theme] .active\:bg-red-100:active { background-color: var(--danger-surface-weak); }
+    [data-theme] .bg-red-600 { background-color: var(--danger-solid); }
+    [data-theme] .bg-red-600.text-white { color: var(--on-danger-solid); }
+    [data-theme] .text-red-500,
+    [data-theme] .text-red-600,
+    [data-theme] .text-red-700,
+    [data-theme] .hover\:text-red-700:hover { color: var(--danger-text); }
+    [data-theme] .border-red-200,
+    [data-theme] .border-red-300 { border-color: var(--danger-border); }
+
+    /* Success (green family) */
+    [data-theme] .bg-green-50 { background-color: var(--success-surface-weak); }
+    [data-theme] .bg-green-100 { background-color: var(--success-surface); }
+    [data-theme] .bg-green-500,
+    [data-theme] .bg-green-600 { background-color: var(--success-solid); }
+    [data-theme] .bg-green-500.text-white,
+    [data-theme] .bg-green-500 .text-white,
+    [data-theme] .bg-green-600.text-white { color: var(--on-success-solid); }
+    [data-theme] .text-green-500,
+    [data-theme] .text-green-700,
+    [data-theme] .text-green-800 { color: var(--success-text); }
+    [data-theme] .border-green-100,
+    [data-theme] .border-green-300 { border-color: var(--success-border); }
+
+    /* Warning (amber / yellow / orange family) */
+    [data-theme] .bg-amber-50,
+    [data-theme] .hover\:bg-amber-50:hover { background-color: var(--warning-surface-weak); }
+    [data-theme] .bg-amber-100,
+    [data-theme] .bg-orange-100 { background-color: var(--warning-surface); }
+    [data-theme] .bg-yellow-500 { background-color: var(--warning-solid); }
+    [data-theme] .bg-yellow-500.text-white { color: var(--on-warning-solid); }
+    [data-theme] .text-amber-100,
+    [data-theme] .text-amber-600,
+    [data-theme] .text-amber-700,
+    [data-theme] .text-orange-700,
+    [data-theme] .text-yellow-500 { color: var(--warning-text); }
+    [data-theme] .border-amber-200 { border-color: var(--warning-border); }
+
+    /* ===== Component classes built with Tailwind's @apply, or plain CSS,
+       instead of Tailwind utility classes on the element - @apply bakes
+       its colors into the component rule itself at build time, so none
+       of the generic class-name mapping above can reach them. Each needs
+       its own explicit override. ===== */
+    [data-theme] .toolbar-btn { background-color: var(--surface-1); border-color: var(--border-default); color: var(--text-secondary); }
+    [data-theme] .toolbar-btn:hover { background-color: var(--surface-3); border-color: var(--border-strong); }
+    [data-theme] .toolbar-btn:active { background-color: var(--surface-4); }
+    [data-theme] .toolbar-btn:disabled:hover { background-color: var(--surface-1); border-color: var(--border-default); }
+    [data-theme] .toolbar-divider { background-color: var(--border-default); }
+    [data-theme] .prop-label { color: var(--text-tertiary); }
+    [data-theme] .prop-input { background-color: var(--surface-2); border-color: var(--border-default); color: var(--text-primary); }
+    [data-theme] .prop-input:focus { box-shadow: 0 0 0 2px var(--accent-ring); }
+    @media (max-width: 767px) {
+      [data-theme] .prop-input { background-color: var(--surface-3); border-color: var(--border-strong); }
+      [data-theme] .prop-input:focus { background-color: var(--surface-2); }
+    }
+    [data-theme] .mobile-toolbar { background-color: var(--surface-1); border-color: var(--border-default); }
+    [data-theme] .mobile-tool-btn { color: var(--text-secondary); }
+    [data-theme] .mobile-tool-btn:active { background-color: var(--surface-3); }
+    [data-theme] .mobile-tool-btn.danger { color: var(--danger-text); }
+    [data-theme] .mobile-divider { background-color: var(--border-default); }
+    [data-theme] .mobile-props-panel { background-color: var(--surface-1); }
+    [data-theme] .mobile-props-header { border-color: var(--border-default); }
+
+    /* ===== Escape hatch: self-contained banners keep their own fixed light colors ===== */
+    .theme-fixed, .theme-fixed * {
+      --surface-1: #ffffff; --surface-2: #f9fafb; --surface-3: #f3f4f6; --surface-4: #e5e7eb;
+      --text-primary: #111827; --text-secondary: #4b5563; --text-tertiary: #6b7280; --text-disabled: #d1d5db;
+      --border-subtle: #f3f4f6; --border-default: #e5e7eb;
+      --accent-text: #1d4ed8; --accent-surface-weak: #eff6ff; --accent-surface: #dbeafe;
+      --accent-solid: #2563eb; --accent-solid-hover: #1d4ed8; --on-accent-solid: #ffffff;
+      --accent-border: #93c5fd; --accent-ring: #60a5fa;
+    }
+
+    /* ===== Theme palettes ===== */
+    /* Material Dark - Google Material Design's dark theme conventions:
+       a near-black base (#121212) with progressively lighter "elevated"
+       surfaces, and desaturated/light-toned accent colors (per Material's
+       own dark-theme guidance, saturated colors are reduced to keep glare
+       and contrast in check against the dark base). */
+    [data-theme="material-dark"] {
+      --surface-0: #121212; --surface-1: #1e1e1e; --surface-2: #242424; --surface-3: #2a2a2a; --surface-4: #333333;
+      --surface-strong: #5c5c5c;
+      --text-primary: #e6e6e6; --text-secondary: #b0b0b0; --text-tertiary: #9e9e9e; --text-disabled: #5c5c5c;
+      --border-subtle: #262626; --border-default: #3a3a3a; --border-strong: #525252;
+      --accent-solid: #2962ff; --accent-solid-hover: #1e4fd6; --on-accent-solid: #ffffff; --accent-text: #90caf9;
+      --accent-surface-weak: #16233d; --accent-surface: #1e335c; --accent-border: #2f4c85; --accent-ring: #5c8ee0;
+      --purple-solid: #7c4dff; --purple-solid-hover: #6a3df0; --purple-solid-active: #5a30e0; --on-purple-solid: #ffffff;
+      --purple-text: #cbb2ff; --purple-surface-weak: #241b3d; --purple-surface: #30244f; --purple-border: #4b3b7a;
+      --success-solid: #4caf50; --on-success-solid: #0b2e13; --success-text: #81c995;
+      --success-surface-weak: #0f2912; --success-surface: #163a19; --success-border: #2e5e31;
+      --danger-solid: #d93025; --on-danger-solid: #ffffff; --danger-text: #f28b82;
+      --danger-surface-weak: #30140f; --danger-border: #5c2b22;
+      --warning-solid: #f9ab00; --on-warning-solid: #2b1d00; --warning-text: #fdd663;
+      --warning-surface-weak: #2e2308; --warning-surface: #3a2c0a; --warning-border: #594411;
+    }
+
+    /* OLED Dark - true-black base (saves power on OLED screens, and is the
+       defining trait of this category of theme) with vivid, highly
+       saturated accents, since pure black can carry much more color
+       intensity before anything looks washed out. Elevated surfaces step
+       up from #000 rather than down, since there's no darker tier below it. */
+    [data-theme="oled-dark"] {
+      --surface-0: #000000; --surface-1: #0d0d0d; --surface-2: #121212; --surface-3: #1a1a1a; --surface-4: #262626;
+      --surface-strong: #595959;
+      --text-primary: #ededed; --text-secondary: #a8a8a8; --text-tertiary: #8f8f8f; --text-disabled: #4d4d4d;
+      --border-subtle: #1a1a1a; --border-default: #2e2e2e; --border-strong: #454545;
+      --accent-solid: #0277bd; --accent-solid-hover: #025f97; --on-accent-solid: #ffffff; --accent-text: #4fc3f7;
+      --accent-surface-weak: #081c26; --accent-surface: #0e2c3b; --accent-border: #19526d; --accent-ring: #4fc3f7;
+      --purple-solid: #6200ea; --purple-solid-hover: #5200c7; --purple-solid-active: #4500aa; --on-purple-solid: #ffffff;
+      --purple-text: #b388ff; --purple-surface-weak: #1a0a33; --purple-surface: #26124a; --purple-border: #452086;
+      --success-solid: #00c853; --on-success-solid: #04210c; --success-text: #69f0ae;
+      --success-surface-weak: #052010; --success-surface: #0a2e17; --success-border: #14512a;
+      --danger-solid: #c62828; --on-danger-solid: #ffffff; --danger-text: #ff8a80;
+      --danger-surface-weak: #2a0c0c; --danger-border: #5c1a1a;
+      --warning-solid: #ffab00; --on-warning-solid: #2b1d00; --warning-text: #ffd740;
+      --warning-surface-weak: #2e2308; --warning-surface: #3a2c0a; --warning-border: #594411;
+    }
+
+    /* Dracula - the official palette (draculatheme.com): background
+       #282a36, foreground #f8f8f2, comment #6272a4, and the signature
+       cyan/green/orange/pink/purple/red/yellow accent set. Accent colors
+       here are light/pastel by design, so solid-filled buttons use dark
+       text on top instead of white. */
+    [data-theme="dracula"] {
+      --surface-0: #20212c; --surface-1: #282a36; --surface-2: #2f3140; --surface-3: #383a4a; --surface-4: #44475a;
+      --surface-strong: #6272a4;
+      --text-primary: #f8f8f2; --text-secondary: #c7c9db; --text-tertiary: #b4b7cd; --text-disabled: #6272a4;
+      --border-subtle: #383a4a; --border-default: #44475a; --border-strong: #6272a4;
+      --accent-solid: #8be9fd; --accent-solid-hover: #6fd8ee; --on-accent-solid: #13161f; --accent-text: #8be9fd;
+      --accent-surface-weak: #1c2b30; --accent-surface: #203640; --accent-border: #3a6670; --accent-ring: #8be9fd;
+      --purple-solid: #bd93f9; --purple-solid-hover: #a97ff5; --purple-solid-active: #9568ef; --on-purple-solid: #13161f;
+      --purple-text: #bd93f9; --purple-surface-weak: #241d30; --purple-surface: #2d2340; --purple-border: #513f6e;
+      --success-solid: #50fa7b; --on-success-solid: #13161f; --success-text: #50fa7b;
+      --success-surface-weak: #16291d; --success-surface: #1b3523; --success-border: #2f5c3b;
+      --danger-solid: #ff5555; --on-danger-solid: #13161f; --danger-text: #ff6e6e;
+      --danger-surface-weak: #2e1a1a; --danger-border: #5c3030;
+      --warning-solid: #ffb86c; --on-warning-solid: #13161f; --warning-text: #ffb86c;
+      --warning-surface-weak: #2e2010; --warning-surface: #3a2814; --warning-border: #5c4320;
+    }
+
+    /* Nord - the official arctic/bluish palette (nordtheme.com): nord0-3
+       for dark backgrounds, nord4-6 for text, and the "frost"/"aurora"
+       accent groups. Frost blue (nord10) and aurora red (nord11) are
+       darkened slightly from their canonical values specifically where
+       they sit behind light text on a solid button - the canonical
+       values read beautifully as text-on-dark but are too mid-toned for
+       light-text-on-solid at AA contrast. */
+    [data-theme="nord"] {
+      --surface-0: #272c36; --surface-1: #2e3440; --surface-2: #343a46; --surface-3: #3b4252; --surface-4: #434c5e;
+      --surface-strong: #4c566a;
+      --text-primary: #eceff4; --text-secondary: #d8dee9; --text-tertiary: #b4bdcf; --text-disabled: #4c566a;
+      --border-subtle: #3b4252; --border-default: #4c566a; --border-strong: #5e6b84;
+      --accent-solid: #405c84; --accent-solid-hover: #35507a; --on-accent-solid: #eceff4; --accent-text: #88c0d0;
+      --accent-surface-weak: #202b36; --accent-surface: #263340; --accent-border: #3e5468; --accent-ring: #88c0d0;
+      --purple-solid: #b48ead; --purple-solid-hover: #a67c9d; --purple-solid-active: #986c8d; --on-purple-solid: #19121c;
+      --purple-text: #d0b3cc; --purple-surface-weak: #26222c; --purple-surface: #332c38; --purple-border: #5c4d58;
+      --success-solid: #a3be8c; --on-success-solid: #121b0a; --success-text: #c3d6aa;
+      --success-surface-weak: #1e2718; --success-surface: #28331f; --success-border: #44573a;
+      --danger-solid: #90424a; --on-danger-solid: #eceff4; --danger-text: #e8a3a9;
+      --danger-surface-weak: #2a1a1c; --danger-border: #5c3238;
+      --warning-solid: #ebcb8b; --on-warning-solid: #2b2208; --warning-text: #ebcb8b;
+      --warning-surface-weak: #2e2918; --warning-surface: #3a3420; --warning-border: #5c5230;
+    }
+
+    /* ===== Page-level backdrop + a few non-Tailwind-class surfaces =====
+       body also carries the literal `.bg-gray-100` class, so this needs
+       one extra selector component (the element type) to outrank the
+       generic `.bg-gray-100` -> --surface-3 mapping above and actually
+       land on the dedicated, slightly-more-recessed page tier. */
+    [data-theme] body.bg-gray-100 { background-color: var(--surface-0); color: var(--text-primary); }
+    [data-theme] #mobile-header,
+    [data-theme] .desktop-only.border-b,
+    [data-theme] #mobile-toolbar,
+    [data-theme] #mobile-props-panel { background-color: var(--surface-1); border-color: var(--border-default); }
+    [data-theme] select,
+    [data-theme] input[type="text"],
+    [data-theme] input[type="number"] { color-scheme: dark; }
+    [data-theme] ::placeholder { color: var(--text-tertiary); opacity: 1; }
+    [data-theme] #status-dot-standalone,
+    [data-theme] #status-dot,
+    [data-theme] #mobile-status-dot { background-color: var(--surface-strong); }
   </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
@@ -416,6 +752,11 @@
       </div>
 
       <div class="flex items-center gap-1.5 sm:gap-3">
+        <!-- Appearance -->
+        <button id="theme-btn" class="p-1.5 sm:p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors" title="Appearance">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>
+        </button>
+
         <!-- Connection -->
         <div class="flex items-center gap-1 sm:gap-2 text-sm">
           <select id="conn-type" class="hidden sm:block px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none text-xs sm:text-sm">
@@ -477,25 +818,25 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/></svg>
           <span class="hidden sm:inline">Shape</span>
         </button>
-        <div id="shape-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] py-1 min-w-[120px]">
-          <button data-shape="rectangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" stroke-width="2"/></svg>
-            Rectangle
-          </button>
-          <button data-shape="ellipse" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6" stroke-width="2"/></svg>
-            Ellipse
-          </button>
-          <button data-shape="triangle" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 5l8 14H4z"/></svg>
-            Triangle
-          </button>
-          <button data-shape="line" class="shape-option w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12" stroke-width="2"/></svg>
-            Line
-          </button>
-        </div>
       </div>
+
+      <!-- Grid splitter -->
+      <button id="grid-btn" class="toolbar-btn" title="Split into Rows/Columns">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1" stroke-width="2"/><path stroke-width="2" d="M4 12h16M12 4v16"/></svg>
+        <span class="hidden sm:inline">Grid</span>
+      </button>
+
+      <!-- Symbols -->
+      <button id="symbol-btn" class="toolbar-btn" title="Add Symbol">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.975-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+        <span class="hidden sm:inline">Symbols</span>
+      </button>
+
+      <!-- Ornaments -->
+      <button id="ornament-btn" class="toolbar-btn" title="Add Corner Ornament">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13V5a1 1 0 011-1h8m-9 9h9m0 0a4 4 0 004-4V5"/></svg>
+        <span class="hidden sm:inline">Ornaments</span>
+      </button>
 
       <div class="toolbar-divider"></div>
 
@@ -578,11 +919,11 @@
 
       <!-- Elements list -->
       <div class="relative flex items-center">
-        <button id="elements-btn" class="toolbar-btn toolbar-btn-menu" title="Elements List">
+        <button id="elements-btn" class="toolbar-btn toolbar-btn-menu" title="Layers">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-          <span class="hidden sm:inline">Elements</span>
+          <span class="hidden sm:inline">Layers</span>
         </button>
-        <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] py-1 min-w-[180px] max-h-[300px] overflow-y-auto">
+        <div id="elements-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] py-1 min-w-[240px] max-h-[320px] overflow-y-auto">
           <div id="elements-list" class="text-sm">
             <div class="px-3 py-2 text-gray-400 text-center">No elements</div>
           </div>
@@ -600,7 +941,7 @@
   </div>
 
   <!-- Multi-Label Zone Toolbar (hidden by default, desktop only) -->
-  <div id="zone-toolbar" class="hidden desktop-only bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 px-2 sm:px-4 py-2 flex-shrink-0">
+  <div id="zone-toolbar" class="theme-fixed hidden desktop-only bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 px-2 sm:px-4 py-2 flex-shrink-0">
     <div class="flex items-center gap-2 sm:gap-4 flex-wrap">
       <!-- Zone Info -->
       <div class="flex items-center gap-2">
@@ -645,7 +986,7 @@
   <main class="flex-1 flex overflow-hidden relative">
     <!-- Canvas Area -->
     <div class="flex-1 flex items-center justify-center p-3 sm:p-6 overflow-auto relative">
-      <div id="canvas-container" class="rounded-lg shadow-inner transition-transform origin-center" style="touch-action: none;">
+      <div id="canvas-container" class="rounded-lg shadow-inner origin-center" style="touch-action: none;">
         <canvas id="preview-canvas" class="cursor-crosshair rounded-lg" style="touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;"></canvas>
       </div>
 
@@ -879,10 +1220,10 @@
               <label class="text-[10px] text-gray-400 uppercase tracking-wide">Color</label>
               <div class="flex border border-gray-200 rounded overflow-hidden">
                 <button data-color="black" class="color-btn flex-1 py-1 hover:bg-gray-50" title="Black text">
-                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-black"></span>
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300" style="background-color: #000;"></span>
                 </button>
                 <button data-color="white" class="color-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="White text">
-                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-white"></span>
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300" style="background-color: #fff;"></span>
                 </button>
               </div>
             </div>
@@ -893,10 +1234,10 @@
                   <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300" style="background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 4px 4px; background-position: 0 0, 0 2px, 2px -2px, -2px 0px;"></span>
                 </button>
                 <button data-bg="white" class="bg-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="White">
-                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-white"></span>
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300" style="background-color: #fff;"></span>
                 </button>
                 <button data-bg="black" class="bg-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Black">
-                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300 bg-black"></span>
+                  <span class="block w-3 h-3 mx-auto rounded-sm border border-gray-300" style="background-color: #000;"></span>
                 </button>
               </div>
             </div>
@@ -1048,6 +1389,24 @@
         <!-- QR Properties -->
         <div id="props-qr" class="hidden space-y-2">
           <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Type</label>
+            <select id="prop-qr-type" class="w-full px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
+              <option value="text">Text / URL (plain)</option>
+              <option value="url">Website URL</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone number</option>
+              <option value="sms">SMS</option>
+              <option value="wifi">Wi-Fi network</option>
+              <option value="vcard">Contact (vCard)</option>
+              <option value="mecard">Contact (simple)</option>
+              <option value="location">Location</option>
+            </select>
+          </div>
+
+          <!-- Dynamically populated per qrType, see renderQRTypeFields() -->
+          <div id="qr-type-fields" class="space-y-2"></div>
+
+          <div id="qr-data-field-wrap">
             <div class="flex items-center justify-between mb-1">
               <label class="text-[10px] text-gray-400 uppercase tracking-wide">Data</label>
               <div class="relative">
@@ -1064,6 +1423,7 @@
               </div>
             </div>
             <input type="text" id="prop-qr-data" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Enter URL or text">
+            <p id="qr-data-computed-note" class="hidden text-[10px] text-gray-400 mt-1">Computed from the fields above. Editing this directly switches back to plain text.</p>
           </div>
         </div>
 
@@ -1076,6 +1436,11 @@
               <option value="rectangle">Rectangle</option>
               <option value="ellipse">Ellipse</option>
               <option value="triangle">Triangle</option>
+              <option value="diamond">Diamond</option>
+              <option value="pentagon">Pentagon</option>
+              <option value="hexagon">Hexagon</option>
+              <option value="octagon">Octagon</option>
+              <option value="star">Star</option>
               <option value="line">Line</option>
             </select>
           </div>
@@ -1103,10 +1468,10 @@
               <div class="flex border border-gray-200 rounded overflow-hidden">
                 <button data-stroke="none" class="stroke-btn flex-1 py-1 hover:bg-gray-50 text-[10px]" title="No stroke">None</button>
                 <button data-stroke="black" class="stroke-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="Black stroke">
-                  <span class="block w-3 h-3 mx-auto rounded-sm border-2 border-black bg-transparent"></span>
+                  <span class="block w-3 h-3 mx-auto rounded-sm" style="border: 2px solid #000; background-color: transparent;"></span>
                 </button>
                 <button data-stroke="white" class="stroke-btn flex-1 py-1 hover:bg-gray-50 border-l border-gray-200" title="White stroke">
-                  <span class="block w-3 h-3 mx-auto rounded-sm border-2 border-white bg-gray-400"></span>
+                  <span class="block w-3 h-3 mx-auto rounded-sm" style="border: 2px solid #fff; background-color: #9ca3af;"></span>
                 </button>
               </div>
             </div>
@@ -1479,7 +1844,7 @@
   <div id="info-dialog" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-[600px] max-w-full overflow-hidden">
       <!-- Header -->
-      <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 text-white relative">
+      <div class="theme-fixed bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 text-white relative">
         <button id="info-close" class="absolute top-3 right-3 text-white/80 hover:text-white transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
@@ -1665,7 +2030,7 @@
       </div>
 
       <div class="p-4 flex justify-center">
-        <canvas id="full-preview-canvas" class="bg-white shadow-lg rounded max-w-full"></canvas>
+        <canvas id="full-preview-canvas" class="shadow-lg rounded max-w-full" style="background-color: #fff;"></canvas>
       </div>
 
       <div class="p-4 border-t border-gray-200 flex items-center justify-between">
@@ -1692,6 +2057,277 @@
 
   <!-- Toast Container -->
   <div id="toast-container" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <!-- Shape Picker Modal (shared by desktop "Shape" button and mobile "Shape" button) -->
+  <div id="shape-picker-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[380px] max-w-full overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <h3 class="text-sm font-semibold text-gray-900">Add Shape</h3>
+        <button id="shape-picker-close" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-4 grid grid-cols-4 gap-1.5">
+        <button data-shape="rectangle" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" stroke-width="2"/></svg>
+          <span class="text-[10px] text-gray-600">Rectangle</span>
+        </button>
+        <button data-shape="rectangle" data-preset-size="60" data-label="Square" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1" stroke-width="2"/></svg>
+          <span class="text-[10px] text-gray-600">Square</span>
+        </button>
+        <button data-shape="ellipse" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6" stroke-width="2"/></svg>
+          <span class="text-[10px] text-gray-600">Ellipse</span>
+        </button>
+        <button data-shape="ellipse" data-preset-size="60" data-label="Circle" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="2"/></svg>
+          <span class="text-[10px] text-gray-600">Circle</span>
+        </button>
+        <button data-shape="triangle" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 5l8 14H4z"/></svg>
+          <span class="text-[10px] text-gray-600">Triangle</span>
+        </button>
+        <button data-shape="diamond" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 3 L21 12 L12 21 L3 12 Z"/></svg>
+          <span class="text-[10px] text-gray-600">Diamond</span>
+        </button>
+        <button data-shape="pentagon" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 3 L20.6 9.2 L17.3 19.3 L6.7 19.3 L3.4 9.2 Z"/></svg>
+          <span class="text-[10px] text-gray-600">Pentagon</span>
+        </button>
+        <button data-shape="hexagon" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M16.5 4.2 L21 12 L16.5 19.8 L7.5 19.8 L3 12 L7.5 4.2 Z"/></svg>
+          <span class="text-[10px] text-gray-600">Hexagon</span>
+        </button>
+        <button data-shape="octagon" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M15.4 3.7 L20.3 8.6 L20.3 15.4 L15.4 20.3 L8.6 20.3 L3.7 15.4 L3.7 8.6 L8.6 3.7 Z"/></svg>
+          <span class="text-[10px] text-gray-600">Octagon</span>
+        </button>
+        <button data-shape="star" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linejoin="round" d="M12 2 L14.4 8.8 L21.5 8.9 L15.8 13.2 L17.9 20.1 L12 16 L6.1 20.1 L8.2 13.2 L2.5 8.9 L9.7 8.8 Z"/></svg>
+          <span class="text-[10px] text-gray-600">Star</span>
+        </button>
+        <button data-shape="line" class="shape-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12" stroke-width="2"/></svg>
+          <span class="text-[10px] text-gray-600">Line</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Symbol Picker Modal (shared by desktop and mobile "Symbols" button) -->
+  <div id="symbol-picker-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[380px] max-w-full max-h-[80vh] overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
+        <h3 class="text-sm font-semibold text-gray-900">Add Symbol</h3>
+        <button id="symbol-picker-close" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-4 grid grid-cols-5 gap-1.5 overflow-y-auto">
+        <button data-symbol="star" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="m233-120 65-281L80-590l288-25 112-265 112 265 288 25-218 189 65 281-247-149-247 149Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Star</span>
+        </button>
+        <button data-symbol="favorite" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Heart</span>
+        </button>
+        <button data-symbol="check_circle" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Check</span>
+        </button>
+        <button data-symbol="cancel" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="m336-280 144-144 144 144 56-56-144-144 144-144-56-56-144 144-144-144-56 56 144 144-144 144 56 56ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">X / Cancel</span>
+        </button>
+        <button data-symbol="warning" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="m40-120 440-760 440 760H40Zm468.5-131.5Q520-263 520-280t-11.5-28.5Q497-320 480-320t-28.5 11.5Q440-297 440-280t11.5 28.5Q463-240 480-240t28.5-11.5ZM440-360h80v-200h-80v200Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Warning</span>
+        </button>
+        <button data-symbol="info" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M440-280h80v-240h-80v240Zm68.5-331.5Q520-623 520-640t-11.5-28.5Q497-680 480-680t-28.5 11.5Q440-657 440-640t11.5 28.5Q463-600 480-600t28.5-11.5ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Info</span>
+        </button>
+        <button data-symbol="home" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M160-120v-480l320-240 320 240v480H560v-280H400v280H160Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Home</span>
+        </button>
+        <button data-symbol="flag" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M200-120v-680h360l16 80h224v400H520l-16-80H280v280h-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Flag</span>
+        </button>
+        <button data-symbol="notifications" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M160-200v-80h80v-280q0-83 50-147.5T420-792v-28q0-25 17.5-42.5T480-880q25 0 42.5 17.5T540-820v28q80 20 130 84.5T720-560v280h80v80H160ZM480-80q-33 0-56.5-23.5T400-160h160q0 33-23.5 56.5T480-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Bell</span>
+        </button>
+        <button data-symbol="redeem" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M160-280v80h640v-80H160Zm0-440h88q-5-9-6.5-19t-1.5-21q0-50 35-85t85-35q30 0 55.5 15.5T460-826l20 26 20-26q18-24 44-39t56-15q50 0 85 35t35 85q0 11-1.5 21t-6.5 19h88q33 0 56.5 23.5T880-640v440q0 33-23.5 56.5T800-120H160q-33 0-56.5-23.5T80-200v-440q0-33 23.5-56.5T160-720Zm0 320h640v-240H596l84 114-64 46-136-184-136 184-64-46 82-114H160v240Zm228.5-331.5Q400-743 400-760t-11.5-28.5Q377-800 360-800t-28.5 11.5Q320-777 320-760t11.5 28.5Q343-720 360-720t28.5-11.5ZM600-720q17 0 28.5-11.5T640-760q0-17-11.5-28.5T600-800q-17 0-28.5 11.5T560-760q0 17 11.5 28.5T600-720Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Gift</span>
+        </button>
+        <button data-symbol="wb_sunny" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M440-800v-120h80v120h-80Zm0 760v-120h80v120h-80Zm360-400v-80h120v80H800Zm-760 0v-80h120v80H40Zm708-252-56-56 70-72 58 58-72 70ZM198-140l-58-58 72-70 56 56-70 72Zm564 0-70-72 56-56 72 70-58 58ZM212-692l-72-70 58-58 70 72-56 56Zm98 382q-70-70-70-170t70-170q70-70 170-70t170 70q70 70 70 170t-70 170q-70 70-170 70t-170-70Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Sun</span>
+        </button>
+        <button data-symbol="nightlight" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M560-80q-82 0-155-31.5t-127.5-86Q223-252 191.5-325T160-480.5q0-82.5 31.5-155t86-127Q332-817 405-848.5T560-880q54 0 105 14t95 40q-91 53-145.5 143.5T560-480q0 112 54.5 202.5T760-134q-44 26-95 40T560-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Moon</span>
+        </button>
+        <button data-symbol="cloud" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H260Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Cloud</span>
+        </button>
+        <button data-symbol="ac_unit" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M440-80v-166L310-118l-56-56 186-186v-80h-80L174-254l-56-56 128-130H80v-80h166L118-650l56-56 186 186h80v-80L254-786l56-56 130 128v-166h80v166l130-128 56 56-186 186v80h80l186-186 56 56-128 130h166v80H714l128 130-56 56-186-186h-80v80l186 186-56 56-130-128v166h-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Snowflake</span>
+        </button>
+        <button data-symbol="local_fire_department" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M160-400q0-105 50-187t110-138q60-56 110-85.5l50-29.5v132q0 37 25 58.5t56 21.5q17 0 32.5-7t28.5-23l18-22q72 42 116 116.5T800-400q0 88-43 160.5T644-125q17-24 26.5-52.5T680-238q0-40-15-75.5T622-377L480-516 339-377q-29 29-44 64t-15 75q0 32 9.5 60.5T316-125q-70-42-113-114.5T160-400Zm320-4 85 83q17 17 26 38t9 45q0 49-35 83.5T480-120q-50 0-85-34.5T360-238q0-23 9-44.5t26-38.5l85-83Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Flame</span>
+        </button>
+        <button data-symbol="forest" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M520-80v-120h160v120H520Zm-240 0v-160H0l154-240H80l280-400 280 400h-74l155 240H440v160H280Zm490-160L640-440h77L505-743l95-137 280 400h-74l154 240H770Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Tree</span>
+        </button>
+        <button data-symbol="pets" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M180-475q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29Zm109-189q-29-29-29-71t29-71q29-29 71-29t71 29q29 29 29 71t-29 71q-29 29-71 29t-71-29Zm240 0q-29-29-29-71t29-71q29-29 71-29t71 29q29 29 29 71t-29 71q-29 29-71 29t-71-29Zm251 189q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM266-75q-45 0-75.5-34.5T160-191q0-52 35.5-91t70.5-77q29-31 50-67.5t50-68.5q22-26 51-43t63-17q34 0 63 16t51 42q28 32 49.5 69t50.5 69q35 38 70.5 77t35.5 91q0 47-30.5 81.5T694-75q-54 0-107-9t-107-9q-54 0-107 9t-107 9Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Paw</span>
+        </button>
+        <button data-symbol="anchor" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M355-102q-64-22-116-60t-85.5-89Q120-302 120-360v-120l160 120-62 62q29 51 92 88t130 47v-357H320v-80h120v-47q-35-13-57.5-43.5T360-760q0-50 35-85t85-35q50 0 85 35t35 85q0 39-22.5 69.5T520-647v47h120v80H520v357q67-10 130-47t92-88l-62-62 160-120v120q0 58-33.5 109T721-162q-52 38-116 60T480-80q-61 0-125-22Zm125-618q17 0 28.5-11.5T520-760q0-17-11.5-28.5T480-800q-17 0-28.5 11.5T440-760q0 17 11.5 28.5T480-720Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Anchor</span>
+        </button>
+        <button data-symbol="music_note" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M287-167q-47-47-47-113t47-113q47-47 113-47 23 0 42.5 5.5T480-418v-422h240v160H560v400q0 66-47 113t-113 47q-66 0-113-47Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Music Note</span>
+        </button>
+        <button data-symbol="photo_camera" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M480-260q75 0 127.5-52.5T660-440q0-75-52.5-127.5T480-620q-75 0-127.5 52.5T300-440q0 75 52.5 127.5T480-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM160-120q-33 0-56.5-23.5T80-200v-480q0-33 23.5-56.5T160-760h126l74-80h240l74 80h126q33 0 56.5 23.5T880-680v480q0 33-23.5 56.5T800-120H160Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Camera</span>
+        </button>
+        <button data-symbol="bolt" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="m320-80 40-280H160l360-520h80l-40 320h240L400-80h-80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Lightning</span>
+        </button>
+        <button data-symbol="lock" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M240-80q-33 0-56.5-23.5T160-160v-400q0-33 23.5-56.5T240-640h40v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h40q33 0 56.5 23.5T800-560v400q0 33-23.5 56.5T720-80H240Zm296.5-223.5Q560-327 560-360t-23.5-56.5Q513-440 480-440t-56.5 23.5Q400-393 400-360t23.5 56.5Q447-280 480-280t56.5-23.5ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Lock</span>
+        </button>
+        <button data-symbol="key" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M365-395q35-35 35-85t-35-85q-35-35-85-35t-85 35q-35 35-35 85t35 85q35 35 85 35t85-35Zm-85 155q-100 0-170-70T40-480q0-100 70-170t170-70q81 0 141.5 46T506-560h335l79 79-140 160-100-79-80 80-80-80h-14q-25 72-87 116t-139 44Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Key</span>
+        </button>
+        <button data-symbol="skull" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M420-330h120l-60-120-60 120Zm-80-110q33 0 56.5-23.5T420-520q0-33-23.5-56.5T340-600q-33 0-56.5 23.5T260-520q0 33 23.5 56.5T340-440Zm280 0q33 0 56.5-23.5T700-520q0-33-23.5-56.5T620-600q-33 0-56.5 23.5T540-520q0 33 23.5 56.5T620-440ZM240-80v-170q-39-17-68.5-45.5t-50-64.5q-20.5-36-31-77T80-520q0-158 112-259t288-101q176 0 288 101t112 259q0 42-10.5 83t-31 77q-20.5 36-50 64.5T720-250v170H600v-80h-80v80h-80v-80h-80v80H240Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Skull</span>
+        </button>
+        <button data-symbol="thumb_up" class="symbol-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 -960 960 960"><path d="M720-120H320v-520l280-280 50 50q7 7 11.5 19t4.5 23v14l-44 174h218q32 0 56 24t24 56v80q0 7-1.5 15t-4.5 15L794-168q-9 20-30 34t-44 14ZM240-640v520H80v-520h160Z"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Thumbs Up</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ornament Picker Modal (shared by desktop and mobile "Ornaments" button) -->
+  <div id="ornament-picker-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[340px] max-w-full overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <h3 class="text-sm font-semibold text-gray-900">Add Corner Ornament</h3>
+        <button id="ornament-picker-close" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="px-5 pt-3 text-xs text-gray-500">Placed in the top-left - rotate the element 90&deg;/180&deg;/270&deg; to mirror it into any other corner.</p>
+      <div class="p-4 grid grid-cols-5 gap-1.5">
+        <button data-ornament="bracket" class="ornament-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-8 h-8 text-gray-700" viewBox="0 0 100 100"><path d="M10 40 L10 10 L40 10" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M22 32 L22 22 L32 22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Bracket</span>
+        </button>
+        <button data-ornament="dots" class="ornament-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-8 h-8 text-gray-700" viewBox="0 0 100 100"><circle cx="10" cy="90" r="4" fill="currentColor"/><circle cx="10" cy="70" r="4" fill="currentColor"/><circle cx="10" cy="50" r="4" fill="currentColor"/><circle cx="10" cy="30" r="4" fill="currentColor"/><circle cx="10" cy="10" r="4" fill="currentColor"/><circle cx="30" cy="10" r="4" fill="currentColor"/><circle cx="50" cy="10" r="4" fill="currentColor"/><circle cx="70" cy="10" r="4" fill="currentColor"/><circle cx="90" cy="10" r="4" fill="currentColor"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Dot Border</span>
+        </button>
+        <button data-ornament="diamonds" class="ornament-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-8 h-8 text-gray-700" viewBox="0 0 100 100"><path d="M10 2 L18 10 L10 18 L2 10 Z" fill="currentColor"/><path d="M34 2 L42 10 L34 18 L26 10 Z" fill="currentColor"/><path d="M58 2 L66 10 L58 18 L50 10 Z" fill="currentColor"/><path d="M10 26 L18 34 L10 42 L2 34 Z" fill="currentColor"/><path d="M10 50 L18 58 L10 66 L2 58 Z" fill="currentColor"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Diamond Border</span>
+        </button>
+        <button data-ornament="vine" class="ornament-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-8 h-8 text-gray-700" viewBox="0 0 100 100"><path d="M6 94 C6 60 10 20 48 10 C68 5 82 16 80 30 C78 44 60 46 55 34 C51 24 60 17 70 20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M26 58 C18 52 17 40 26 34 C35 28 45 35 42 46 C40 54 32 58 26 58Z" fill="currentColor"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Vine</span>
+        </button>
+        <button data-ornament="laurel" class="ornament-picker-option flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200">
+          <svg class="w-8 h-8 text-gray-700" viewBox="0 0 100 100"><path d="M14 86 Q26 76 20 60 Q36 66 30 82 Q24 92 14 86Z" fill="currentColor"/><path d="M36 64 Q48 54 42 38 Q58 44 52 60 Q46 70 36 64Z" fill="currentColor"/><path d="M58 42 Q70 32 64 16 Q80 22 74 38 Q68 48 58 42Z" fill="currentColor"/></svg>
+          <span class="text-[9px] text-gray-600 leading-tight text-center">Laurel Sprig</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Theme Picker Modal (shared by desktop and mobile "Appearance" button) -->
+  <div id="theme-picker-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[360px] max-w-full overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <h3 class="text-sm font-semibold text-gray-900">Appearance</h3>
+        <button id="theme-picker-close" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="px-5 pt-3 text-xs text-gray-500">The label canvas always stays white and black - it's a preview of the physical printed label. This only changes the app's own colors.</p>
+      <div id="theme-picker-options" class="p-4 space-y-1.5"></div>
+    </div>
+  </div>
+
+  <!-- Layers Modal (mobile - desktop uses the #elements-dropdown in the toolbar) -->
+  <div id="layers-modal" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[380px] max-w-full max-h-[80vh] overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
+        <h3 class="text-sm font-semibold text-gray-900">Layers</h3>
+        <button id="layers-modal-close" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="mobile-elements-list" class="text-sm overflow-y-auto flex-1">
+        <div class="px-3 py-2 text-gray-400 text-center">No elements</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grid Splitter Dialog -->
+  <div id="grid-dialog" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-[340px] max-w-full overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <h3 class="text-sm font-semibold text-gray-900">Split into Rows &amp; Columns</h3>
+        <button id="grid-dialog-close" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <p class="text-xs text-gray-500">Adds divider lines to the label so you can cut it into equal rectangles - e.g. a 40&times;30mm label split 2&times;2 gives four 20&times;15mm pieces.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Rows</label>
+            <input id="grid-rows" type="number" min="1" max="20" value="1" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-400 uppercase tracking-wide">Columns</label>
+            <input id="grid-cols" type="number" min="1" max="20" value="1" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
+          </div>
+        </div>
+        <div>
+          <label class="text-[10px] text-gray-400 uppercase tracking-wide">Gap between pieces (mm)</label>
+          <input id="grid-gap" type="number" min="0" max="20" step="0.5" value="0" class="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <p class="text-[10px] text-gray-400 mt-1">0 = a single cut line. Above 0 = two lines with a blank margin between them.</p>
+        </div>
+        <div id="grid-preview-note" class="text-xs text-gray-600 bg-gray-50 rounded-lg p-2"></div>
+        <div class="flex gap-2 pt-1">
+          <button id="grid-dialog-cancel" class="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+          <button id="grid-dialog-apply" class="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Add Lines</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Keyboard Shortcuts Modal -->
   <div id="shortcuts-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -2016,6 +2652,42 @@
 
           <hr class="my-3 border-gray-200">
 
+          <button id="mobile-layers-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+            </svg>
+            Layers
+          </button>
+          <button id="mobile-grid-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="4" y="4" width="16" height="16" rx="1" stroke-width="2"/><path stroke-width="2" d="M4 12h16M12 4v16"/>
+            </svg>
+            Split into Rows/Columns
+          </button>
+          <button id="mobile-symbol-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.975-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+            </svg>
+            Symbols
+          </button>
+          <button id="mobile-ornament-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13V5a1 1 0 011-1h8m-9 9h9m0 0a4 4 0 004-4V5"/>
+            </svg>
+            Ornaments
+          </button>
+
+          <hr class="my-3 border-gray-200">
+
+          <button id="mobile-theme-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+            </svg>
+            Appearance
+          </button>
+
+          <hr class="my-3 border-gray-200">
+
           <button id="mobile-print-settings-btn" class="w-full px-3 py-2.5 text-left text-sm hover:bg-gray-100 active:bg-gray-200 rounded-lg flex items-center gap-3">
             <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -2085,23 +2757,11 @@
         <span>Image</span>
       </button>
       <div class="mobile-divider"></div>
-      <button id="mobile-add-rect" class="mobile-tool-btn">
+      <button id="mobile-add-shape" class="mobile-tool-btn">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <rect x="4" y="6" width="16" height="12" rx="1" stroke-width="2"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/>
         </svg>
-        <span>Rect</span>
-      </button>
-      <button id="mobile-add-ellipse" class="mobile-tool-btn">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <ellipse cx="12" cy="12" rx="8" ry="6" stroke-width="2"/>
-        </svg>
-        <span>Circle</span>
-      </button>
-      <button id="mobile-add-line" class="mobile-tool-btn">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <line x1="4" y1="12" x2="20" y2="12" stroke-width="2"/>
-        </svg>
-        <span>Line</span>
+        <span>Shape</span>
       </button>
       <div class="mobile-divider"></div>
       <button id="mobile-add-barcode" class="mobile-tool-btn">
@@ -2143,7 +2803,7 @@
     pdfjsModule.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
     window.pdfjsLib = pdfjsModule;
   </script>
-  <script type="module" src="app.js?v=151"></script>
+  <script type="module" src="app.js?v=152"></script>
   <script>
     // Show body once styles are ready
     requestAnimationFrame(() => {

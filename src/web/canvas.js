@@ -1381,9 +1381,104 @@ export class CanvasRenderer {
       case 'line':
         this.drawLine(width, height, stroke || fill, strokeWidth);
         break;
+      case 'diamond':
+        this.drawDiamond(width, height, fill, stroke, strokeWidth);
+        break;
+      case 'pentagon':
+        this.drawPolygon(width, height, 5, -90, fill, stroke, strokeWidth);
+        break;
+      case 'hexagon':
+        this.drawPolygon(width, height, 6, -60, fill, stroke, strokeWidth);
+        break;
+      case 'octagon':
+        this.drawPolygon(width, height, 8, -67.5, fill, stroke, strokeWidth);
+        break;
+      case 'star':
+        this.drawStar(width, height, fill, stroke, strokeWidth);
+        break;
       default:
         this.drawRectangle(width, height, 0, fill, stroke, strokeWidth);
     }
+  }
+
+  /**
+   * Fill and stroke whatever path is currently open (already begun and
+   * closed by the caller). Shared by the polygon-ish shapes below so they
+   * don't each repeat the dither/fill/stroke logic.
+   */
+  applyFillAndStroke(fill, stroke, strokeWidth, width, height) {
+    if (fill && fill !== 'none') {
+      if (this.isDitherFill(fill)) {
+        this.fillWithDither(fill, width, height);
+      } else {
+        this.ctx.fillStyle = fill;
+        this.ctx.fill();
+      }
+    }
+    if (stroke && stroke !== 'none') {
+      this.ctx.strokeStyle = stroke;
+      this.ctx.lineWidth = strokeWidth || 2;
+      this.ctx.stroke();
+    }
+  }
+
+  /**
+   * Draw diamond (rhombus with points at the midpoints of each edge)
+   */
+  drawDiamond(width, height, fill, stroke, strokeWidth) {
+    const x = width / 2;
+    const y = height / 2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, -y);
+    this.ctx.lineTo(x, 0);
+    this.ctx.lineTo(0, y);
+    this.ctx.lineTo(-x, 0);
+    this.ctx.closePath();
+    this.applyFillAndStroke(fill, stroke, strokeWidth, width, height);
+  }
+
+  /**
+   * Draw a regular N-sided polygon inscribed in the element's bounding box
+   * (an ellipse of radius width/2 x height/2, so non-square boxes stretch
+   * the polygon rather than clipping it).
+   * @param {number} sides - Number of sides (5=pentagon, 6=hexagon, 8=octagon, etc.)
+   * @param {number} rotationDeg - Rotation of the first vertex, in degrees (-90 = pointing up)
+   */
+  drawPolygon(width, height, sides, rotationDeg, fill, stroke, strokeWidth) {
+    const rx = width / 2;
+    const ry = height / 2;
+    const startAngle = (rotationDeg * Math.PI) / 180;
+    this.ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const angle = startAngle + (i * 2 * Math.PI) / sides;
+      const px = rx * Math.cos(angle);
+      const py = ry * Math.sin(angle);
+      if (i === 0) this.ctx.moveTo(px, py);
+      else this.ctx.lineTo(px, py);
+    }
+    this.ctx.closePath();
+    this.applyFillAndStroke(fill, stroke, strokeWidth, width, height);
+  }
+
+  /**
+   * Draw a 5-pointed star inscribed in the element's bounding box.
+   */
+  drawStar(width, height, fill, stroke, strokeWidth, points = 5, innerRatio = 0.5) {
+    const rx = width / 2;
+    const ry = height / 2;
+    const totalVerts = points * 2;
+    const startAngle = -Math.PI / 2;
+    this.ctx.beginPath();
+    for (let i = 0; i < totalVerts; i++) {
+      const angle = startAngle + (i * Math.PI) / points;
+      const r = (i % 2 === 0) ? 1 : innerRatio;
+      const px = rx * r * Math.cos(angle);
+      const py = ry * r * Math.sin(angle);
+      if (i === 0) this.ctx.moveTo(px, py);
+      else this.ctx.lineTo(px, py);
+    }
+    this.ctx.closePath();
+    this.applyFillAndStroke(fill, stroke, strokeWidth, width, height);
   }
 
   /**

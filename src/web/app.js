@@ -4,7 +4,7 @@
  * v116
  */
 
-import { CanvasRenderer } from './canvas.js?v=115';
+import { CanvasRenderer } from './canvas.js?v=116';
 import { BLETransport } from './ble.js?v=103';
 import { USBTransport } from './usb.js?v=101';
 import { print, printDensityTest, isDSeriesPrinter, isP12Printer, isA30Printer, isTapePrinter, isPM241Printer, isTSPLPrinter, isRotatedPrinter, getPrinterWidthBytes, getPrinterDpi, getPrinterAlignment, getPrinterDescription, isDeviceRecognized, getMatchedPattern, loadPrinterDefinitions, getAllPrinterDefinitions, getPrinterDefinition, getCustomPrinterDefinitions, saveCustomPrinterDefinition, deleteCustomPrinterDefinition, isBuiltinPrinter, resetBuiltinPrinter, getAvailableProtocols, getAvailableLabelPresets, getDetectedDefinition } from './printer.js?v=128';
@@ -19,6 +19,10 @@ import {
   duplicateElement,
   bringToFront,
   sendToBack,
+  moveUp,
+  moveDown,
+  buildQRData,
+  parseVCF,
   getElementAtPoint,
   constrainSize,
   groupElements,
@@ -36,7 +40,7 @@ import {
   collapseToSingleZone,
   hasElementsInHigherZones,
   removeElementsInHigherZones,
-} from './elements.js?v=100';
+} from './elements.js?v=101';
 import {
   HandleType,
   getHandleAtPoint,
@@ -84,7 +88,10 @@ import {
   D_SERIES_ROUND_LABELS,
   TAPE_LABEL_SIZES,
   PM241_LABEL_SIZES,
-} from './constants.js?v=105';
+  SYMBOL_LIBRARY,
+  ORNAMENT_LIBRARY,
+  THEMES,
+} from './constants.js?v=106';
 import {
   bindCheckbox,
   bindToggleButton,
@@ -1735,7 +1742,7 @@ function showPreviewDialog() {
     return `
       <div class="preview-thumbnail cursor-pointer hover:ring-2 hover:ring-blue-500 rounded-lg p-2 bg-gray-50"
            data-index="${idx}">
-        <canvas class="preview-canvas bg-white shadow rounded w-full" data-index="${idx}"></canvas>
+        <canvas class="preview-canvas shadow rounded w-full" style="background-color: #fff;" data-index="${idx}"></canvas>
         <div class="text-xs text-gray-600 mt-1 truncate text-center">${escapeHtml(label)}</div>
         <div class="text-xs text-gray-400 text-center">#${idx + 1}</div>
       </div>
@@ -2390,6 +2397,7 @@ function updatePropertiesPanel() {
     case 'qr':
       $('#props-qr').classList.remove('hidden');
       $('#prop-qr-data').value = element.qrData || '';
+      renderDesktopQRTypeUI(element);
       break;
 
     case 'shape':
@@ -4508,6 +4516,186 @@ function addBarcodeElement() {
 }
 
 /**
+ * Field definitions per QR type, shared by both the desktop properties
+ * panel and the mobile properties panel so the two don't drift apart.
+ * buildQRData() (elements.js) turns whatever the user enters here into
+ * the final QR payload string.
+ */
+const QR_TYPE_FIELD_SPECS = {
+  text: [],
+  url: [
+    { name: 'url', label: 'URL', placeholder: 'example.com' },
+  ],
+  email: [
+    { name: 'to', label: 'To', placeholder: 'name@example.com' },
+    { name: 'subject', label: 'Subject' },
+    { name: 'body', label: 'Message', type: 'textarea' },
+  ],
+  phone: [
+    { name: 'phone', label: 'Phone number', placeholder: '+1 555 123 4567' },
+  ],
+  sms: [
+    { name: 'phone', label: 'Phone number', placeholder: '+1 555 123 4567' },
+    { name: 'message', label: 'Message', type: 'textarea' },
+  ],
+  wifi: [
+    { name: 'ssid', label: 'Network name (SSID)' },
+    { name: 'security', label: 'Security', type: 'select', options: [['WPA', 'WPA/WPA2'], ['WEP', 'WEP'], ['nopass', 'None (open)']] },
+    { name: 'password', label: 'Password' },
+    { name: 'hidden', label: 'Hidden network', type: 'checkbox' },
+  ],
+  vcard: [
+    { name: 'name', label: 'Full name' },
+    { name: 'phone', label: 'Phone' },
+    { name: 'email', label: 'Email' },
+    { name: 'org', label: 'Organization' },
+    { name: 'url', label: 'Website' },
+  ],
+  mecard: [
+    { name: 'name', label: 'Full name' },
+    { name: 'phone', label: 'Phone' },
+    { name: 'email', label: 'Email' },
+  ],
+  location: [
+    { name: 'lat', label: 'Latitude', placeholder: '40.7128' },
+    { name: 'lng', label: 'Longitude', placeholder: '-74.0060' },
+  ],
+};
+
+/**
+ * Build the inner HTML for a QR type's structured fields. Works for both
+ * the desktop panel (static container, innerHTML replaced) and the mobile
+ * panel (embedded directly in its template string) - same markup either
+ * way, just a different `idPrefix` so desktop/mobile field IDs don't clash
+ * when both happen to be in the DOM at once.
+ */
+function renderQRFieldsHTML(qrType, qrFields, idPrefix) {
+  const specs = QR_TYPE_FIELD_SPECS[qrType] || [];
+  if (specs.length === 0) return '';
+
+  const rows = specs.map((spec) => {
+    const value = qrFields[spec.name] ?? '';
+    const id = `${idPrefix}-qrfield-${spec.name}`;
+    if (spec.type === 'select') {
+      const opts = spec.options.map(([v, label]) =>
+        `<option value="${escapeHtml(v)}" ${value === v ? 'selected' : ''}>${escapeHtml(label)}</option>`
+      ).join('');
+      return `<div><label class="text-[10px] text-gray-400 uppercase tracking-wide">${escapeHtml(spec.label)}</label>
+        <select id="${id}" data-qr-field="${spec.name}" class="qr-field-input prop-input w-full px-1.5 py-1 text-xs border border-gray-200 rounded">${opts}</select></div>`;
+    }
+    if (spec.type === 'checkbox') {
+      return `<label class="flex items-center gap-2 text-xs text-gray-600">
+        <input type="checkbox" id="${id}" data-qr-field="${spec.name}" class="qr-field-input" ${value ? 'checked' : ''}>
+        ${escapeHtml(spec.label)}</label>`;
+    }
+    if (spec.type === 'textarea') {
+      return `<div><label class="text-[10px] text-gray-400 uppercase tracking-wide">${escapeHtml(spec.label)}</label>
+        <textarea id="${id}" data-qr-field="${spec.name}" rows="2" class="qr-field-input prop-input w-full px-1.5 py-1 text-xs border border-gray-200 rounded">${escapeHtml(value)}</textarea></div>`;
+    }
+    return `<div><label class="text-[10px] text-gray-400 uppercase tracking-wide">${escapeHtml(spec.label)}</label>
+      <input type="text" id="${id}" data-qr-field="${spec.name}" class="qr-field-input prop-input w-full px-1.5 py-1 text-xs border border-gray-200 rounded" placeholder="${escapeHtml(spec.placeholder || '')}" value="${escapeHtml(value)}"></div>`;
+  }).join('');
+
+  const vcfImport = qrType === 'vcard'
+    ? `<button type="button" id="${idPrefix}-qr-vcf-import" class="w-full text-xs text-purple-600 hover:text-purple-800 font-medium border border-dashed border-purple-200 rounded py-1.5">Import from .vcf file...</button>`
+    : '';
+
+  return rows + vcfImport;
+}
+
+/**
+ * Recompute an element's qrData from its qrType/qrFields and write it
+ * back (and refresh the visible Data field so the user can see the final
+ * payload, e.g. before using the {{Field}} template inserter on top of it).
+ */
+function recomputeQRData(element) {
+  const qrData = buildQRData(element.qrType, element.qrFields);
+  modifyElement(element.id, { qrData });
+  const dataInput = $('#prop-qr-data');
+  if (dataInput && state.selectedIds[0] === element.id) dataInput.value = qrData;
+  const mobileVal = $('#mobile-prop-value');
+  if (mobileVal && state.selectedIds[0] === element.id) mobileVal.value = qrData;
+}
+
+/**
+ * Wire up the qr-field-input elements inside a freshly-rendered fields
+ * container (desktop or mobile) to update the element's qrFields and
+ * recompute qrData live, with one saveHistory() per edit session (first
+ * change after a field gains focus) rather than per keystroke.
+ */
+function bindQRFieldInputs(container, elementId) {
+  let historySaved = false;
+  container.querySelectorAll('.qr-field-input').forEach((input) => {
+    input.addEventListener('focus', () => { historySaved = false; });
+    const handler = () => {
+      const element = state.elements.find(e => e.id === elementId);
+      if (!element) return;
+      if (!historySaved) { saveHistory(); historySaved = true; }
+      const name = input.dataset.qrField;
+      const value = input.type === 'checkbox' ? input.checked : input.value;
+      element.qrFields = { ...element.qrFields, [name]: value };
+      recomputeQRData(element);
+    };
+    input.addEventListener('input', handler);
+    if (input.tagName === 'SELECT' || input.type === 'checkbox') {
+      input.addEventListener('change', handler);
+    }
+  });
+
+  const vcfBtn = container.querySelector('[id$="-qr-vcf-import"]');
+  if (vcfBtn) {
+    vcfBtn.addEventListener('click', () => {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.vcf,text/vcard';
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const element = state.elements.find(e => e.id === elementId);
+          if (!element) return;
+          saveHistory();
+          const parsed = parseVCF(reader.result);
+          element.qrFields = { ...element.qrFields, ...parsed };
+          recomputeQRData(element);
+          // Re-render just this fields container (not the whole panel) so
+          // the imported values show up in the inputs, regardless of
+          // whether this was the desktop or mobile container.
+          const idPrefix = container.id.startsWith('mobile') ? 'mobile' : 'desktop';
+          container.innerHTML = renderQRFieldsHTML(element.qrType, element.qrFields, idPrefix);
+          bindQRFieldInputs(container, elementId);
+          setStatus('Imported contact from .vcf');
+        };
+        reader.readAsText(file);
+      });
+      fileInput.click();
+    });
+  }
+}
+
+/**
+ * Populate the desktop QR panel's type dropdown + structured fields for
+ * the given element (called whenever the properties panel shows a QR
+ * element, and after the type dropdown changes).
+ */
+function renderDesktopQRTypeUI(element) {
+  const typeSelect = $('#prop-qr-type');
+  const fieldsContainer = $('#qr-type-fields');
+  const dataWrap = $('#qr-data-field-wrap');
+  const computedNote = $('#qr-data-computed-note');
+  if (!typeSelect || !fieldsContainer) return;
+
+  typeSelect.value = element.qrType || 'text';
+  fieldsContainer.innerHTML = renderQRFieldsHTML(element.qrType, element.qrFields || {}, 'desktop');
+  bindQRFieldInputs(fieldsContainer, element.id);
+
+  const isStructured = (element.qrType || 'text') !== 'text';
+  computedNote?.classList.toggle('hidden', !isStructured);
+  dataWrap?.classList.toggle('opacity-60', isStructured);
+}
+
+/**
  * Add a new QR element
  */
 function addQRElement() {
@@ -4530,11 +4718,16 @@ function addQRElement() {
 /**
  * Add shape element
  */
-function addShapeElement(shapeType = 'rectangle') {
+function addShapeElement(shapeType = 'rectangle', options = {}) {
+  const { presetSize = null, label = null } = options;
   saveHistory();
   const dims = state.renderer.getSingleLabelDimensions();
-  const width = shapeType === 'line' ? 100 : 80;
-  const height = shapeType === 'line' ? 4 : 60;
+  let width = shapeType === 'line' ? 100 : 80;
+  let height = shapeType === 'line' ? 4 : 60;
+  if (presetSize) {
+    width = presetSize;
+    height = presetSize;
+  }
   const element = createShapeElement(shapeType, {
     x: dims.width / 2 - width / 2,
     y: dims.height / 2 - height / 2,
@@ -4546,7 +4739,242 @@ function addShapeElement(shapeType = 'rectangle') {
   state.elements.push(element);
   autoCloneIfEnabled();
   selectElement(element.id);
-  setStatus(`${shapeType.charAt(0).toUpperCase() + shapeType.slice(1)} added`);
+  setStatus(`${label || (shapeType.charAt(0).toUpperCase() + shapeType.slice(1))} added`);
+}
+
+/**
+ * Add divider lines splitting the current label into an even rows x cols
+ * grid, so a label like 40x30mm can be cut into e.g. four 20x15mm pieces
+ * without guesswork. `gapMm` > 0 draws two lines per boundary (framing a
+ * blank margin) instead of one, for a visible cut allowance.
+ */
+function addGridLines(rows, cols, gapMm) {
+  const dims = state.renderer.getSingleLabelDimensions();
+  const PX_PER_MM = 8; // matches canvas.js's internal mm->px unit (not exported, see NOTES.md)
+  const gapPx = Math.max(0, gapMm) * PX_PER_MM;
+  const cellW = dims.width / cols;
+  const cellH = dims.height / rows;
+  const LINE_STROKE = 1.5;
+
+  saveHistory();
+
+  function addLine(centerX, centerY, length, vertical) {
+    const width = length;
+    const height = Math.max(LINE_STROKE * 2, 4);
+    const el = createShapeElement('line', {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width,
+      height,
+      rotation: vertical ? 90 : 0,
+      strokeWidth: LINE_STROKE,
+      stroke: 'black',
+      zone: state.activeZone,
+    });
+    state.elements.push(el);
+  }
+
+  // Horizontal boundaries (between rows)
+  for (let i = 1; i < rows; i++) {
+    const y = i * cellH;
+    if (gapPx > 0) {
+      addLine(dims.width / 2, y - gapPx / 2, dims.width, false);
+      addLine(dims.width / 2, y + gapPx / 2, dims.width, false);
+    } else {
+      addLine(dims.width / 2, y, dims.width, false);
+    }
+  }
+
+  // Vertical boundaries (between columns)
+  for (let j = 1; j < cols; j++) {
+    const x = j * cellW;
+    if (gapPx > 0) {
+      addLine(x - gapPx / 2, dims.height / 2, dims.height, true);
+      addLine(x + gapPx / 2, dims.height / 2, dims.height, true);
+    } else {
+      addLine(x, dims.height / 2, dims.height, true);
+    }
+  }
+
+  render();
+  const count = (rows - 1 + cols - 1) * (gapPx > 0 ? 2 : 1);
+  setStatus(`Added ${count} grid line${count === 1 ? '' : 's'} (${rows}×${cols})`);
+}
+
+/**
+ * Open/close the Grid splitter dialog, and keep its cell-size preview note
+ * in sync with the current inputs.
+ */
+function updateGridPreviewNote() {
+  const rows = Math.max(1, parseInt($('#grid-rows')?.value, 10) || 1);
+  const cols = Math.max(1, parseInt($('#grid-cols')?.value, 10) || 1);
+  const dims = state.renderer.getSingleLabelDimensions();
+  const PX_PER_MM = 8;
+  const cellWMm = (dims.width / cols / PX_PER_MM).toFixed(1);
+  const cellHMm = (dims.height / rows / PX_PER_MM).toFixed(1);
+  const note = $('#grid-preview-note');
+  if (note) {
+    note.textContent = `${rows * cols} piece${rows * cols === 1 ? '' : 's'}, each about ${cellWMm} × ${cellHMm} mm`;
+  }
+}
+
+function openGridDialog() {
+  updateGridPreviewNote();
+  $('#grid-dialog')?.classList.remove('hidden');
+}
+
+function closeGridDialog() {
+  $('#grid-dialog')?.classList.add('hidden');
+}
+
+/**
+ * Open/close the shared shape picker modal (desktop "Shape" button and
+ * mobile "Shape" button both use this one modal).
+ */
+function openShapePicker() {
+  $('#shape-picker-modal')?.classList.remove('hidden');
+}
+
+function closeShapePicker() {
+  $('#shape-picker-modal')?.classList.add('hidden');
+}
+
+/**
+ * Open/close the shared symbol picker modal (desktop "Symbols" button and
+ * mobile "Symbols" button both use this one modal).
+ */
+function openSymbolPicker() {
+  $('#symbol-picker-modal')?.classList.remove('hidden');
+}
+
+function closeSymbolPicker() {
+  $('#symbol-picker-modal')?.classList.add('hidden');
+}
+
+/**
+ * Add a symbol (Material Symbols glyph, see SYMBOL_LIBRARY in constants.js)
+ * to the canvas as a solid-black Image element. Works entirely through the
+ * existing image pipeline - no renderer changes needed since any data URI
+ * (including SVG) is already supported there.
+ */
+function addSymbolElement(symbolId) {
+  const symbol = SYMBOL_LIBRARY.find(s => s.id === symbolId);
+  if (!symbol) return;
+  saveHistory();
+  const dims = state.renderer.getSingleLabelDimensions();
+  const size = 60;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path fill="black" d="${symbol.path}"/></svg>`;
+  const dataUri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  const element = createImageElement(dataUri, {
+    x: dims.width / 2 - size / 2,
+    y: dims.height / 2 - size / 2,
+    width: size,
+    height: size,
+    naturalWidth: size,
+    naturalHeight: size,
+    zone: state.activeZone,
+  });
+  state.elements.push(element);
+  autoCloneIfEnabled();
+  selectElement(element.id);
+  setStatus(`${symbol.label} symbol added`);
+}
+
+/**
+ * Open/close the shared corner-ornament picker modal (desktop "Ornaments"
+ * button and mobile menu item both use this one modal).
+ */
+function openOrnamentPicker() {
+  $('#ornament-picker-modal')?.classList.remove('hidden');
+}
+
+function closeOrnamentPicker() {
+  $('#ornament-picker-modal')?.classList.add('hidden');
+}
+
+/**
+ * Add a corner ornament (see ORNAMENT_LIBRARY in constants.js) to the
+ * canvas as a solid-black Image element, same pipeline as addSymbolElement.
+ */
+function addOrnamentElement(ornamentId) {
+  const ornament = ORNAMENT_LIBRARY.find(o => o.id === ornamentId);
+  if (!ornament) return;
+  saveHistory();
+  const dims = state.renderer.getSingleLabelDimensions();
+  const size = 50;
+  const svg = ornament.svg.replace(/currentColor/g, 'black');
+  const dataUri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  const element = createImageElement(dataUri, {
+    x: dims.width / 2 - size / 2,
+    y: dims.height / 2 - size / 2,
+    width: size,
+    height: size,
+    naturalWidth: size,
+    naturalHeight: size,
+    zone: state.activeZone,
+  });
+  state.elements.push(element);
+  autoCloneIfEnabled();
+  selectElement(element.id);
+  setStatus(`${ornament.label} ornament added`);
+}
+
+/**
+ * Apply an app theme (UI chrome only - the label canvas itself is never
+ * themed, see the `[data-theme]` CSS in index.html). Persists the choice
+ * so it survives restarts; index.html also has a tiny inline script that
+ * applies the saved theme before first paint, since this module loads too
+ * late to avoid a flash of the light theme otherwise.
+ */
+function applyTheme(themeId) {
+  if (themeId && themeId !== 'light') {
+    document.documentElement.setAttribute('data-theme', themeId);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  try {
+    localStorage.setItem(STORAGE_KEYS.THEME, themeId || 'light');
+  } catch (e) {
+    // Storage unavailable - theme still applies for this session.
+  }
+}
+
+function getCurrentTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'light';
+}
+
+function renderThemePickerOptions() {
+  const container = $('#theme-picker-options');
+  if (!container) return;
+  const current = getCurrentTheme();
+  container.innerHTML = THEMES.map(theme => {
+    const active = theme.id === current;
+    const swatchDots = theme.swatch.map(c =>
+      `<span class="w-5 h-5 rounded-full border border-gray-300" style="background-color: ${c};"></span>`
+    ).join('');
+    return `
+      <button data-theme-id="${theme.id}" class="theme-picker-option w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${active ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50 text-gray-700'}">
+        <span class="flex -space-x-1.5">${swatchDots}</span>
+        <span class="flex-1 text-left">${theme.label}</span>
+        ${active ? '<svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>' : ''}
+      </button>
+    `;
+  }).join('');
+  container.querySelectorAll('.theme-picker-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyTheme(btn.dataset.themeId);
+      renderThemePickerOptions();
+    });
+  });
+}
+
+function openThemePicker() {
+  renderThemePickerOptions();
+  $('#theme-picker-modal')?.classList.remove('hidden');
+}
+
+function closeThemePicker() {
+  $('#theme-picker-modal')?.classList.add('hidden');
 }
 
 /**
@@ -5185,44 +5613,93 @@ function handleImportFile(file) {
 }
 
 /**
- * Update elements list dropdown
+ * Update the layers list (populates both the desktop "Layers" dropdown and
+ * the mobile Layers modal - same markup/behavior in both).
  */
 function updateElementsList() {
-  const container = $('#elements-list');
+  const containers = [$('#elements-list'), $('#mobile-elements-list')].filter(Boolean);
+  if (containers.length === 0) return;
 
   if (state.elements.length === 0) {
-    container.innerHTML = '<div class="px-3 py-2 text-gray-400 text-center">No elements</div>';
+    containers.forEach(c => { c.innerHTML = '<div class="px-3 py-2 text-gray-400 text-center">No elements</div>'; });
     return;
   }
 
   // Build list HTML - elements in z-order (bottom to top)
+  const count = state.elements.length;
   const html = state.elements.map((el, index) => {
     const isSelected = state.selectedIds.includes(el.id);
     const icon = getElementIcon(el.type);
     const label = getElementLabel(el);
     const layerNum = index + 1;
+    const isTop = index === count - 1;
+    const isBottom = index === 0;
 
     return `
-      <button class="element-list-item w-full px-3 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2 ${isSelected ? 'bg-blue-50 text-blue-700' : ''}"
-              data-element-id="${el.id}">
-        <span class="text-gray-400 text-xs w-4">${layerNum}</span>
-        ${icon}
-        <span class="flex-1 truncate">${escapeHtml(label)}</span>
-        ${el.groupId ? '<span class="text-xs text-gray-400">G</span>' : ''}
-      </button>
+      <div class="element-list-row w-full px-2 py-1 flex items-center gap-1 ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}">
+        <button class="element-list-item flex-1 min-w-0 text-left flex items-center gap-2 px-1 py-0.5 ${isSelected ? 'text-blue-700' : ''}"
+                data-element-id="${el.id}">
+          <span class="text-gray-400 text-xs w-4 flex-shrink-0">${layerNum}</span>
+          ${icon}
+          <span class="flex-1 truncate">${escapeHtml(label)}</span>
+          ${el.groupId ? '<span class="text-xs text-gray-400 flex-shrink-0">G</span>' : ''}
+        </button>
+        <button class="layer-move-down p-1 rounded hover:bg-gray-200 disabled:opacity-25 disabled:hover:bg-transparent flex-shrink-0" data-element-id="${el.id}" title="Move down (toward back)" ${isBottom ? 'disabled' : ''}>
+          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <button class="layer-move-up p-1 rounded hover:bg-gray-200 disabled:opacity-25 disabled:hover:bg-transparent flex-shrink-0" data-element-id="${el.id}" title="Move up (toward front)" ${isTop ? 'disabled' : ''}>
+          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+        </button>
+      </div>
     `;
   }).reverse().join(''); // Reverse to show top layer first
 
-  container.innerHTML = html;
+  containers.forEach(container => {
+    container.innerHTML = html;
 
-  // Add click handlers
-  container.querySelectorAll('.element-list-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.elementId;
-      selectElement(id);
-      $('#elements-dropdown').classList.add('hidden');
+    container.querySelectorAll('.element-list-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.elementId;
+        selectElement(id);
+        $('#elements-dropdown')?.classList.add('hidden');
+        closeLayersModal();
+      });
+    });
+
+    container.querySelectorAll('.layer-move-up').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.elementId;
+        saveHistory();
+        state.elements = moveUp(state.elements, id);
+        render();
+        updateElementsList();
+      });
+    });
+
+    container.querySelectorAll('.layer-move-down').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.elementId;
+        saveHistory();
+        state.elements = moveDown(state.elements, id);
+        render();
+        updateElementsList();
+      });
     });
   });
+}
+
+/**
+ * Open/close the mobile Layers modal.
+ */
+function openLayersModal() {
+  updateElementsList();
+  $('#layers-modal')?.classList.remove('hidden');
+}
+
+function closeLayersModal() {
+  $('#layers-modal')?.classList.add('hidden');
 }
 
 /**
@@ -5253,7 +5730,7 @@ function getElementLabel(el) {
     case 'qr':
       return el.qrData ? `QR: ${el.qrData.substring(0, 15)}` : 'QR Code';
     case 'shape':
-      const shapeNames = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', line: 'Line' };
+      const shapeNames = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', diamond: 'Diamond', pentagon: 'Pentagon', hexagon: 'Hexagon', octagon: 'Octagon', star: 'Star', line: 'Line' };
       return shapeNames[el.shapeType] || 'Shape';
     default:
       return 'Element';
@@ -5650,7 +6127,7 @@ function checkCompatibility() {
     overlay.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-[600px] max-w-full overflow-hidden">
         <!-- Header -->
-        <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4 text-white relative">
+        <div class="theme-fixed bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4 text-white relative">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -5806,6 +6283,14 @@ function initMobileUI() {
   $('#mobile-info-btn')?.addEventListener('click', () => {
     closeMobileMenu();
     showInfoDialog();
+  });
+  $('#mobile-layers-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    openLayersModal();
+  });
+  $('#layers-modal-close')?.addEventListener('click', closeLayersModal);
+  $('#layers-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeLayersModal();
   });
   $('#mobile-print-btn')?.addEventListener('click', handlePrint);
 
@@ -5969,9 +6454,7 @@ function initMobileUI() {
   // Fixed toolbar - add element buttons
   $('#mobile-add-text')?.addEventListener('click', () => addTextElement());
   $('#mobile-add-image')?.addEventListener('click', () => $('#image-file-input').click());
-  $('#mobile-add-rect')?.addEventListener('click', () => addShapeElement('rectangle'));
-  $('#mobile-add-ellipse')?.addEventListener('click', () => addShapeElement('ellipse'));
-  $('#mobile-add-line')?.addEventListener('click', () => addShapeElement('line'));
+  $('#mobile-add-shape')?.addEventListener('click', () => openShapePicker());
   $('#mobile-add-barcode')?.addEventListener('click', () => addBarcodeElement());
   $('#mobile-add-qr')?.addEventListener('click', () => addQRElement());
 
@@ -6209,10 +6692,10 @@ function populateMobileProps() {
             <div class="prop-label">Text Color</div>
             <div class="flex gap-2">
               <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${textColor === 'black' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-color="black">
-                <span class="w-4 h-4 bg-black rounded"></span> Black
+                <span class="w-4 h-4 rounded" style="background-color: #000;"></span> Black
               </button>
               <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${textColor === 'white' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-color="white">
-                <span class="w-4 h-4 bg-white border border-gray-300 rounded"></span> White
+                <span class="w-4 h-4 rounded" style="background-color: #fff; border: 1px solid #d1d5db;"></span> White
               </button>
             </div>
           </div>
@@ -6223,10 +6706,10 @@ function populateMobileProps() {
         <div class="flex gap-2">
           <button class="flex-1 py-2.5 border rounded text-sm ${bgColor === 'transparent' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-bg="transparent">None</button>
           <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${bgColor === 'black' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-bg="black">
-            <span class="w-4 h-4 bg-black rounded"></span>
+            <span class="w-4 h-4 rounded" style="background-color: #000;"></span>
           </button>
           <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${bgColor === 'white' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-bg="white">
-            <span class="w-4 h-4 bg-white border border-gray-300 rounded"></span>
+            <span class="w-4 h-4 rounded" style="background-color: #fff; border: 1px solid #d1d5db;"></span>
           </button>
         </div>
       </div>
@@ -6293,7 +6776,21 @@ function populateMobileProps() {
       </div>
     `;
   } else if (selected.type === 'qr') {
+    const qrType = selected.qrType || 'text';
+    const qrTypeOptions = [
+      ['text', 'Text / URL (plain)'], ['url', 'Website URL'], ['email', 'Email'],
+      ['phone', 'Phone number'], ['sms', 'SMS'], ['wifi', 'Wi-Fi network'],
+      ['vcard', 'Contact (vCard)'], ['mecard', 'Contact (simple)'], ['location', 'Location'],
+    ].map(([v, label]) => `<option value="${v}" ${qrType === v ? 'selected' : ''}>${label}</option>`).join('');
+
     html += `
+      <div class="prop-group">
+        <div class="prop-label">Type</div>
+        <select id="mobile-prop-qr-type" class="prop-input">${qrTypeOptions}</select>
+      </div>
+      <div class="prop-group" id="mobile-qr-type-fields">
+        ${renderQRFieldsHTML(qrType, selected.qrFields || {}, 'mobile')}
+      </div>
       <div class="prop-group">
         <div class="flex items-center justify-between mb-1">
           <div class="prop-label mb-0">QR Content</div>
@@ -6306,6 +6803,7 @@ function populateMobileProps() {
           </div>
         </div>
         <textarea id="mobile-prop-value" class="prop-input" rows="3">${escapeHtml(selected.value || selected.qrData || '')}</textarea>
+        ${qrType !== 'text' ? '<p class="text-xs text-gray-400 mt-1">Computed from the fields above. Editing this directly switches back to plain text.</p>' : ''}
       </div>
     `;
   } else if (selected.type === 'shape') {
@@ -6319,6 +6817,11 @@ function populateMobileProps() {
           <option value="rectangle" ${shapeType === 'rectangle' ? 'selected' : ''}>Rectangle</option>
           <option value="ellipse" ${shapeType === 'ellipse' ? 'selected' : ''}>Ellipse</option>
           <option value="triangle" ${shapeType === 'triangle' ? 'selected' : ''}>Triangle</option>
+          <option value="diamond" ${shapeType === 'diamond' ? 'selected' : ''}>Diamond</option>
+          <option value="pentagon" ${shapeType === 'pentagon' ? 'selected' : ''}>Pentagon</option>
+          <option value="hexagon" ${shapeType === 'hexagon' ? 'selected' : ''}>Hexagon</option>
+          <option value="octagon" ${shapeType === 'octagon' ? 'selected' : ''}>Octagon</option>
+          <option value="star" ${shapeType === 'star' ? 'selected' : ''}>Star</option>
           <option value="line" ${shapeType === 'line' ? 'selected' : ''}>Line</option>
         </select>
       </div>
@@ -6338,10 +6841,10 @@ function populateMobileProps() {
         <div class="flex gap-2">
           <button class="flex-1 py-2.5 border rounded ${strokeValue === 'none' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-stroke="none">None</button>
           <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${strokeValue === 'black' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-stroke="black">
-            <span class="w-4 h-4 bg-black rounded"></span> Black
+            <span class="w-4 h-4 rounded" style="background-color: #000;"></span> Black
           </button>
           <button class="flex-1 py-2.5 border rounded flex items-center justify-center gap-1 ${strokeValue === 'white' ? 'bg-blue-100 border-blue-400' : 'border-gray-300 bg-gray-50'}" data-stroke="white">
-            <span class="w-4 h-4 bg-white border border-gray-300 rounded"></span> White
+            <span class="w-4 h-4 rounded" style="background-color: #fff; border: 1px solid #d1d5db;"></span> White
           </button>
         </div>
       </div>
@@ -6549,10 +7052,31 @@ function wireUpMobilePropHandlers(element) {
     valueInput.addEventListener('input', (e) => {
       updatePropLive('value', e.target.value);
       if (element.type === 'barcode') element.barcodeData = e.target.value;
-      if (element.type === 'qr') element.qrData = e.target.value;
+      if (element.type === 'qr') {
+        element.qrData = e.target.value;
+        // Editing the raw Data field directly overrides the structured
+        // type (same rule as the desktop panel) - switch back to plain text.
+        if (element.qrType && element.qrType !== 'text') {
+          element.qrType = 'text';
+          element.qrFields = {};
+        }
+      }
       detectTemplateFields(); // Detect {{fields}} as user types
     });
     valueInput.addEventListener('blur', saveOnBlur('value'));
+  }
+
+  // QR type selector + structured fields
+  $('#mobile-prop-qr-type')?.addEventListener('change', (e) => {
+    saveHistory();
+    element.qrType = e.target.value;
+    element.qrFields = {};
+    recomputeQRData(element);
+    populateMobileProps(); // Refresh to show the new type's fields
+  });
+  const mobileQrFieldsContainer = $('#mobile-qr-type-fields');
+  if (mobileQrFieldsContainer) {
+    bindQRFieldInputs(mobileQrFieldsContainer, element.id);
   }
   $('#mobile-prop-format')?.addEventListener('change', (e) => {
     updateProp('format', e.target.value);
@@ -7123,6 +7647,8 @@ function init() {
   if (!('usb' in navigator)) {
     const usbOption = connType.querySelector('option[value="usb"]');
     if (usbOption) usbOption.remove();
+    const mobileUsbOption = $('#mobile-conn-type')?.querySelector('option[value="usb"]');
+    if (mobileUsbOption) mobileUsbOption.remove();
   }
   connType.addEventListener('change', (e) => {
     state.connectionType = e.target.value;
@@ -7390,26 +7916,93 @@ function init() {
   $('#add-barcode').addEventListener('click', addBarcodeElement);
   $('#add-qr').addEventListener('click', addQRElement);
 
-  // Shape dropdown toggle
+  // Shape picker (shared modal, desktop "Shape" button)
   $('#add-shape-btn').addEventListener('click', (e) => {
     e.stopPropagation();
-    $('#shape-dropdown').classList.toggle('hidden');
+    openShapePicker();
   });
-
-  // Shape options
-  $$('.shape-option').forEach(btn => {
+  $('#shape-picker-close')?.addEventListener('click', closeShapePicker);
+  $('#shape-picker-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeShapePicker();
+  });
+  $$('.shape-picker-option').forEach(btn => {
     btn.addEventListener('click', () => {
       const shapeType = btn.dataset.shape;
-      addShapeElement(shapeType);
-      $('#shape-dropdown').classList.add('hidden');
+      const presetSize = btn.dataset.presetSize ? parseInt(btn.dataset.presetSize, 10) : null;
+      const label = btn.dataset.label || null;
+      addShapeElement(shapeType, { presetSize, label });
+      closeShapePicker();
     });
   });
 
-  // Close shape dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('#add-shape-btn') && !e.target.closest('#shape-dropdown')) {
-      $('#shape-dropdown').classList.add('hidden');
+  // Grid splitter dialog (desktop "Grid" button and mobile menu item)
+  $('#grid-btn')?.addEventListener('click', openGridDialog);
+  $('#mobile-grid-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    openGridDialog();
+  });
+  $('#grid-dialog-close')?.addEventListener('click', closeGridDialog);
+  $('#grid-dialog-cancel')?.addEventListener('click', closeGridDialog);
+  $('#grid-dialog')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeGridDialog();
+  });
+  $('#grid-rows')?.addEventListener('input', updateGridPreviewNote);
+  $('#grid-cols')?.addEventListener('input', updateGridPreviewNote);
+  $('#grid-dialog-apply')?.addEventListener('click', () => {
+    const rows = Math.max(1, parseInt($('#grid-rows')?.value, 10) || 1);
+    const cols = Math.max(1, parseInt($('#grid-cols')?.value, 10) || 1);
+    const gapMm = Math.max(0, parseFloat($('#grid-gap')?.value) || 0);
+    if (rows === 1 && cols === 1) {
+      closeGridDialog();
+      return;
     }
+    addGridLines(rows, cols, gapMm);
+    closeGridDialog();
+  });
+
+  // Symbol picker (shared modal, desktop "Symbols" button and mobile menu item)
+  $('#symbol-btn')?.addEventListener('click', () => openSymbolPicker());
+  $('#mobile-symbol-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    openSymbolPicker();
+  });
+  $('#symbol-picker-close')?.addEventListener('click', closeSymbolPicker);
+  $('#symbol-picker-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSymbolPicker();
+  });
+  $$('.symbol-picker-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addSymbolElement(btn.dataset.symbol);
+      closeSymbolPicker();
+    });
+  });
+
+  // Ornament picker (shared modal, desktop "Ornaments" button and mobile menu item)
+  $('#ornament-btn')?.addEventListener('click', () => openOrnamentPicker());
+  $('#mobile-ornament-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    openOrnamentPicker();
+  });
+  $('#ornament-picker-close')?.addEventListener('click', closeOrnamentPicker);
+  $('#ornament-picker-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeOrnamentPicker();
+  });
+  $$('.ornament-picker-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addOrnamentElement(btn.dataset.ornament);
+      closeOrnamentPicker();
+    });
+  });
+
+  // Theme picker (shared modal, desktop "Appearance" button and mobile menu item)
+  $('#theme-btn')?.addEventListener('click', () => openThemePicker());
+  $('#mobile-theme-btn')?.addEventListener('click', () => {
+    closeMobileMenu();
+    openThemePicker();
+  });
+  $('#theme-picker-close')?.addEventListener('click', closeThemePicker);
+  $('#theme-picker-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeThemePicker();
   });
 
   // Element actions
@@ -7932,7 +8525,27 @@ function init() {
     } else {
       e.target.classList.remove('border-red-300');
     }
+    // Editing the raw Data field directly overrides whatever structured
+    // type was active - switch back to plain text so the two can't fight.
+    const element = state.elements.find(el => el.id === id);
+    if (element && element.qrType && element.qrType !== 'text') {
+      element.qrType = 'text';
+      element.qrFields = {};
+      renderDesktopQRTypeUI(element);
+    }
     modifyElement(id, { qrData: e.target.value });
+  });
+
+  $('#prop-qr-type')?.addEventListener('change', (e) => {
+    const id = state.selectedIds[0];
+    if (!id) return;
+    const element = state.elements.find(el => el.id === id);
+    if (!element) return;
+    saveHistory();
+    element.qrType = e.target.value;
+    element.qrFields = {};
+    renderDesktopQRTypeUI(element);
+    recomputeQRData(element);
   });
 
 

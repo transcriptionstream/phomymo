@@ -49,8 +49,8 @@ test.describe.serial('Adding Elements', () => {
 
   test('add shape element', async ({ page }) => {
     await page.click('#add-shape-btn');
-    await expect(page.locator('#shape-dropdown')).toBeVisible();
-    await screenshot(page, CH, 4, 'shape-dropdown');
+    await expect(page.locator('#shape-picker-modal')).toBeVisible();
+    await screenshot(page, CH, 4, 'shape-picker-modal');
 
     await page.click('button[data-shape="rectangle"]');
     await page.waitForTimeout(300);
